@@ -321,9 +321,9 @@ async function discoverTokenPaths() {
 }
 
 /**
- * Recursively scan directory for image files
+ * Recursively scan directory for image files with progress reporting
  */
-async function scanDirectoryForImages(path, depth = 0, maxDepth = 5) {
+async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCallback = null) {
   if (depth > maxDepth) return [];
 
   const images = [];
@@ -331,6 +331,17 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5) {
 
   try {
     const result = await FilePicker.browse('data', path);
+
+    // Report current directory being scanned
+    if (progressCallback) {
+      progressCallback({
+        type: 'directory',
+        path: path,
+        depth: depth,
+        fileCount: result?.files?.length || 0,
+        dirCount: result?.dirs?.length || 0
+      });
+    }
 
     // Add image files
     if (result?.files) {
@@ -349,6 +360,16 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5) {
             name: name,
             fileName: fileName
           });
+
+          // Report file found
+          if (progressCallback) {
+            progressCallback({
+              type: 'file',
+              path: file,
+              fileName: fileName,
+              totalFound: images.length
+            });
+          }
         }
       }
     }
@@ -356,21 +377,28 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5) {
     // Recursively scan subdirectories
     if (result?.dirs) {
       for (const dir of result.dirs) {
-        const subImages = await scanDirectoryForImages(dir, depth + 1, maxDepth);
+        const subImages = await scanDirectoryForImages(dir, depth + 1, maxDepth, progressCallback);
         images.push(...subImages);
       }
     }
   } catch (e) {
     console.warn(`${MODULE_ID} | Could not scan directory: ${path}`);
+    if (progressCallback) {
+      progressCallback({
+        type: 'error',
+        path: path,
+        error: e.message
+      });
+    }
   }
 
   return images;
 }
 
 /**
- * Build token art index from local directories
+ * Build token art index from local directories with progress dialog
  */
-async function buildLocalTokenIndex() {
+async function buildLocalTokenIndex(progressDialog = null) {
   console.log(`${MODULE_ID} | Building local token index...`);
 
   const paths = await discoverTokenPaths();
@@ -381,9 +409,48 @@ async function buildLocalTokenIndex() {
 
   const allImages = [];
   const seenPaths = new Set();
+  let totalImagesFound = 0;
+  let currentDirectory = '';
+  let directoriesScanned = 0;
+
+  // Progress callback to update dialog
+  const progressCallback = (info) => {
+    if (info.type === 'directory') {
+      currentDirectory = info.path;
+      directoriesScanned++;
+
+      if (progressDialog) {
+        const content = createScanProgressHTML(
+          currentDirectory,
+          directoriesScanned,
+          totalImagesFound,
+          info.fileCount,
+          info.dirCount
+        );
+        progressDialog.data.content = content;
+        progressDialog.render(true);
+      }
+    } else if (info.type === 'file') {
+      totalImagesFound++;
+
+      // Update every 10 files to avoid too many re-renders
+      if (progressDialog && totalImagesFound % 10 === 0) {
+        const content = createScanProgressHTML(
+          currentDirectory,
+          directoriesScanned,
+          totalImagesFound,
+          0,
+          0,
+          info.fileName
+        );
+        progressDialog.data.content = content;
+        progressDialog.render(true);
+      }
+    }
+  };
 
   for (const path of paths) {
-    const images = await scanDirectoryForImages(path);
+    const images = await scanDirectoryForImages(path, 0, 5, progressCallback);
     for (const img of images) {
       // Avoid duplicates from overlapping paths
       if (!seenPaths.has(img.path)) {
@@ -395,6 +462,57 @@ async function buildLocalTokenIndex() {
 
   console.log(`${MODULE_ID} | Found ${allImages.length} images in local directories`);
   return allImages;
+}
+
+/**
+ * Create HTML for scan progress dialog
+ */
+function createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir, subDirs, currentFile = null) {
+  const safeDir = escapeHtml(currentDir);
+  const safeFile = currentFile ? escapeHtml(currentFile) : '';
+
+  // Shorten the directory path for display
+  const shortDir = currentDir.length > 50
+    ? '...' + currentDir.substring(currentDir.length - 47)
+    : currentDir;
+  const safeShortDir = escapeHtml(shortDir);
+
+  return `
+    <div class="token-replacer-fa-scan-progress">
+      <div class="scan-status">
+        <i class="fas fa-search fa-spin"></i>
+        <span>Scanning token artwork...</span>
+      </div>
+
+      <div class="scan-stats">
+        <div class="stat-item">
+          <div class="stat-value">${dirsScanned}</div>
+          <div class="stat-label">Directories</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">${imagesFound}</div>
+          <div class="stat-label">Images Found</div>
+        </div>
+      </div>
+
+      <div class="scan-current">
+        <div class="current-label">Current directory:</div>
+        <div class="current-path" title="${safeDir}">${safeShortDir}</div>
+        ${currentFile ? `
+          <div class="current-file">
+            <i class="fas fa-image"></i> ${safeFile}
+          </div>
+        ` : ''}
+      </div>
+
+      ${filesInDir > 0 ? `
+        <div class="dir-info">
+          <span><i class="fas fa-file-image"></i> ${filesInDir} files</span>
+          <span><i class="fas fa-folder"></i> ${subDirs} subdirectories</span>
+        </div>
+      ` : ''}
+    </div>
+  `;
 }
 
 /**
@@ -737,12 +855,37 @@ async function processTokenReplacement() {
 
   ui.notifications.info(TokenReplacerFA.i18n('notifications.started'));
 
-  // Build local token index (FA Nexus and other local sources)
-  const localIndex = await buildLocalTokenIndex();
+  // Create scan progress dialog
+  let scanDialog = new Dialog({
+    title: TokenReplacerFA.i18n('dialog.title'),
+    content: createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+    buttons: {
+      cancel: {
+        icon: '<i class="fas fa-times"></i>',
+        label: TokenReplacerFA.i18n('dialog.cancel'),
+        callback: () => {
+          TokenReplacerFA.isProcessing = false;
+        }
+      }
+    },
+    close: () => {}
+  }, {
+    classes: ['token-replacer-fa-dialog'],
+    width: 450
+  });
+  scanDialog.render(true);
+
+  // Build local token index (FA Nexus and other local sources) with progress
+  const localIndex = await buildLocalTokenIndex(scanDialog);
+
+  // Close scan dialog
+  scanDialog.close();
 
   // Check if we have any search sources available
   if (!TokenReplacerFA.hasTVA && localIndex.length === 0) {
     ui.notifications.warn(TokenReplacerFA.i18n('notifications.missingDeps'));
+    TokenReplacerFA.isProcessing = false;
+    return;
   }
 
   const results = [];
@@ -750,7 +893,7 @@ async function processTokenReplacement() {
   const confirmReplace = TokenReplacerFA.getSetting('confirmReplace');
   const threshold = TokenReplacerFA.getSetting('fuzzyThreshold');
 
-  // Create progress dialog
+  // Create progress dialog for token replacement
   let progressDialog = null;
   let progressContent = '';
 
@@ -764,7 +907,7 @@ async function processTokenReplacement() {
     }
   };
 
-  // Show initial dialog
+  // Show token replacement progress dialog
   progressDialog = new Dialog({
     title: TokenReplacerFA.i18n('dialog.title'),
     content: createProgressHTML(0, npcTokens.length, TokenReplacerFA.i18n('dialog.scanning'), []),

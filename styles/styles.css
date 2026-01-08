@@ -216,3 +216,103 @@
 .token-replacer-fa-summary .summary-item.skipped .count {
   color: #fbbf24;
 }
+
+/* Scan Progress Styles */
+.token-replacer-fa-scan-progress {
+  padding: 10px;
+}
+
+.token-replacer-fa-scan-progress .scan-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 15px;
+  color: #ddd;
+}
+
+.token-replacer-fa-scan-progress .scan-status i {
+  color: #b33a2d;
+  font-size: 18px;
+}
+
+.token-replacer-fa-scan-progress .scan-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.token-replacer-fa-scan-progress .stat-item {
+  text-align: center;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 4px;
+  border: 1px solid #444;
+}
+
+.token-replacer-fa-scan-progress .stat-item .stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #4ade80;
+}
+
+.token-replacer-fa-scan-progress .stat-item .stat-label {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+.token-replacer-fa-scan-progress .scan-current {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.token-replacer-fa-scan-progress .current-label {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.token-replacer-fa-scan-progress .current-path {
+  font-size: 12px;
+  font-family: monospace;
+  color: #ddd;
+  word-break: break-all;
+  background: #252525;
+  padding: 6px 8px;
+  border-radius: 3px;
+  border-left: 3px solid #b33a2d;
+}
+
+.token-replacer-fa-scan-progress .current-file {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-replacer-fa-scan-progress .current-file i {
+  color: #fbbf24;
+}
+
+.token-replacer-fa-scan-progress .dir-info {
+  display: flex;
+  gap: 15px;
+  font-size: 11px;
+  color: #888;
+  margin-top: 10px;
+}
+
+.token-replacer-fa-scan-progress .dir-info i {
+  margin-right: 4px;
+  color: #666;
+}
