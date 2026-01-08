@@ -33,7 +33,7 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 ### Manifest URL
 
 ```
-https://raw.githubusercontent.com/YOUR_USERNAME/token-replacer-fa/main/module.json
+https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 ```
 
 ## Usage
