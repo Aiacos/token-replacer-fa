@@ -321,7 +321,29 @@ async function discoverTokenPaths() {
 }
 
 /**
+ * Yield to browser event loop to prevent freezing
+ */
+function yieldToMain(ms = 0) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Safely close a dialog and wait for it to finish
+ */
+async function closeDialogSafely(dialog) {
+  if (!dialog) return;
+  try {
+    dialog.close();
+    // Give the DOM time to update
+    await yieldToMain(50);
+  } catch (e) {
+    // Dialog might already be closed
+  }
+}
+
+/**
  * Recursively scan directory for image files with progress reporting
+ * Optimized to prevent browser freezing
  */
 async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCallback = null) {
   if (depth > maxDepth) return [];
@@ -343,12 +365,12 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
       });
     }
 
-    // Add image files
+    // Add image files in batches to prevent blocking
     if (result?.files) {
+      let batchCount = 0;
       for (const file of result.files) {
         const ext = file.substring(file.lastIndexOf('.')).toLowerCase();
         if (imageExtensions.includes(ext)) {
-          // Extract name from file path
           const fileName = file.split('/').pop();
           const name = fileName.substring(0, fileName.lastIndexOf('.'))
             .replace(/[-_]/g, ' ')
@@ -361,21 +383,24 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
             fileName: fileName
           });
 
-          // Report file found
-          if (progressCallback) {
-            progressCallback({
-              type: 'file',
-              path: file,
-              fileName: fileName,
-              totalFound: images.length
-            });
-          }
+          batchCount++;
         }
+      }
+
+      // Report batch of files found (not individual files)
+      if (progressCallback && batchCount > 0) {
+        progressCallback({
+          type: 'files_batch',
+          count: batchCount,
+          totalFound: images.length
+        });
       }
     }
 
-    // Recursively scan subdirectories
-    if (result?.dirs) {
+    // Yield to event loop before processing subdirectories
+    if (result?.dirs && result.dirs.length > 0) {
+      await yieldToMain();
+
       for (const dir of result.dirs) {
         const subImages = await scanDirectoryForImages(dir, depth + 1, maxDepth, progressCallback);
         images.push(...subImages);
@@ -383,13 +408,6 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
     }
   } catch (e) {
     console.warn(`${MODULE_ID} | Could not scan directory: ${path}`);
-    if (progressCallback) {
-      progressCallback({
-        type: 'error',
-        path: path,
-        error: e.message
-      });
-    }
   }
 
   return images;
@@ -412,44 +430,39 @@ async function buildLocalTokenIndex(progressDialog = null) {
   let totalImagesFound = 0;
   let currentDirectory = '';
   let directoriesScanned = 0;
+  let lastUIUpdate = Date.now();
+  const UI_UPDATE_INTERVAL = 200; // Update UI max every 200ms
 
-  // Progress callback to update dialog
+  // Progress callback to update dialog (throttled)
   const progressCallback = (info) => {
+    const now = Date.now();
+
     if (info.type === 'directory') {
       currentDirectory = info.path;
       directoriesScanned++;
+    } else if (info.type === 'files_batch') {
+      totalImagesFound += info.count;
+    }
 
-      if (progressDialog) {
-        const content = createScanProgressHTML(
-          currentDirectory,
-          directoriesScanned,
-          totalImagesFound,
-          info.fileCount,
-          info.dirCount
-        );
-        progressDialog.data.content = content;
-        progressDialog.render(true);
-      }
-    } else if (info.type === 'file') {
-      totalImagesFound++;
-
-      // Update every 10 files to avoid too many re-renders
-      if (progressDialog && totalImagesFound % 10 === 0) {
-        const content = createScanProgressHTML(
-          currentDirectory,
-          directoriesScanned,
-          totalImagesFound,
-          0,
-          0,
-          info.fileName
-        );
-        progressDialog.data.content = content;
-        progressDialog.render(true);
-      }
+    // Throttle UI updates to prevent freezing
+    if (progressDialog && (now - lastUIUpdate > UI_UPDATE_INTERVAL)) {
+      lastUIUpdate = now;
+      const content = createScanProgressHTML(
+        currentDirectory,
+        directoriesScanned,
+        totalImagesFound,
+        info.fileCount || 0,
+        info.dirCount || 0
+      );
+      progressDialog.data.content = content;
+      progressDialog.render(true);
     }
   };
 
   for (const path of paths) {
+    // Yield to event loop between top-level paths
+    await yieldToMain(10);
+
     const images = await scanDirectoryForImages(path, 0, 5, progressCallback);
     for (const img of images) {
       // Avoid duplicates from overlapping paths
@@ -458,6 +471,20 @@ async function buildLocalTokenIndex(progressDialog = null) {
         allImages.push(img);
       }
     }
+  }
+
+  // Final UI update
+  if (progressDialog) {
+    const content = createScanProgressHTML(
+      'Scan complete',
+      directoriesScanned,
+      allImages.length,
+      0,
+      0
+    );
+    progressDialog.data.content = content;
+    progressDialog.render(true);
+    await yieldToMain(100);
   }
 
   console.log(`${MODULE_ID} | Found ${allImages.length} images in local directories`);
@@ -1037,12 +1064,14 @@ async function processTokenReplacement() {
     width: 450
   });
   scanDialog.render(true);
+  await yieldToMain(50); // Let dialog render
 
   // Build local token index (FA Nexus and other local sources) with progress
   const localIndex = await buildLocalTokenIndex(scanDialog);
 
-  // Close scan dialog
-  scanDialog.close();
+  // Close scan dialog safely
+  await closeDialogSafely(scanDialog);
+  scanDialog = null;
 
   // Check if we have any search sources available
   if (!TokenReplacerFA.hasTVA && localIndex.length === 0) {
@@ -1054,7 +1083,6 @@ async function processTokenReplacement() {
   // Group tokens by creature type for optimization
   const creatureGroups = groupTokensByCreature(npcTokens);
   const uniqueCreatures = creatureGroups.size;
-  const tokensWithoutActor = npcTokens.length - Array.from(creatureGroups.values()).reduce((sum, g) => sum + g.tokens.length, 0);
 
   console.log(`${MODULE_ID} | Found ${uniqueCreatures} unique creature types among ${npcTokens.length} tokens`);
 
@@ -1077,10 +1105,11 @@ async function processTokenReplacement() {
     width: 480
   });
   searchDialog.render(true);
+  await yieldToMain(50); // Let dialog render
 
   // Perform parallel searches for all creature types
   const searchResults = await parallelSearchCreatures(creatureGroups, localIndex, (info) => {
-    if (info.type === 'batch') {
+    if (info.type === 'batch' && searchDialog) {
       const content = createParallelSearchHTML(
         info.completed,
         info.total,
@@ -1093,8 +1122,9 @@ async function processTokenReplacement() {
     }
   });
 
-  // Close search dialog
-  searchDialog.close();
+  // Close search dialog safely
+  await closeDialogSafely(searchDialog);
+  searchDialog = null;
 
   // Now process tokens with cached search results
   const results = [];
@@ -1111,12 +1141,18 @@ async function processTokenReplacement() {
     progressContent = createProgressHTML(current, total, status, results);
 
     if (progressDialog) {
-      progressDialog.data.content = progressContent;
-      progressDialog.render(true);
+      try {
+        progressDialog.data.content = progressContent;
+        progressDialog.render(true);
+      } catch (e) {
+        // Dialog might be in transition
+      }
     }
   };
 
   // Show token replacement progress dialog
+  await yieldToMain(50); // Ensure previous dialog is fully closed
+
   progressDialog = new Dialog({
     title: TokenReplacerFA.i18n('dialog.title'),
     content: createProgressHTML(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), []),
@@ -1133,6 +1169,7 @@ async function processTokenReplacement() {
     width: 450
   });
   progressDialog.render(true);
+  await yieldToMain(50); // Let dialog render before processing
 
   // Process each token using cached results
   let tokenIndex = 0;
@@ -1164,7 +1201,9 @@ async function processTokenReplacement() {
       selectedPath = bestMatch.path;
     } else if (confirmReplace) {
       // Show selection dialog once for this creature type
-      progressDialog.close();
+      await closeDialogSafely(progressDialog);
+      progressDialog = null;
+
       selectedPath = await showMatchSelectionDialog(creatureInfo, matches);
 
       if (selectedPath === 'cancel') {
@@ -1173,7 +1212,7 @@ async function processTokenReplacement() {
         return;
       }
 
-      // Re-render progress dialog
+      // Re-create progress dialog
       progressDialog = new Dialog({
         title: TokenReplacerFA.i18n('dialog.title'),
         content: progressContent,
@@ -1188,6 +1227,7 @@ async function processTokenReplacement() {
         width: 450
       });
       progressDialog.render(true);
+      await yieldToMain(50);
     } else {
       // No confirmation, use best match
       selectedPath = bestMatch.path;
@@ -1213,17 +1253,6 @@ async function processTokenReplacement() {
           status: 'skipped'
         });
       }
-    }
-  }
-
-  // Handle tokens without actors
-  for (const token of npcTokens) {
-    if (!token.actor) {
-      tokenIndex++;
-      updateProgress(tokenIndex, npcTokens.length, 'Skipped (no actor)', {
-        name: token.name,
-        status: 'skipped'
-      });
     }
   }
 
