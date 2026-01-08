@@ -155,6 +155,26 @@ function registerSettings() {
     type: String,
     default: ''
   });
+
+  // Use TVA cache (skip manual directory scanning)
+  game.settings.register(MODULE_ID, 'useTVACache', {
+    name: 'TOKEN_REPLACER_FA.settings.useTVACache.name',
+    hint: 'TOKEN_REPLACER_FA.settings.useTVACache.hint',
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  // Refresh TVA cache before search
+  game.settings.register(MODULE_ID, 'refreshTVACache', {
+    name: 'TOKEN_REPLACER_FA.settings.refreshTVACache.name',
+    hint: 'TOKEN_REPLACER_FA.settings.refreshTVACache.hint',
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false
+  });
 }
 
 /**
@@ -953,17 +973,22 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   }
 
   const priority = TokenReplacerFA.getSetting('searchPriority');
+  const useTVACache = TokenReplacerFA.getSetting('useTVACache');
   const results = [];
 
+  // If using TVA cache mode, prioritize TVA for all searches
+  const useTVAForAll = TokenReplacerFA.hasTVA && useTVACache;
+
   // Search local index (FA Nexus and other local sources)
-  // Optimized: passes creature type for category-based filtering
-  if (priority === 'faNexus' || priority === 'both') {
+  // Only if we have a local index built (not in TVA cache mode)
+  if (localIndex.length > 0 && (priority === 'faNexus' || priority === 'both')) {
     const localResults = await searchLocalIndex(searchTerms, localIndex, creatureInfo.type);
     results.push(...localResults);
   }
 
-  // Search Token Variant Art (Forge Bazaar)
-  if ((priority === 'forgeBazaar' || priority === 'both') && TokenReplacerFA.hasTVA) {
+  // Search Token Variant Art
+  // In TVA cache mode, always use TVA regardless of priority setting
+  if (TokenReplacerFA.hasTVA && (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')) {
     // Search TVA for each term, prioritizing actor name
     for (const term of searchTerms) {
       const tvaResults = await searchTVA(term);
@@ -1145,9 +1170,21 @@ function createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, cu
 
 /**
  * Replace token image
+ * Uses TVA's updateTokenImage() when available to apply custom configurations
  */
 async function replaceTokenImage(token, imagePath) {
   try {
+    // Use TVA's updateTokenImage if available - applies custom configs (scale, lighting, effects)
+    if (TokenReplacerFA.hasTVA && TokenReplacerFA.tvaAPI?.updateTokenImage) {
+      await TokenReplacerFA.tvaAPI.updateTokenImage(imagePath, {
+        token: token,
+        actor: token.actor,
+        imgName: imagePath.split('/').pop()
+      });
+      return true;
+    }
+
+    // Fallback to direct update
     await token.document.update({
       'texture.src': imagePath
     });
@@ -1159,104 +1196,98 @@ async function replaceTokenImage(token, imagePath) {
 }
 
 /**
- * Show match selection dialog
+ * Create match selection HTML (for embedding in main dialog)
  */
-async function showMatchSelectionDialog(creatureInfo, matches) {
+function createMatchSelectionHTML(creatureInfo, matches) {
+  const safeName = escapeHtml(creatureInfo.actorName);
+  const safeType = escapeHtml(creatureInfo.type || 'Unknown');
+  const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+
+  return `
+    <div class="token-replacer-fa-token-preview">
+      <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
+      <div class="token-info">
+        <div class="token-name">${safeName}</div>
+        <div class="token-type">${safeType} ${safeSubtype}</div>
+      </div>
+    </div>
+    <div class="token-replacer-fa-match-select">
+      ${matches.slice(0, 12).map((match, idx) => {
+        const safeMatchName = escapeHtml(match.name);
+        const safePath = escapeHtml(match.path);
+        const scoreDisplay = match.score !== undefined
+          ? `${Math.round((1 - match.score) * 100)}%`
+          : escapeHtml(match.source || '');
+        return `
+          <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}">
+            <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
+            <div class="match-name">${safeMatchName}</div>
+            <div class="match-score">${scoreDisplay}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+    <div class="token-replacer-fa-selection-buttons">
+      <button type="button" class="select-btn" data-action="select">
+        <i class="fas fa-check"></i> Select
+      </button>
+      <button type="button" class="skip-btn" data-action="skip">
+        <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
+      </button>
+      <button type="button" class="cancel-btn" data-action="cancel">
+        <i class="fas fa-times"></i> ${TokenReplacerFA.i18n('dialog.cancel')}
+      </button>
+    </div>
+    <p style="font-size: 11px; color: #888; margin-top: 10px; text-align: center;">
+      Double-click an image to select it directly.
+    </p>
+  `;
+}
+
+/**
+ * Setup match selection event handlers
+ * Returns a Promise that resolves with the selected path or 'skip'/'cancel'
+ */
+function setupMatchSelectionHandlers(dialogElement) {
   return new Promise((resolve) => {
-    // Escape all user-provided content to prevent XSS
-    const safeName = escapeHtml(creatureInfo.actorName);
-    const safeType = escapeHtml(creatureInfo.type || 'Unknown');
-    const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+    const container = dialogElement.querySelector('.dialog-content');
+    if (!container) {
+      resolve(null);
+      return;
+    }
 
-    const content = `
-      <div class="token-replacer-fa-token-preview">
-        <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
-        <div class="token-info">
-          <div class="token-name">${safeName}</div>
-          <div class="token-type">${safeType} ${safeSubtype}</div>
-        </div>
-      </div>
-      <div class="token-replacer-fa-match-select">
-        ${matches.slice(0, 12).map((match, idx) => {
-          const safeMatchName = escapeHtml(match.name);
-          const safePath = escapeHtml(match.path);
-          const scoreDisplay = match.score !== undefined
-            ? `${Math.round((1 - match.score) * 100)}%`
-            : escapeHtml(match.source || '');
-          return `
-            <div class="match-option" data-index="${idx}" data-path="${safePath}">
-              <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
-              <div class="match-name">${safeMatchName}</div>
-              <div class="match-score">${scoreDisplay}</div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-      <p style="font-size: 11px; color: #888; margin-top: 10px;">
-        Double-click to select, or use buttons below.
-      </p>
-    `;
+    // Handle match option clicks
+    const options = container.querySelectorAll('.match-option');
+    options.forEach(option => {
+      option.addEventListener('click', () => {
+        options.forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+      });
 
-    let dialogInstance = null;
-
-    dialogInstance = new Dialog({
-      title: TokenReplacerFA.i18n('dialog.selectMatch'),
-      content: content,
-      buttons: {
-        select: {
-          icon: '<i class="fas fa-check"></i>',
-          label: 'Select',
-          callback: (html) => {
-            const selected = html.find('.match-option.selected');
-            if (selected.length > 0) {
-              resolve(selected.data('path'));
-            } else {
-              resolve(null);
-            }
-          }
-        },
-        skip: {
-          icon: '<i class="fas fa-forward"></i>',
-          label: TokenReplacerFA.i18n('dialog.skip'),
-          callback: () => resolve(null)
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: TokenReplacerFA.i18n('dialog.cancel'),
-          callback: () => resolve('cancel')
-        }
-      },
-      default: 'select',
-      render: (html) => {
-        // Use vanilla JS for event handling (more reliable than jQuery)
-        const options = html[0].querySelectorAll('.match-option');
-        options.forEach(option => {
-          option.addEventListener('click', () => {
-            options.forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-          });
-
-          option.addEventListener('dblclick', () => {
-            const path = option.dataset.path;
-            dialogInstance.close();
-            resolve(path);
-          });
-        });
-
-        // Select first option by default
-        if (options.length > 0) {
-          options[0].classList.add('selected');
-        }
-      },
-      close: () => resolve(null)
-    }, {
-      classes: ['token-replacer-fa-dialog'],
-      width: 520,
-      height: 'auto',
-      resizable: true
+      option.addEventListener('dblclick', () => {
+        resolve(option.dataset.path);
+      });
     });
 
-    dialogInstance.render(true);
+    // Handle button clicks
+    const selectBtn = container.querySelector('.select-btn');
+    const skipBtn = container.querySelector('.skip-btn');
+    const cancelBtn = container.querySelector('.cancel-btn');
+
+    if (selectBtn) {
+      selectBtn.addEventListener('click', () => {
+        const selected = container.querySelector('.match-option.selected');
+        resolve(selected ? selected.dataset.path : null);
+      });
+    }
+
+    if (skipBtn) {
+      skipBtn.addEventListener('click', () => resolve(null));
+    }
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => resolve('cancel'));
+    }
   });
 }
 
@@ -1325,7 +1356,36 @@ function createProgressHTML(current, total, status, results) {
 }
 
 /**
+ * Main dialog instance - single dialog used throughout the process
+ */
+let mainDialog = null;
+
+/**
+ * Update main dialog content without closing it
+ */
+function updateMainDialogContent(content) {
+  if (!mainDialog) return;
+
+  try {
+    // Update the content in dialog data
+    mainDialog.data.content = content;
+
+    // Find the content element and update it directly
+    const dialogElement = mainDialog.element?.[0];
+    if (dialogElement) {
+      const contentEl = dialogElement.querySelector('.dialog-content');
+      if (contentEl) {
+        contentEl.innerHTML = content;
+      }
+    }
+  } catch (e) {
+    // Dialog might be in transition
+  }
+}
+
+/**
  * Main replacement process with parallel search optimization
+ * Uses a SINGLE dialog throughout the entire process
  */
 async function processTokenReplacement() {
   if (TokenReplacerFA.isProcessing) {
@@ -1362,8 +1422,8 @@ async function processTokenReplacement() {
 
   ui.notifications.info(TokenReplacerFA.i18n('notifications.started'));
 
-  // Create scan progress dialog
-  let scanDialog = new Dialog({
+  // Create the SINGLE main dialog that will be used throughout
+  mainDialog = new Dialog({
     title: TokenReplacerFA.i18n('dialog.title'),
     content: createScanProgressHTML('Initializing...', 0, 0, 0, 0),
     buttons: {
@@ -1372,30 +1432,89 @@ async function processTokenReplacement() {
         label: TokenReplacerFA.i18n('dialog.cancel'),
         callback: () => {
           TokenReplacerFA.isProcessing = false;
+          mainDialog = null;
         }
       }
     },
-    close: () => {}
+    close: () => {
+      TokenReplacerFA.isProcessing = false;
+      mainDialog = null;
+    }
   }, {
     classes: ['token-replacer-fa-dialog'],
-    width: 450,
+    width: 500,
     height: 'auto',
     resizable: true
   });
-  scanDialog.render(true);
-  await yieldToMain(50); // Let dialog render
+  mainDialog.render(true);
+  await yieldToMain(100);
 
-  // Build local token index (FA Nexus and other local sources) with progress
-  const localIndex = await buildLocalTokenIndex(scanDialog);
+  // PHASE 1: Build token index
+  // Optimization: Skip manual scanning if TVA is available and useTVACache is enabled
+  const useTVACache = TokenReplacerFA.getSetting('useTVACache');
+  const refreshTVACache = TokenReplacerFA.getSetting('refreshTVACache');
+  let localIndex = [];
 
-  // Close scan dialog safely
-  await closeDialogSafely(scanDialog);
-  scanDialog = null;
+  if (TokenReplacerFA.hasTVA && useTVACache) {
+    // Use TVA's cache - much faster!
+    console.log(`${MODULE_ID} | Using TVA cache (skipping manual directory scan)`);
+
+    updateMainDialogContent(`
+      <div class="token-replacer-fa-scan-progress">
+        <div class="scan-status">
+          <i class="fas fa-bolt"></i>
+          <span>Using Token Variant Art cache...</span>
+        </div>
+        <div class="optimization-info">
+          <i class="fas fa-info-circle"></i>
+          <span>Leveraging TVA's pre-built image index for faster search</span>
+        </div>
+      </div>
+    `);
+    await yieldToMain(100);
+
+    // Optionally refresh TVA cache before search
+    if (refreshTVACache && TokenReplacerFA.tvaAPI?.cacheImages) {
+      updateMainDialogContent(`
+        <div class="token-replacer-fa-scan-progress">
+          <div class="scan-status">
+            <i class="fas fa-sync fa-spin"></i>
+            <span>Refreshing TVA cache...</span>
+          </div>
+          <p style="text-align: center; color: #888; margin-top: 10px;">
+            This may take a moment for large image libraries
+          </p>
+        </div>
+      `);
+      await yieldToMain(50);
+
+      try {
+        await TokenReplacerFA.tvaAPI.cacheImages();
+        console.log(`${MODULE_ID} | TVA cache refreshed`);
+      } catch (e) {
+        console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
+      }
+      await yieldToMain(100);
+    }
+  } else {
+    // Fallback: Build local token index with progress (manual scanning)
+    console.log(`${MODULE_ID} | Building local token index (TVA cache not available or disabled)`);
+    localIndex = await buildLocalTokenIndex(mainDialog);
+  }
 
   // Check if we have any search sources available
   if (!TokenReplacerFA.hasTVA && localIndex.length === 0) {
-    ui.notifications.warn(TokenReplacerFA.i18n('notifications.missingDeps'));
-    TokenReplacerFA.isProcessing = false;
+    updateMainDialogContent(`
+      <div class="token-replacer-fa-scan-progress">
+        <div class="scan-status" style="color: #f87171;">
+          <i class="fas fa-exclamation-triangle"></i>
+          <span>${TokenReplacerFA.i18n('notifications.missingDeps')}</span>
+        </div>
+        <p style="text-align: center; color: #888; margin-top: 15px;">
+          Install Token Variant Art or FA Nexus module, or configure additional search paths in settings.
+        </p>
+      </div>
+    `);
     return;
   }
 
@@ -1405,98 +1524,46 @@ async function processTokenReplacement() {
 
   console.log(`${MODULE_ID} | Found ${uniqueCreatures} unique creature types among ${npcTokens.length} tokens`);
 
-  // Show parallel search dialog if multiple unique creatures
-  let searchDialog = new Dialog({
-    title: TokenReplacerFA.i18n('dialog.title'),
-    content: createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, []),
-    buttons: {
-      cancel: {
-        icon: '<i class="fas fa-times"></i>',
-        label: TokenReplacerFA.i18n('dialog.cancel'),
-        callback: () => {
-          TokenReplacerFA.isProcessing = false;
-        }
-      }
-    },
-    close: () => {}
-  }, {
-    classes: ['token-replacer-fa-dialog'],
-    width: 480,
-    height: 'auto',
-    resizable: true
-  });
-  searchDialog.render(true);
-  await yieldToMain(50); // Let dialog render
+  // PHASE 2: Parallel search - update the same dialog
+  updateMainDialogContent(createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, []));
+  await yieldToMain(50);
 
   // Perform parallel searches for all creature types
   const searchResults = await parallelSearchCreatures(creatureGroups, localIndex, (info) => {
-    if (info.type === 'batch' && searchDialog) {
-      const content = createParallelSearchHTML(
+    if (info.type === 'batch' && mainDialog) {
+      updateMainDialogContent(createParallelSearchHTML(
         info.completed,
         info.total,
         uniqueCreatures,
         npcTokens.length,
         info.currentBatch
-      );
-      searchDialog.data.content = content;
-      searchDialog.render(true);
+      ));
     }
   });
 
-  // Close search dialog safely
-  await closeDialogSafely(searchDialog);
-  searchDialog = null;
-
-  // Now process tokens with cached search results
+  // PHASE 3: Process tokens with cached search results
   const results = [];
   const autoReplace = TokenReplacerFA.getSetting('autoReplace');
   const confirmReplace = TokenReplacerFA.getSetting('confirmReplace');
   const threshold = TokenReplacerFA.getSetting('fuzzyThreshold');
 
-  // Create progress dialog for token replacement
-  let progressDialog = null;
-  let progressContent = '';
-
   const updateProgress = (current, total, status, result = null) => {
     if (result) results.push(result);
-    progressContent = createProgressHTML(current, total, status, results);
-
-    if (progressDialog) {
-      try {
-        progressDialog.data.content = progressContent;
-        progressDialog.render(true);
-      } catch (e) {
-        // Dialog might be in transition
-      }
-    }
+    const content = createProgressHTML(current, total, status, results);
+    updateMainDialogContent(content);
   };
 
-  // Show token replacement progress dialog
-  await yieldToMain(50); // Ensure previous dialog is fully closed
-
-  progressDialog = new Dialog({
-    title: TokenReplacerFA.i18n('dialog.title'),
-    content: createProgressHTML(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), []),
-    buttons: {
-      close: {
-        icon: '<i class="fas fa-times"></i>',
-        label: TokenReplacerFA.i18n('dialog.close'),
-        callback: () => {}
-      }
-    },
-    close: () => {}
-  }, {
-    classes: ['token-replacer-fa-dialog'],
-    width: 450,
-    height: 'auto',
-    resizable: true
-  });
-  progressDialog.render(true);
-  await yieldToMain(50); // Let dialog render before processing
+  // Show initial progress
+  updateProgress(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+  await yieldToMain(50);
 
   // Process each token using cached results
   let tokenIndex = 0;
+  let cancelled = false;
+
   for (const [key, data] of searchResults) {
+    if (cancelled || !mainDialog) break;
+
     const { matches, tokens, creatureInfo } = data;
 
     // If no matches for this creature type, mark all tokens as failed
@@ -1523,35 +1590,23 @@ async function processTokenReplacement() {
       // High confidence match, auto-replace all tokens of this type
       selectedPath = bestMatch.path;
     } else if (confirmReplace) {
-      // Show selection dialog once for this creature type
-      await closeDialogSafely(progressDialog);
-      progressDialog = null;
+      // Show selection UI in the SAME dialog
+      updateMainDialogContent(createMatchSelectionHTML(creatureInfo, matches));
+      await yieldToMain(50);
 
-      selectedPath = await showMatchSelectionDialog(creatureInfo, matches);
+      // Wait for user selection
+      const dialogEl = mainDialog?.element?.[0];
+      if (dialogEl) {
+        selectedPath = await setupMatchSelectionHandlers(dialogEl);
 
-      if (selectedPath === 'cancel') {
-        // User cancelled the entire operation
-        TokenReplacerFA.isProcessing = false;
-        return;
+        if (selectedPath === 'cancel') {
+          cancelled = true;
+          break;
+        }
       }
 
-      // Re-create progress dialog
-      progressDialog = new Dialog({
-        title: TokenReplacerFA.i18n('dialog.title'),
-        content: progressContent,
-        buttons: {
-          close: {
-            icon: '<i class="fas fa-times"></i>',
-            label: TokenReplacerFA.i18n('dialog.close')
-          }
-        }
-      }, {
-        classes: ['token-replacer-fa-dialog'],
-        width: 450,
-        height: 'auto',
-        resizable: true
-      });
-      progressDialog.render(true);
+      // Restore progress view
+      updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
       await yieldToMain(50);
     } else {
       // No confirmation, use best match
@@ -1560,6 +1615,8 @@ async function processTokenReplacement() {
 
     // Apply selected path to ALL tokens of this creature type
     for (const token of tokens) {
+      if (cancelled || !mainDialog) break;
+
       tokenIndex++;
 
       if (selectedPath) {
@@ -1582,13 +1639,23 @@ async function processTokenReplacement() {
   }
 
   // Final update
-  const successCount = results.filter(r => r.status === 'success').length;
-  updateProgress(npcTokens.length, npcTokens.length,
-    TokenReplacerFA.i18n('dialog.complete'), null);
+  if (!cancelled && mainDialog) {
+    const successCount = results.filter(r => r.status === 'success').length;
+    const failedCount = results.filter(r => r.status === 'failed').length;
+    const skippedCount = results.filter(r => r.status === 'skipped').length;
 
-  ui.notifications.info(
-    TokenReplacerFA.i18n('notifications.complete', { count: successCount })
-  );
+    updateProgress(npcTokens.length, npcTokens.length,
+      TokenReplacerFA.i18n('dialog.complete'), null);
+
+    ui.notifications.info(
+      TokenReplacerFA.i18n('notifications.complete', { count: successCount })
+    );
+
+    // Log summary if there were issues
+    if (failedCount > 0) {
+      console.log(`${MODULE_ID} | ${failedCount} tokens had no matching art found`);
+    }
+  }
 
   TokenReplacerFA.isProcessing = false;
 }

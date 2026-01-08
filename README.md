@@ -62,6 +62,8 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 | **Confirm Before Replace** | Show selection dialog for each creature type | On |
 | **Fallback to Full Search** | Search entire index if no matches in creature category | Off |
 | **Additional Search Paths** | Comma-separated custom paths to search for tokens | Empty |
+| **Use TVA Cache** | Use Token Variant Art's pre-built cache instead of manual scanning | On |
+| **Refresh TVA Cache** | Force refresh TVA cache before searching (for new images) | Off |
 
 ## How It Works
 
@@ -187,6 +189,28 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 ```
 
 ## Changelog
+
+### v1.1.0
+- **Major Performance Optimization**: Added TVA cache integration
+  - Skips manual directory scanning when Token Variant Art is available
+  - Leverages TVA's pre-built image index for much faster searches
+  - New "Use TVA Cache" setting (enabled by default)
+  - New "Refresh TVA Cache Before Search" setting for fresh image detection
+- Uses TVA's `updateTokenImage()` API to apply custom token configurations (scale, lighting, effects)
+- Improved search logic when TVA cache mode is enabled
+
+### v1.0.9
+- Fixed UI glitching caused by multiple dialog windows
+- Refactored to use single dialog throughout entire replacement process
+- Added inline selection buttons for match selection
+- Improved error handling for missing dependencies
+- Better user feedback when no tokens or matches are found
+
+### v1.0.8
+- Code cleanup and removal of unused variables
+- Added missing localization strings
+- Removed verbose debug logging
+- Updated documentation
 
 ### v1.0.7
 - Fixed TVA API path extraction (paths no longer show as numeric indices)

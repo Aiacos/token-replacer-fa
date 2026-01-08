@@ -361,3 +361,55 @@
 .token-replacer-fa-scan-progress .optimization-info i {
   font-size: 14px;
 }
+
+/* Selection Buttons */
+.token-replacer-fa-selection-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #444;
+}
+
+.token-replacer-fa-selection-buttons button {
+  padding: 8px 16px;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.token-replacer-fa-selection-buttons .select-btn {
+  background: linear-gradient(to bottom, #4ade80, #22c55e);
+  color: #000;
+  border-color: #22c55e;
+}
+
+.token-replacer-fa-selection-buttons .select-btn:hover {
+  background: linear-gradient(to bottom, #22c55e, #16a34a);
+}
+
+.token-replacer-fa-selection-buttons .skip-btn {
+  background: linear-gradient(to bottom, #fbbf24, #f59e0b);
+  color: #000;
+  border-color: #f59e0b;
+}
+
+.token-replacer-fa-selection-buttons .skip-btn:hover {
+  background: linear-gradient(to bottom, #f59e0b, #d97706);
+}
+
+.token-replacer-fa-selection-buttons .cancel-btn {
+  background: linear-gradient(to bottom, #f87171, #ef4444);
+  color: #fff;
+  border-color: #ef4444;
+}
+
+.token-replacer-fa-selection-buttons .cancel-btn:hover {
+  background: linear-gradient(to bottom, #ef4444, #dc2626);
+}

@@ -33,6 +33,14 @@
       "additionalPaths": {
         "name": "Additional Search Paths",
         "hint": "Comma-separated list of additional paths to search for token art (e.g., tokens/monsters, assets/tokens)"
+      },
+      "useTVACache": {
+        "name": "Use TVA Cache",
+        "hint": "Use Token Variant Art's pre-built image cache instead of scanning directories manually. Much faster if TVA is configured with your image paths. Default: On"
+      },
+      "refreshTVACache": {
+        "name": "Refresh TVA Cache Before Search",
+        "hint": "Force refresh Token Variant Art's cache before searching. Enable if you've added new images. Default: Off"
       }
     },
     "priority": {

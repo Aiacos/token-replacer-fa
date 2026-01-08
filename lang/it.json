@@ -33,6 +33,14 @@
       "additionalPaths": {
         "name": "Percorsi Aggiuntivi",
         "hint": "Lista di percorsi aggiuntivi separati da virgola per cercare token art (es. tokens/monsters, assets/tokens)"
+      },
+      "useTVACache": {
+        "name": "Usa Cache TVA",
+        "hint": "Usa la cache pre-costruita di Token Variant Art invece di scansionare le directory manualmente. Molto più veloce se TVA è configurato con i tuoi percorsi immagini. Default: Attivo"
+      },
+      "refreshTVACache": {
+        "name": "Aggiorna Cache TVA Prima della Ricerca",
+        "hint": "Forza l'aggiornamento della cache di Token Variant Art prima di cercare. Attiva se hai aggiunto nuove immagini. Default: Spento"
       }
     },
     "priority": {
