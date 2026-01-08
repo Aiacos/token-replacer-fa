@@ -1,0 +1,65 @@
+{
+  "TOKEN_REPLACER_FA": {
+    "title": "Token Replacer - Forgotten Adventures",
+    "button": {
+      "title": "Replace Token Art",
+      "tooltip": "Search and replace NPC tokens with Forgotten Adventures art"
+    },
+    "settings": {
+      "fuzzyThreshold": {
+        "name": "Fuzzy Search Threshold",
+        "hint": "Lower values require closer matches (0.0 = exact, 1.0 = match anything). Default: 0.1"
+      },
+      "searchPriority": {
+        "name": "Search Priority",
+        "hint": "Choose which source to search first for token art"
+      },
+      "autoReplace": {
+        "name": "Auto Replace on Match",
+        "hint": "Automatically replace token if a high-confidence match is found"
+      },
+      "confirmReplace": {
+        "name": "Confirm Before Replace",
+        "hint": "Show confirmation dialog before replacing each token"
+      },
+      "searchSources": {
+        "name": "Search Sources",
+        "hint": "Select which sources to search for token art"
+      },
+      "additionalPaths": {
+        "name": "Additional Search Paths",
+        "hint": "Comma-separated list of additional paths to search for token art (e.g., tokens/monsters, assets/tokens)"
+      }
+    },
+    "priority": {
+      "faNexus": "FA Nexus First",
+      "forgeBazaar": "Forge Bazaar First",
+      "both": "Search Both (Best Match)"
+    },
+    "dialog": {
+      "title": "Replace Token Art",
+      "scanning": "Scanning tokens...",
+      "searching": "Searching for: {name}",
+      "replacing": "Replacing token art...",
+      "complete": "Token replacement complete!",
+      "found": "Found {count} NPC tokens",
+      "replaced": "Replaced {count} of {total} tokens",
+      "noTokens": "No NPC tokens found on the current scene",
+      "noMatch": "No matching art found for: {name}",
+      "confirm": "Replace token art for {name}?",
+      "matchFound": "Match found: {match} (Score: {score}%)",
+      "selectMatch": "Select Token Art",
+      "skip": "Skip",
+      "replaceAll": "Replace All",
+      "cancel": "Cancel"
+    },
+    "notifications": {
+      "started": "Starting token art replacement...",
+      "complete": "Token replacement complete! Replaced {count} tokens.",
+      "noScene": "No active scene found",
+      "noTokens": "No NPC tokens found on current scene",
+      "missingDeps": "Token Variant Art or FA Nexus module recommended for best results",
+      "error": "Error replacing token: {error}"
+    }
+  }
+}

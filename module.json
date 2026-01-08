@@ -1,0 +1,56 @@
+{
+  "id": "token-replacer-fa",
+  "title": "Token Replacer - Forgotten Adventures",
+  "description": "Automatically replaces NPC token art with matching tokens from Forgotten Adventures and The Forge Bazaar using fuzzy search.",
+  "version": "1.0.0",
+  "compatibility": {
+    "minimum": "12",
+    "verified": "13"
+  },
+  "authors": [
+    {
+      "name": "Aiacos"
+    }
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "3.0.0"
+        }
+      }
+    ],
+    "optional": [
+      {
+        "id": "token-variants",
+        "type": "module",
+        "reason": "Enables searching The Forge Bazaar for token art"
+      },
+      {
+        "id": "fa-nexus",
+        "type": "module",
+        "reason": "Enables searching Forgotten Adventures token library"
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/styles.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    },
+    {
+      "lang": "it",
+      "name": "Italiano",
+      "path": "lang/it.json"
+    }
+  ]
+}

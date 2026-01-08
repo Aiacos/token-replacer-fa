@@ -1,0 +1,65 @@
+{
+  "TOKEN_REPLACER_FA": {
+    "title": "Token Replacer - Forgotten Adventures",
+    "button": {
+      "title": "Sostituisci Token Art",
+      "tooltip": "Cerca e sostituisce i token NPC con l'art di Forgotten Adventures"
+    },
+    "settings": {
+      "fuzzyThreshold": {
+        "name": "Soglia Ricerca Fuzzy",
+        "hint": "Valori bassi richiedono corrispondenze più precise (0.0 = esatto, 1.0 = qualsiasi). Default: 0.1"
+      },
+      "searchPriority": {
+        "name": "Priorità di Ricerca",
+        "hint": "Scegli quale fonte cercare per prima per la token art"
+      },
+      "autoReplace": {
+        "name": "Sostituzione Automatica",
+        "hint": "Sostituisce automaticamente il token se trova una corrispondenza ad alta confidenza"
+      },
+      "confirmReplace": {
+        "name": "Conferma Prima di Sostituire",
+        "hint": "Mostra dialogo di conferma prima di sostituire ogni token"
+      },
+      "searchSources": {
+        "name": "Fonti di Ricerca",
+        "hint": "Seleziona quali fonti cercare per la token art"
+      },
+      "additionalPaths": {
+        "name": "Percorsi Aggiuntivi",
+        "hint": "Lista di percorsi aggiuntivi separati da virgola per cercare token art (es. tokens/monsters, assets/tokens)"
+      }
+    },
+    "priority": {
+      "faNexus": "Prima FA Nexus",
+      "forgeBazaar": "Prima Forge Bazaar",
+      "both": "Cerca Entrambi (Miglior Match)"
+    },
+    "dialog": {
+      "title": "Sostituisci Token Art",
+      "scanning": "Scansione token...",
+      "searching": "Ricerca per: {name}",
+      "replacing": "Sostituzione token art...",
+      "complete": "Sostituzione token completata!",
+      "found": "Trovati {count} token NPC",
+      "replaced": "Sostituiti {count} di {total} token",
+      "noTokens": "Nessun token NPC trovato nella scena corrente",
+      "noMatch": "Nessuna art trovata per: {name}",
+      "confirm": "Sostituire la token art per {name}?",
+      "matchFound": "Trovato: {match} (Punteggio: {score}%)",
+      "selectMatch": "Seleziona Token Art",
+      "skip": "Salta",
+      "replaceAll": "Sostituisci Tutti",
+      "cancel": "Annulla"
+    },
+    "notifications": {
+      "started": "Inizio sostituzione token art...",
+      "complete": "Sostituzione completata! Sostituiti {count} token.",
+      "noScene": "Nessuna scena attiva trovata",
+      "noTokens": "Nessun token NPC trovato nella scena corrente",
+      "missingDeps": "Si consiglia Token Variant Art o FA Nexus per risultati migliori",
+      "error": "Errore nella sostituzione del token: {error}"
+    }
+  }
+}
