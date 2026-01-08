@@ -593,11 +593,39 @@ async function searchLocalIndex(searchTerms, index) {
 }
 
 /**
- * Combined search across all sources
+ * Search result cache for avoiding duplicate searches
  */
-async function searchTokenArt(creatureInfo, localIndex) {
+const searchCache = new Map();
+
+/**
+ * Generate cache key from creature info
+ */
+function getCreatureCacheKey(creatureInfo) {
+  // Use actor name + type as cache key
+  return `${creatureInfo.actorName?.toLowerCase() || ''}_${creatureInfo.type || ''}_${creatureInfo.subtype || ''}`;
+}
+
+/**
+ * Clear search cache
+ */
+function clearSearchCache() {
+  searchCache.clear();
+  console.log(`${MODULE_ID} | Search cache cleared`);
+}
+
+/**
+ * Combined search across all sources with caching
+ */
+async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   const searchTerms = creatureInfo.searchTerms;
   if (searchTerms.length === 0) return [];
+
+  // Check cache first
+  const cacheKey = getCreatureCacheKey(creatureInfo);
+  if (useCache && searchCache.has(cacheKey)) {
+    console.log(`${MODULE_ID} | Cache hit for: ${cacheKey}`);
+    return searchCache.get(cacheKey);
+  }
 
   const priority = TokenReplacerFA.getSetting('searchPriority');
   const results = [];
@@ -643,7 +671,139 @@ async function searchTokenArt(creatureInfo, localIndex) {
     results.sort((a, b) => (a.score || 0.5) - (b.score || 0.5));
   }
 
+  // Store in cache
+  if (useCache) {
+    searchCache.set(cacheKey, results);
+  }
+
   return results;
+}
+
+/**
+ * Group tokens by creature type for batch processing
+ */
+function groupTokensByCreature(tokens) {
+  const groups = new Map();
+
+  for (const token of tokens) {
+    const creatureInfo = extractCreatureInfo(token);
+    if (!creatureInfo) continue;
+
+    const key = getCreatureCacheKey(creatureInfo);
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        creatureInfo: creatureInfo,
+        tokens: [],
+        searchTerms: creatureInfo.searchTerms
+      });
+    }
+
+    groups.get(key).tokens.push(token);
+  }
+
+  return groups;
+}
+
+/**
+ * Perform parallel searches for multiple creature groups
+ * Uses Promise.all for concurrent execution
+ */
+async function parallelSearchCreatures(groups, localIndex, progressCallback = null) {
+  const groupArray = Array.from(groups.entries());
+  const totalGroups = groupArray.length;
+  const results = new Map();
+
+  // Determine concurrency level (max parallel searches)
+  const MAX_CONCURRENT = 4;
+
+  // Process in batches
+  for (let i = 0; i < groupArray.length; i += MAX_CONCURRENT) {
+    const batch = groupArray.slice(i, i + MAX_CONCURRENT);
+
+    // Report progress
+    if (progressCallback) {
+      const completed = Math.min(i, groupArray.length);
+      progressCallback({
+        type: 'batch',
+        completed: completed,
+        total: totalGroups,
+        currentBatch: batch.map(([key, group]) => group.creatureInfo.actorName)
+      });
+    }
+
+    // Execute batch in parallel
+    const batchPromises = batch.map(async ([key, group]) => {
+      const searchResults = await searchTokenArt(group.creatureInfo, localIndex, true);
+      return { key, searchResults, group };
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+
+    // Store results
+    for (const { key, searchResults, group } of batchResults) {
+      results.set(key, {
+        matches: searchResults,
+        tokens: group.tokens,
+        creatureInfo: group.creatureInfo
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Create HTML for parallel search progress
+ */
+function createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const safeBatch = currentBatch.map(name => escapeHtml(name));
+
+  return `
+    <div class="token-replacer-fa-scan-progress">
+      <div class="scan-status">
+        <i class="fas fa-bolt"></i>
+        <span>Parallel Search in Progress...</span>
+      </div>
+
+      <div class="scan-stats">
+        <div class="stat-item">
+          <div class="stat-value">${uniqueTypes}</div>
+          <div class="stat-label">Unique Creatures</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">${totalTokens}</div>
+          <div class="stat-label">Total Tokens</div>
+        </div>
+      </div>
+
+      <div class="token-replacer-fa-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${percent}%"></div>
+        </div>
+        <div class="progress-text">${completed} / ${total} creature types searched</div>
+      </div>
+
+      ${currentBatch.length > 0 ? `
+        <div class="scan-current">
+          <div class="current-label">Currently searching (parallel):</div>
+          <div class="parallel-batch">
+            ${safeBatch.map(name => `
+              <span class="batch-item">
+                <i class="fas fa-search fa-spin"></i> ${name}
+              </span>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="optimization-info">
+        <i class="fas fa-info-circle"></i>
+        <span>Identical creatures share search results for faster processing</span>
+      </div>
+    </div>
+  `;
 }
 
 /**
@@ -821,7 +981,7 @@ function createProgressHTML(current, total, status, results) {
 }
 
 /**
- * Main replacement process
+ * Main replacement process with parallel search optimization
  */
 async function processTokenReplacement() {
   if (TokenReplacerFA.isProcessing) {
@@ -830,6 +990,9 @@ async function processTokenReplacement() {
   }
 
   TokenReplacerFA.isProcessing = true;
+
+  // Clear search cache at start
+  clearSearchCache();
 
   // Load Fuse.js
   const Fuse = await loadFuse();
@@ -888,6 +1051,52 @@ async function processTokenReplacement() {
     return;
   }
 
+  // Group tokens by creature type for optimization
+  const creatureGroups = groupTokensByCreature(npcTokens);
+  const uniqueCreatures = creatureGroups.size;
+  const tokensWithoutActor = npcTokens.length - Array.from(creatureGroups.values()).reduce((sum, g) => sum + g.tokens.length, 0);
+
+  console.log(`${MODULE_ID} | Found ${uniqueCreatures} unique creature types among ${npcTokens.length} tokens`);
+
+  // Show parallel search dialog if multiple unique creatures
+  let searchDialog = new Dialog({
+    title: TokenReplacerFA.i18n('dialog.title'),
+    content: createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, []),
+    buttons: {
+      cancel: {
+        icon: '<i class="fas fa-times"></i>',
+        label: TokenReplacerFA.i18n('dialog.cancel'),
+        callback: () => {
+          TokenReplacerFA.isProcessing = false;
+        }
+      }
+    },
+    close: () => {}
+  }, {
+    classes: ['token-replacer-fa-dialog'],
+    width: 480
+  });
+  searchDialog.render(true);
+
+  // Perform parallel searches for all creature types
+  const searchResults = await parallelSearchCreatures(creatureGroups, localIndex, (info) => {
+    if (info.type === 'batch') {
+      const content = createParallelSearchHTML(
+        info.completed,
+        info.total,
+        uniqueCreatures,
+        npcTokens.length,
+        info.currentBatch
+      );
+      searchDialog.data.content = content;
+      searchDialog.render(true);
+    }
+  });
+
+  // Close search dialog
+  searchDialog.close();
+
+  // Now process tokens with cached search results
   const results = [];
   const autoReplace = TokenReplacerFA.getSetting('autoReplace');
   const confirmReplace = TokenReplacerFA.getSetting('confirmReplace');
@@ -910,7 +1119,7 @@ async function processTokenReplacement() {
   // Show token replacement progress dialog
   progressDialog = new Dialog({
     title: TokenReplacerFA.i18n('dialog.title'),
-    content: createProgressHTML(0, npcTokens.length, TokenReplacerFA.i18n('dialog.scanning'), []),
+    content: createProgressHTML(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), []),
     buttons: {
       close: {
         icon: '<i class="fas fa-times"></i>',
@@ -925,46 +1134,36 @@ async function processTokenReplacement() {
   });
   progressDialog.render(true);
 
-  // Process each token
-  for (let i = 0; i < npcTokens.length; i++) {
-    const token = npcTokens[i];
-    const creatureInfo = extractCreatureInfo(token);
+  // Process each token using cached results
+  let tokenIndex = 0;
+  for (const [key, data] of searchResults) {
+    const { matches, tokens, creatureInfo } = data;
 
-    if (!creatureInfo) {
-      updateProgress(i + 1, npcTokens.length, 'Skipped (no actor)', {
-        name: token.name,
-        status: 'skipped'
-      });
-      continue;
-    }
-
-    updateProgress(i, npcTokens.length,
-      TokenReplacerFA.i18n('dialog.searching', { name: creatureInfo.actorName }), null);
-
-    // Search for matching art
-    const matches = await searchTokenArt(creatureInfo, localIndex);
-
+    // If no matches for this creature type, mark all tokens as failed
     if (matches.length === 0) {
-      updateProgress(i + 1, npcTokens.length,
-        TokenReplacerFA.i18n('dialog.noMatch', { name: creatureInfo.actorName }), {
-        name: creatureInfo.actorName,
-        status: 'failed'
-      });
+      for (const token of tokens) {
+        tokenIndex++;
+        updateProgress(tokenIndex, npcTokens.length,
+          TokenReplacerFA.i18n('dialog.noMatch', { name: creatureInfo.actorName }), {
+          name: creatureInfo.actorName,
+          status: 'failed'
+        });
+      }
       continue;
     }
 
-    // Get best match
+    // Get best match for this creature type
     const bestMatch = matches[0];
     const matchScore = bestMatch.score !== undefined ? (1 - bestMatch.score) : 0.8;
 
-    // Decide whether to auto-replace or ask
+    // Determine path to use
     let selectedPath = null;
 
     if (autoReplace && matchScore >= (1 - threshold)) {
-      // High confidence match, auto-replace
+      // High confidence match, auto-replace all tokens of this type
       selectedPath = bestMatch.path;
     } else if (confirmReplace) {
-      // Show selection dialog
+      // Show selection dialog once for this creature type
       progressDialog.close();
       selectedPath = await showMatchSelectionDialog(creatureInfo, matches);
 
@@ -994,19 +1193,35 @@ async function processTokenReplacement() {
       selectedPath = bestMatch.path;
     }
 
-    if (selectedPath) {
-      // Replace the token
-      const success = await replaceTokenImage(token, selectedPath);
-      updateProgress(i + 1, npcTokens.length,
-        TokenReplacerFA.i18n('dialog.replacing'), {
-        name: creatureInfo.actorName,
-        status: success ? 'success' : 'failed',
-        match: bestMatch.name
-      });
-    } else {
-      // Skipped
-      updateProgress(i + 1, npcTokens.length, 'Skipped', {
-        name: creatureInfo.actorName,
+    // Apply selected path to ALL tokens of this creature type
+    for (const token of tokens) {
+      tokenIndex++;
+
+      if (selectedPath) {
+        // Replace the token
+        const success = await replaceTokenImage(token, selectedPath);
+        updateProgress(tokenIndex, npcTokens.length,
+          TokenReplacerFA.i18n('dialog.replacing'), {
+          name: `${creatureInfo.actorName} (${token.name})`,
+          status: success ? 'success' : 'failed',
+          match: bestMatch.name
+        });
+      } else {
+        // Skipped
+        updateProgress(tokenIndex, npcTokens.length, 'Skipped', {
+          name: `${creatureInfo.actorName} (${token.name})`,
+          status: 'skipped'
+        });
+      }
+    }
+  }
+
+  // Handle tokens without actors
+  for (const token of npcTokens) {
+    if (!token.actor) {
+      tokenIndex++;
+      updateProgress(tokenIndex, npcTokens.length, 'Skipped (no actor)', {
+        name: token.name,
         status: 'skipped'
       });
     }
