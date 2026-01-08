@@ -245,6 +245,7 @@ function getSceneNPCTokens() {
 
 /**
  * Discover token art paths (FA Nexus and other sources)
+ * Uses yielding to prevent browser freeze
  */
 async function discoverTokenPaths() {
   const paths = [];
@@ -262,6 +263,8 @@ async function discoverTokenPaths() {
   ];
 
   for (const path of possiblePaths) {
+    // Yield between each path check to prevent freezing
+    await new Promise(resolve => setTimeout(resolve, 5));
     try {
       const result = await FilePicker.browse('data', path);
       if (result?.files?.length > 0 || result?.dirs?.length > 0) {
@@ -272,6 +275,9 @@ async function discoverTokenPaths() {
       // Path doesn't exist, skip
     }
   }
+
+  // Yield before checking root
+  await new Promise(resolve => setTimeout(resolve, 10));
 
   // Check user data folder for FA content or token folders
   try {
@@ -294,12 +300,16 @@ async function discoverTokenPaths() {
     // Cannot browse root
   }
 
+  // Yield before additional paths
+  await new Promise(resolve => setTimeout(resolve, 5));
+
   // Add user-configured additional paths
   try {
     const additionalPathsSetting = game.settings.get(MODULE_ID, 'additionalPaths');
     if (additionalPathsSetting) {
       const additionalPaths = additionalPathsSetting.split(',').map(p => p.trim()).filter(p => p);
       for (const path of additionalPaths) {
+        await new Promise(resolve => setTimeout(resolve, 5));
         try {
           const result = await FilePicker.browse('data', path);
           if (result?.files?.length > 0 || result?.dirs?.length > 0) {
@@ -352,6 +362,9 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
   const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'];
 
   try {
+    // Yield BEFORE the FilePicker call to keep browser responsive
+    await yieldToMain(5);
+
     const result = await FilePicker.browse('data', path);
 
     // Report current directory being scanned
@@ -384,6 +397,11 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
           });
 
           batchCount++;
+
+          // Yield every 50 files to prevent blocking
+          if (batchCount % 50 === 0) {
+            await yieldToMain(1);
+          }
         }
       }
 
@@ -397,11 +415,11 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
       }
     }
 
-    // Yield to event loop before processing subdirectories
+    // Process subdirectories with yielding
     if (result?.dirs && result.dirs.length > 0) {
-      await yieldToMain();
-
       for (const dir of result.dirs) {
+        // Yield between each subdirectory
+        await yieldToMain(5);
         const subImages = await scanDirectoryForImages(dir, depth + 1, maxDepth, progressCallback);
         images.push(...subImages);
       }
@@ -419,10 +437,26 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
 async function buildLocalTokenIndex(progressDialog = null) {
   console.log(`${MODULE_ID} | Building local token index...`);
 
+  // Initial UI update before starting
+  if (progressDialog) {
+    const content = createScanProgressHTML('Discovering paths...', 0, 0, 0, 0);
+    progressDialog.data.content = content;
+    progressDialog.render(true);
+    await yieldToMain(50);
+  }
+
   const paths = await discoverTokenPaths();
   if (paths.length === 0) {
     console.log(`${MODULE_ID} | No token paths found`);
     return [];
+  }
+
+  // Update UI with discovered paths
+  if (progressDialog) {
+    const content = createScanProgressHTML(`Found ${paths.length} paths to scan`, 0, 0, 0, 0);
+    progressDialog.data.content = content;
+    progressDialog.render(true);
+    await yieldToMain(50);
   }
 
   const allImages = [];
@@ -431,9 +465,10 @@ async function buildLocalTokenIndex(progressDialog = null) {
   let currentDirectory = '';
   let directoriesScanned = 0;
   let lastUIUpdate = Date.now();
-  const UI_UPDATE_INTERVAL = 200; // Update UI max every 200ms
+  const UI_UPDATE_INTERVAL = 150; // Update UI max every 150ms
+  let isFirstUpdate = true;
 
-  // Progress callback to update dialog (throttled)
+  // Progress callback to update dialog (throttled, but first update is immediate)
   const progressCallback = (info) => {
     const now = Date.now();
 
@@ -444,24 +479,31 @@ async function buildLocalTokenIndex(progressDialog = null) {
       totalImagesFound += info.count;
     }
 
-    // Throttle UI updates to prevent freezing
-    if (progressDialog && (now - lastUIUpdate > UI_UPDATE_INTERVAL)) {
+    // First update is immediate, then throttle
+    const shouldUpdate = isFirstUpdate || (now - lastUIUpdate > UI_UPDATE_INTERVAL);
+
+    if (progressDialog && shouldUpdate) {
+      isFirstUpdate = false;
       lastUIUpdate = now;
-      const content = createScanProgressHTML(
-        currentDirectory,
-        directoriesScanned,
-        totalImagesFound,
-        info.fileCount || 0,
-        info.dirCount || 0
-      );
-      progressDialog.data.content = content;
-      progressDialog.render(true);
+      try {
+        const content = createScanProgressHTML(
+          currentDirectory,
+          directoriesScanned,
+          totalImagesFound,
+          info.fileCount || 0,
+          info.dirCount || 0
+        );
+        progressDialog.data.content = content;
+        progressDialog.render(true);
+      } catch (e) {
+        // Dialog might be closing
+      }
     }
   };
 
   for (const path of paths) {
     // Yield to event loop between top-level paths
-    await yieldToMain(10);
+    await yieldToMain(20);
 
     const images = await scanDirectoryForImages(path, 0, 5, progressCallback);
     for (const img of images) {
@@ -471,19 +513,41 @@ async function buildLocalTokenIndex(progressDialog = null) {
         allImages.push(img);
       }
     }
+
+    // Force UI update after each top-level path
+    if (progressDialog) {
+      try {
+        const content = createScanProgressHTML(
+          currentDirectory,
+          directoriesScanned,
+          allImages.length,
+          0,
+          0
+        );
+        progressDialog.data.content = content;
+        progressDialog.render(true);
+      } catch (e) {
+        // Dialog might be closing
+      }
+      await yieldToMain(20);
+    }
   }
 
   // Final UI update
   if (progressDialog) {
-    const content = createScanProgressHTML(
-      'Scan complete',
-      directoriesScanned,
-      allImages.length,
-      0,
-      0
-    );
-    progressDialog.data.content = content;
-    progressDialog.render(true);
+    try {
+      const content = createScanProgressHTML(
+        'Scan complete',
+        directoriesScanned,
+        allImages.length,
+        0,
+        0
+      );
+      progressDialog.data.content = content;
+      progressDialog.render(true);
+    } catch (e) {
+      // Dialog might be closing
+    }
     await yieldToMain(100);
   }
 
