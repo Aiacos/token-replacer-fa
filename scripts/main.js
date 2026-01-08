@@ -14,7 +14,6 @@ const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
  */
 const TokenReplacerFA = {
   Fuse: null,
-  tokenArtCache: null,
   isProcessing: false,
 
   /**
@@ -155,14 +154,6 @@ function registerSettings() {
     config: true,
     type: String,
     default: ''
-  });
-
-  // Hidden setting to cache discovered FA Nexus paths
-  game.settings.register(MODULE_ID, 'faNexusPaths', {
-    scope: 'world',
-    config: false,
-    type: Array,
-    default: []
   });
 }
 
@@ -681,18 +672,10 @@ async function searchTVA(searchTerm) {
     // Handle empty results
     if (!results) return [];
 
-    // Debug: log result structure
-    console.log(`${MODULE_ID} | TVA raw results type:`, typeof results, Array.isArray(results) ? 'array' : (results instanceof Map ? 'Map' : 'other'));
-
     const searchResults = [];
 
     // Handle array results (common TVA format)
     if (Array.isArray(results)) {
-      console.log(`${MODULE_ID} | TVA returned array with ${results.length} results`);
-      if (results.length > 0) {
-        console.log(`${MODULE_ID} | TVA first result sample:`, JSON.stringify(results[0]).slice(0, 200));
-      }
-
       for (const item of results) {
         const imagePath = extractPathFromTVAResult(item);
         const name = extractNameFromTVAResult(item, imagePath);
@@ -708,12 +691,6 @@ async function searchTVA(searchTerm) {
     }
     // Handle Map results
     else if (results instanceof Map || (results && typeof results.entries === 'function')) {
-      console.log(`${MODULE_ID} | TVA returned Map with ${results.size} results`);
-      const firstEntry = results.entries().next().value;
-      if (firstEntry) {
-        console.log(`${MODULE_ID} | TVA Map first entry - key type:`, typeof firstEntry[0], 'value type:', typeof firstEntry[1]);
-      }
-
       for (const [key, data] of results.entries()) {
         // With simpleResults: false, the key is typically the path and data is metadata
         let imagePath = null;
@@ -752,8 +729,6 @@ async function searchTVA(searchTerm) {
     }
     // Handle object with paths property (another possible format)
     else if (results && typeof results === 'object') {
-      console.log(`${MODULE_ID} | TVA returned object, keys:`, Object.keys(results).slice(0, 5));
-
       // Check for paths array property
       const pathsArray = results.paths || results.images || results.results || results.data;
       if (Array.isArray(pathsArray)) {
@@ -936,8 +911,6 @@ async function searchLocalIndex(searchTerms, index, creatureType = null) {
         }
       }
     }
-  } else if (allResults.length === 0 && filteredIndex !== index && !fallbackEnabled) {
-    console.log(`${MODULE_ID} | No matches in category. Fallback search disabled.`);
   }
 
   // Sort by score (lower is better in Fuse.js)
@@ -964,7 +937,6 @@ function getCreatureCacheKey(creatureInfo) {
  */
 function clearSearchCache() {
   searchCache.clear();
-  console.log(`${MODULE_ID} | Search cache cleared`);
 }
 
 /**
@@ -977,7 +949,6 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   // Check cache first
   const cacheKey = getCreatureCacheKey(creatureInfo);
   if (useCache && searchCache.has(cacheKey)) {
-    console.log(`${MODULE_ID} | Cache hit for: ${cacheKey}`);
     return searchCache.get(cacheKey);
   }
 
@@ -1299,7 +1270,6 @@ function createProgressHTML(current, total, status, results) {
   const failedCount = results.filter(r => r.status === 'failed').length;
   const skippedCount = results.filter(r => r.status === 'skipped').length;
   const safeStatus = escapeHtml(status);
-  const isComplete = current >= total && total > 0;
 
   let html = `
     <div class="token-replacer-fa-progress">
@@ -1359,7 +1329,7 @@ function createProgressHTML(current, total, status, results) {
  */
 async function processTokenReplacement() {
   if (TokenReplacerFA.isProcessing) {
-    ui.notifications.warn('Token replacement already in progress');
+    ui.notifications.warn(TokenReplacerFA.i18n('notifications.inProgress'));
     return;
   }
 
@@ -1510,7 +1480,7 @@ async function processTokenReplacement() {
     buttons: {
       close: {
         icon: '<i class="fas fa-times"></i>',
-        label: 'Close',
+        label: TokenReplacerFA.i18n('dialog.close'),
         callback: () => {}
       }
     },
@@ -1572,7 +1542,7 @@ async function processTokenReplacement() {
         buttons: {
           close: {
             icon: '<i class="fas fa-times"></i>',
-            label: 'Close'
+            label: TokenReplacerFA.i18n('dialog.close')
           }
         }
       }, {
@@ -1603,7 +1573,7 @@ async function processTokenReplacement() {
         });
       } else {
         // Skipped
-        updateProgress(tokenIndex, npcTokens.length, 'Skipped', {
+        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {
           name: `${creatureInfo.actorName} (${token.name})`,
           status: 'skipped'
         });

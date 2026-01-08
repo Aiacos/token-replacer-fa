@@ -54,8 +54,10 @@
       "matchFound": "Match found: {match} (Score: {score}%)",
       "selectMatch": "Select Token Art",
       "skip": "Skip",
+      "skipped": "Skipped",
       "replaceAll": "Replace All",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "close": "Close"
     },
     "notifications": {
       "started": "Starting token art replacement...",
@@ -63,7 +65,8 @@
       "noScene": "No active scene found",
       "noTokens": "No NPC tokens found on current scene",
       "missingDeps": "Token Variant Art or FA Nexus module recommended for best results",
-      "error": "Error replacing token: {error}"
+      "error": "Error replacing token: {error}",
+      "inProgress": "Token replacement already in progress"
     }
   }
 }

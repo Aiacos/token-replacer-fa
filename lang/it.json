@@ -54,8 +54,10 @@
       "matchFound": "Trovato: {match} (Punteggio: {score}%)",
       "selectMatch": "Seleziona Token Art",
       "skip": "Salta",
+      "skipped": "Saltato",
       "replaceAll": "Sostituisci Tutti",
-      "cancel": "Annulla"
+      "cancel": "Annulla",
+      "close": "Chiudi"
     },
     "notifications": {
       "started": "Inizio sostituzione token art...",
@@ -63,7 +65,8 @@
       "noScene": "Nessuna scena attiva trovata",
       "noTokens": "Nessun token NPC trovato nella scena corrente",
       "missingDeps": "Si consiglia Token Variant Art o FA Nexus per risultati migliori",
-      "error": "Errore nella sostituzione del token: {error}"
+      "error": "Errore nella sostituzione del token: {error}",
+      "inProgress": "Sostituzione token già in corso"
     }
   }
 }
