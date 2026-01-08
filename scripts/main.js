@@ -137,6 +137,16 @@ function registerSettings() {
     default: true
   });
 
+  // Fallback to full index search when no category matches
+  game.settings.register(MODULE_ID, 'fallbackFullSearch', {
+    name: 'TOKEN_REPLACER_FA.settings.fallbackFullSearch.name',
+    hint: 'TOKEN_REPLACER_FA.settings.fallbackFullSearch.hint',
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: false
+  });
+
   // Additional search paths (user configurable)
   game.settings.register(MODULE_ID, 'additionalPaths', {
     name: 'TOKEN_REPLACER_FA.settings.additionalPaths.name',
@@ -759,9 +769,10 @@ async function searchLocalIndex(searchTerms, index, creatureType = null) {
     }
   }
 
-  // If no results in filtered category, fall back to full index search
-  if (allResults.length === 0 && filteredIndex !== index && index.length > 0) {
-    console.log(`${MODULE_ID} | No matches in category, searching full index...`);
+  // If no results in filtered category, optionally fall back to full index search
+  const fallbackEnabled = TokenReplacerFA.getSetting('fallbackFullSearch');
+  if (allResults.length === 0 && filteredIndex !== index && index.length > 0 && fallbackEnabled) {
+    console.log(`${MODULE_ID} | No matches in category, searching full index (fallback enabled)...`);
     const fullFuse = new Fuse(index, {
       keys: [
         { name: 'name', weight: 2 },
@@ -791,6 +802,8 @@ async function searchLocalIndex(searchTerms, index, creatureType = null) {
         }
       }
     }
+  } else if (allResults.length === 0 && filteredIndex !== index && !fallbackEnabled) {
+    console.log(`${MODULE_ID} | No matches in category. Fallback search disabled.`);
   }
 
   // Sort by score (lower is better in Fuse.js)

@@ -22,6 +22,10 @@
         "name": "Conferma Prima di Sostituire",
         "hint": "Mostra dialogo di conferma prima di sostituire ogni token"
       },
+      "fallbackFullSearch": {
+        "name": "Fallback Ricerca Completa",
+        "hint": "Se non trova match nella categoria del tipo creatura, cerca nell'intero indice. Default: Spento"
+      },
       "searchSources": {
         "name": "Fonti di Ricerca",
         "hint": "Seleziona quali fonti cercare per la token art"

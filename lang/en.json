@@ -22,6 +22,10 @@
         "name": "Confirm Before Replace",
         "hint": "Show confirmation dialog before replacing each token"
       },
+      "fallbackFullSearch": {
+        "name": "Fallback to Full Search",
+        "hint": "If no matches found in creature type category, search the entire index. Default: Off"
+      },
       "searchSources": {
         "name": "Search Sources",
         "hint": "Select which sources to search for token art"
