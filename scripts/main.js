@@ -709,41 +709,49 @@ async function searchTVA(searchTerm) {
         }
       }
     }
-    // Handle Map results
+    // Handle Map results - TVA returns Map where key is search term, value is array of results
     else if (results instanceof Map || (results && typeof results.entries === 'function')) {
       for (const [key, data] of results.entries()) {
-        // With simpleResults: false, the key is typically the path and data is metadata
-        let imagePath = null;
+        // Data is typically an Array of image results
+        if (Array.isArray(data)) {
+          // Debug: log first item structure
+          if (data.length > 0) {
+            console.log(`${MODULE_ID} | TVA result item structure:`, data[0]);
+          }
 
-        // Key is the path string
-        if (typeof key === 'string' && key.length > 0 && (key.includes('/') || key.includes('.'))) {
-          imagePath = key;
+          for (const item of data) {
+            const imagePath = extractPathFromTVAResult(item);
+            const name = extractNameFromTVAResult(item, imagePath);
+
+            if (imagePath) {
+              searchResults.push({
+                path: imagePath,
+                name: name,
+                source: 'tva'
+              });
+            }
+          }
         }
-        // Key is an object containing path
-        else if (typeof key === 'object' && key !== null) {
-          imagePath = key.path || key.src || key.img || key.route || key.thumb;
+        // Data might be a single result object
+        else if (data && typeof data === 'object') {
+          const imagePath = extractPathFromTVAResult(data);
+          const name = extractNameFromTVAResult(data, imagePath);
+
+          if (imagePath) {
+            searchResults.push({
+              path: imagePath,
+              name: name,
+              source: 'tva'
+            });
+          }
         }
-
-        // If key didn't have path, check data
-        if (!imagePath) {
-          imagePath = extractPathFromTVAResult(data);
-        }
-
-        // Also check if data itself is a string path
-        if (!imagePath && typeof data === 'string' && (data.includes('/') || data.includes('.'))) {
-          imagePath = data;
-        }
-
-        const name = extractNameFromTVAResult(data, imagePath) || extractNameFromTVAResult(key, imagePath);
-
-        if (imagePath) {
+        // Key itself might be the path (older TVA format)
+        else if (typeof key === 'string' && key.length > 0 && (key.includes('/') || key.includes('.'))) {
           searchResults.push({
-            path: imagePath,
-            name: name,
+            path: key,
+            name: extractNameFromTVAResult(data, key),
             source: 'tva'
           });
-        } else {
-          console.warn(`${MODULE_ID} | TVA: Could not extract path - key:`, key, 'data:', data);
         }
       }
     }
