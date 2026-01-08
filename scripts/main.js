@@ -352,10 +352,55 @@ async function closeDialogSafely(dialog) {
 }
 
 /**
+ * D&D 5e creature types mapped to common FA folder names
+ * FA folders often use capitalized singular forms
+ */
+const CREATURE_TYPE_MAPPINGS = {
+  'aberration': ['aberration', 'aberrations', 'mind flayer', 'beholder'],
+  'beast': ['beast', 'beasts', 'animal', 'animals'],
+  'celestial': ['celestial', 'celestials', 'angel', 'angels'],
+  'construct': ['construct', 'constructs', 'golem', 'golems', 'robot'],
+  'dragon': ['dragon', 'dragons', 'drake', 'drakes', 'wyrm'],
+  'elemental': ['elemental', 'elementals', 'genie', 'genies'],
+  'fey': ['fey', 'fairy', 'fairies', 'sprite', 'pixie'],
+  'fiend': ['fiend', 'fiends', 'demon', 'demons', 'devil', 'devils'],
+  'giant': ['giant', 'giants', 'ogre', 'ogres', 'troll', 'trolls'],
+  'humanoid': ['humanoid', 'humanoids', 'human', 'npc', 'goblin', 'orc', 'elf', 'dwarf'],
+  'monstrosity': ['monstrosity', 'monstrosities', 'monster', 'monsters'],
+  'ooze': ['ooze', 'oozes', 'slime', 'slimes'],
+  'plant': ['plant', 'plants', 'fungus', 'fungi'],
+  'undead': ['undead', 'zombie', 'zombies', 'skeleton', 'skeletons', 'ghost', 'ghosts', 'vampire', 'lich']
+};
+
+/**
+ * Check if a folder name matches a creature type
+ */
+function folderMatchesCreatureType(folderName, creatureType) {
+  if (!folderName || !creatureType) return false;
+
+  const folderLower = folderName.toLowerCase();
+  const typeLower = creatureType.toLowerCase();
+
+  // Direct match
+  if (folderLower.includes(typeLower) || typeLower.includes(folderLower)) {
+    return true;
+  }
+
+  // Check mappings
+  const mappings = CREATURE_TYPE_MAPPINGS[typeLower];
+  if (mappings) {
+    return mappings.some(m => folderLower.includes(m) || m.includes(folderLower));
+  }
+
+  return false;
+}
+
+/**
  * Recursively scan directory for image files with progress reporting
  * Optimized to prevent browser freezing
+ * Now also tracks the category (top-level folder) for each image
  */
-async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCallback = null) {
+async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCallback = null, category = null) {
   if (depth > maxDepth) return [];
 
   const images = [];
@@ -393,7 +438,8 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
           images.push({
             path: file,
             name: name,
-            fileName: fileName
+            fileName: fileName,
+            category: category || path.split('/').pop() // Track category
           });
 
           batchCount++;
@@ -420,7 +466,9 @@ async function scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCal
       for (const dir of result.dirs) {
         // Yield between each subdirectory
         await yieldToMain(5);
-        const subImages = await scanDirectoryForImages(dir, depth + 1, maxDepth, progressCallback);
+        // For depth 0, the subdirectory name becomes the category
+        const subCategory = depth === 0 ? dir.split('/').pop() : category;
+        const subImages = await scanDirectoryForImages(dir, depth + 1, maxDepth, progressCallback, subCategory);
         images.push(...subImages);
       }
     }
@@ -621,12 +669,31 @@ async function searchTVA(searchTerm) {
 
     if (!results || results.size === 0) return [];
 
-    // Convert Map to array
-    return Array.from(results.entries()).map(([path, data]) => ({
-      path: path,
-      name: data?.name || path.split('/').pop().replace(/\.[^/.]+$/, ''),
-      source: 'tva'
-    }));
+    // Convert Map to array, handling various result formats
+    const searchResults = [];
+    for (const [key, data] of results.entries()) {
+      // TVA can return path as string or as object with path property
+      let imagePath = key;
+      if (typeof key === 'object' && key !== null) {
+        imagePath = key.path || key.src || key.img || String(key);
+      }
+
+      // Extract name from path or data
+      let name = data?.name;
+      if (!name && typeof imagePath === 'string') {
+        name = imagePath.split('/').pop().replace(/\.[^/.]+$/, '');
+      }
+      if (!name) {
+        name = 'Unknown';
+      }
+
+      searchResults.push({
+        path: imagePath,
+        name: name,
+        source: 'tva'
+      });
+    }
+    return searchResults;
   } catch (error) {
     console.warn(`${MODULE_ID} | TVA search error:`, error);
     return [];
@@ -635,8 +702,9 @@ async function searchTVA(searchTerm) {
 
 /**
  * Search local index with fuzzy matching
+ * Optimized: First filters by creature type/category, then searches by name
  */
-async function searchLocalIndex(searchTerms, index) {
+async function searchLocalIndex(searchTerms, index, creatureType = null) {
   if (!index || index.length === 0) return [];
 
   const Fuse = TokenReplacerFA.Fuse;
@@ -644,7 +712,21 @@ async function searchLocalIndex(searchTerms, index) {
 
   const threshold = TokenReplacerFA.getSetting('fuzzyThreshold');
 
-  const fuse = new Fuse(index, {
+  // OPTIMIZATION: First filter by creature type category if available
+  let filteredIndex = index;
+  if (creatureType) {
+    const categoryMatches = index.filter(img =>
+      img.category && folderMatchesCreatureType(img.category, creatureType)
+    );
+
+    // If we found category matches, search those first
+    if (categoryMatches.length > 0) {
+      console.log(`${MODULE_ID} | Optimized search: Found ${categoryMatches.length} images in ${creatureType} category`);
+      filteredIndex = categoryMatches;
+    }
+  }
+
+  const fuse = new Fuse(filteredIndex, {
     keys: [
       { name: 'name', weight: 2 },
       { name: 'fileName', weight: 1 }
@@ -673,6 +755,40 @@ async function searchLocalIndex(searchTerms, index) {
       } else if (result.score < existing.score) {
         existing.score = result.score;
         existing.matchedTerm = term;
+      }
+    }
+  }
+
+  // If no results in filtered category, fall back to full index search
+  if (allResults.length === 0 && filteredIndex !== index && index.length > 0) {
+    console.log(`${MODULE_ID} | No matches in category, searching full index...`);
+    const fullFuse = new Fuse(index, {
+      keys: [
+        { name: 'name', weight: 2 },
+        { name: 'fileName', weight: 1 }
+      ],
+      threshold: threshold,
+      includeScore: true,
+      minMatchCharLength: 2,
+      ignoreLocation: true,
+      findAllMatches: true
+    });
+
+    for (const term of searchTerms) {
+      const results = fullFuse.search(term);
+      for (const result of results) {
+        const existing = allResults.find(r => r.path === result.item.path);
+        if (!existing) {
+          allResults.push({
+            ...result.item,
+            score: result.score,
+            matchedTerm: term,
+            source: 'local'
+          });
+        } else if (result.score < existing.score) {
+          existing.score = result.score;
+          existing.matchedTerm = term;
+        }
       }
     }
   }
@@ -722,8 +838,9 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   const results = [];
 
   // Search local index (FA Nexus and other local sources)
+  // Optimized: passes creature type for category-based filtering
   if (priority === 'faNexus' || priority === 'both') {
-    const localResults = await searchLocalIndex(searchTerms, localIndex);
+    const localResults = await searchLocalIndex(searchTerms, localIndex, creatureInfo.type);
     results.push(...localResults);
   }
 
