@@ -19,10 +19,10 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 
 - Foundry VTT v12+ (verified on v13)
 - D&D 5e System v3.0+
+- **[Token Variant Art (TVA)](https://foundryvtt.com/packages/token-variants)**: Required for searching token artwork
 
 ### Recommended Modules
 
-- **[Token Variant Art](https://foundryvtt.com/packages/token-variants)**: Enables searching The Forge Bazaar
 - **[FA Nexus](https://foundryvtt.com/packages/fa-nexus)**: Provides access to Forgotten Adventures token library
 
 ## Installation
@@ -189,6 +189,12 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 ```
 
 ## Changelog
+
+### v1.2.0
+- **Fixed TVA Result Parsing**: Now properly handles TVA's tuple format `[path, config]` which was causing "no matches found" issues
+- **Improved UI Contrast**: Fixed text visibility for failed/skipped items (was showing black text on dark backgrounds)
+- **Enhanced Debug Logging**: Added comprehensive debug logging to help troubleshoot TVA integration issues
+- **CSS Improvements**: Refactored styles for better dialog layout and visual consistency
 
 ### v1.1.0
 - **Major Performance Optimization**: Added TVA cache integration

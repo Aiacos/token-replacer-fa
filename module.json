@@ -2,7 +2,7 @@
   "id": "token-replacer-fa",
   "title": "Token Replacer - Forgotten Adventures",
   "description": "Automatically replaces NPC token art with matching tokens from Forgotten Adventures and The Forge Bazaar using fuzzy search.",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "compatibility": {
     "minimum": "12",
     "verified": "13"
@@ -22,12 +22,14 @@
         }
       }
     ],
-    "optional": [
+    "requires": [
       {
         "id": "token-variants",
         "type": "module",
-        "reason": "Enables searching The Forge Bazaar for token art"
-      },
+        "reason": "Required for searching token artwork"
+      }
+    ],
+    "optional": [
       {
         "id": "fa-nexus",
         "type": "module",

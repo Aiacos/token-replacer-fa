@@ -690,12 +690,28 @@ async function searchTVA(searchTerm) {
     });
 
     // Handle empty results
-    if (!results) return [];
+    if (!results) {
+      console.log(`${MODULE_ID} | TVA search for "${searchTerm}" returned null/undefined`);
+      return [];
+    }
 
     const searchResults = [];
 
+    // Debug: Log the type and structure of results
+    const resultType = Array.isArray(results) ? 'Array' :
+                       (results instanceof Map) ? 'Map' :
+                       (typeof results.entries === 'function') ? 'Map-like' :
+                       typeof results;
+    console.log(`${MODULE_ID} | TVA result type for "${searchTerm}": ${resultType}`);
+
     // Handle array results (common TVA format)
     if (Array.isArray(results)) {
+      // Debug: Log first item structure
+      if (results.length > 0) {
+        const firstItem = results[0];
+        console.log(`${MODULE_ID} | TVA Array[0] type: ${Array.isArray(firstItem) ? 'Array (tuple)' : typeof firstItem}`, firstItem);
+      }
+
       for (const item of results) {
         const imagePath = extractPathFromTVAResult(item);
         const name = extractNameFromTVAResult(item, imagePath);
@@ -712,11 +728,21 @@ async function searchTVA(searchTerm) {
     // Handle Map results - TVA returns Map where key is search term, value is array of results
     else if (results instanceof Map || (results && typeof results.entries === 'function')) {
       for (const [key, data] of results.entries()) {
+        console.log(`${MODULE_ID} | TVA Map entry - key: "${key}", data type: ${Array.isArray(data) ? `Array(${data.length})` : typeof data}`);
+
         // Data is typically an Array of image results
         if (Array.isArray(data)) {
-          // Debug: log first item structure
+          // Debug: log first item structure with detailed type info
           if (data.length > 0) {
-            console.log(`${MODULE_ID} | TVA result item structure:`, data[0]);
+            const firstItem = data[0];
+            const itemType = Array.isArray(firstItem) ? `Array (tuple, ${firstItem.length} elements)` : typeof firstItem;
+            console.log(`${MODULE_ID} | TVA data[0] type: ${itemType}`, firstItem);
+
+            // If it's a tuple, log both elements
+            if (Array.isArray(firstItem) && firstItem.length >= 2) {
+              console.log(`${MODULE_ID} | TVA tuple[0] (path):`, firstItem[0]);
+              console.log(`${MODULE_ID} | TVA tuple[1] (config):`, firstItem[1]);
+            }
           }
 
           for (const item of data) {
@@ -729,6 +755,9 @@ async function searchTVA(searchTerm) {
                 name: name,
                 source: 'tva'
               });
+            } else if (data.length <= 5) {
+              // Only log failures for small result sets to avoid spam
+              console.warn(`${MODULE_ID} | Failed to extract path from TVA item:`, item);
             }
           }
         }
@@ -757,9 +786,12 @@ async function searchTVA(searchTerm) {
     }
     // Handle object with paths property (another possible format)
     else if (results && typeof results === 'object') {
+      console.log(`${MODULE_ID} | TVA returned object, keys:`, Object.keys(results));
+
       // Check for paths array property
       const pathsArray = results.paths || results.images || results.results || results.data;
       if (Array.isArray(pathsArray)) {
+        console.log(`${MODULE_ID} | Found paths array with ${pathsArray.length} items`);
         for (const item of pathsArray) {
           const imagePath = typeof item === 'string' ? item : extractPathFromTVAResult(item);
           const name = extractNameFromTVAResult(item, imagePath);
@@ -776,39 +808,91 @@ async function searchTVA(searchTerm) {
     }
 
     console.log(`${MODULE_ID} | TVA search for "${searchTerm}" found ${searchResults.length} valid results`);
+
+    // Log first few valid results for debugging
+    if (searchResults.length > 0 && searchResults.length <= 5) {
+      console.log(`${MODULE_ID} | TVA results sample:`, searchResults);
+    } else if (searchResults.length > 5) {
+      console.log(`${MODULE_ID} | TVA first 3 results:`, searchResults.slice(0, 3));
+    }
+
     return searchResults;
   } catch (error) {
-    console.warn(`${MODULE_ID} | TVA search error:`, error);
+    console.error(`${MODULE_ID} | TVA search error for "${searchTerm}":`, error);
     return [];
   }
 }
 
 /**
  * Extract image path from a TVA result item
+ * TVA returns results in various formats:
+ * - String: direct path
+ * - Tuple: [path, configObject] - common format
+ * - Object: { path, src, route, etc. }
  */
 function extractPathFromTVAResult(item) {
   if (!item) return null;
 
   // String path directly
-  if (typeof item === 'string' && (item.includes('/') || item.includes('.') || item.startsWith('http'))) {
-    return item;
+  if (typeof item === 'string') {
+    if (item.includes('/') || item.includes('.') || item.startsWith('http') || item.startsWith('forge://')) {
+      return item;
+    }
+    return null;
+  }
+
+  // TUPLE FORMAT: [path, config] - very common in TVA results!
+  // TVA often returns results as arrays where first element is the path
+  if (Array.isArray(item)) {
+    if (item.length >= 1) {
+      const firstElement = item[0];
+      // First element is the path string
+      if (typeof firstElement === 'string') {
+        return firstElement;
+      }
+      // First element might be an object with path
+      if (typeof firstElement === 'object' && firstElement !== null) {
+        const pathFromFirst = extractPathFromObject(firstElement);
+        if (pathFromFirst) return pathFromFirst;
+      }
+    }
+    return null;
   }
 
   // Object with path properties
   if (typeof item === 'object') {
-    // Common property names for image paths
-    const pathProps = ['path', 'src', 'img', 'image', 'route', 'thumb', 'thumbnail', 'url', 'uri'];
-    for (const prop of pathProps) {
-      if (item[prop] && typeof item[prop] === 'string') {
-        return item[prop];
+    return extractPathFromObject(item);
+  }
+
+  return null;
+}
+
+/**
+ * Extract path from a plain object (helper for extractPathFromTVAResult)
+ */
+function extractPathFromObject(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+
+  // Common property names for image paths (in order of preference)
+  const pathProps = ['path', 'route', 'src', 'img', 'image', 'thumb', 'thumbnail', 'url', 'uri'];
+
+  for (const prop of pathProps) {
+    const value = obj[prop];
+    if (value && typeof value === 'string') {
+      // Validate it looks like a path
+      if (value.includes('/') || value.includes('.') || value.startsWith('http') || value.startsWith('forge://')) {
+        return value;
       }
     }
+  }
 
-    // Check nested properties
-    if (item.data && typeof item.data === 'object') {
-      for (const prop of pathProps) {
-        if (item.data[prop] && typeof item.data[prop] === 'string') {
-          return item.data[prop];
+  // Check nested data property
+  if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
+    for (const prop of pathProps) {
+      const value = obj.data[prop];
+      if (value && typeof value === 'string') {
+        if (value.includes('/') || value.includes('.') || value.startsWith('http') || value.startsWith('forge://')) {
+          return value;
         }
       }
     }
@@ -819,29 +903,58 @@ function extractPathFromTVAResult(item) {
 
 /**
  * Extract name from a TVA result item
+ * Handles tuple format [path, config] and object format
  */
 function extractNameFromTVAResult(item, imagePath) {
-  if (!item) {
-    // Try to extract from path
-    if (imagePath && typeof imagePath === 'string' && imagePath.includes('/')) {
-      return imagePath.split('/').pop().replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+  // Helper to extract name from object
+  const extractNameFromObject = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    const nameProps = ['name', 'label', 'title', 'displayName', 'filename'];
+    for (const prop of nameProps) {
+      if (obj[prop] && typeof obj[prop] === 'string') {
+        return obj[prop];
+      }
+    }
+    return null;
+  };
+
+  // Helper to extract name from path
+  const extractNameFromPath = (path) => {
+    if (!path || typeof path !== 'string') return null;
+    if (path.includes('/')) {
+      return path.split('/').pop().replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+    }
+    return path.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+  };
+
+  // Handle tuple format [path, config]
+  if (Array.isArray(item)) {
+    // Try config object (second element) first
+    if (item.length >= 2 && typeof item[1] === 'object') {
+      const nameFromConfig = extractNameFromObject(item[1]);
+      if (nameFromConfig) return nameFromConfig;
+    }
+    // Try first element if it's an object
+    if (item.length >= 1 && typeof item[0] === 'object') {
+      const nameFromFirst = extractNameFromObject(item[0]);
+      if (nameFromFirst) return nameFromFirst;
+    }
+    // Fall back to extracting from path
+    if (imagePath) {
+      return extractNameFromPath(imagePath) || 'Unknown';
     }
     return 'Unknown';
   }
 
-  // Object with name properties
-  if (typeof item === 'object') {
-    const nameProps = ['name', 'label', 'title', 'displayName', 'filename'];
-    for (const prop of nameProps) {
-      if (item[prop] && typeof item[prop] === 'string') {
-        return item[prop];
-      }
-    }
+  // Handle object format
+  if (item && typeof item === 'object') {
+    const nameFromObj = extractNameFromObject(item);
+    if (nameFromObj) return nameFromObj;
   }
 
-  // Extract from path
-  if (imagePath && typeof imagePath === 'string' && imagePath.includes('/')) {
-    return imagePath.split('/').pop().replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+  // Fall back to extracting from path
+  if (imagePath) {
+    return extractNameFromPath(imagePath) || 'Unknown';
   }
 
   return 'Unknown';
