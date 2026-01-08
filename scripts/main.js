@@ -672,42 +672,176 @@ async function searchTVA(searchTerm) {
   if (!api) return [];
 
   try {
+    // Use full results (not simpleResults) to get proper path information
     const results = await api.doImageSearch(searchTerm, {
       searchType: 'Portrait',
-      simpleResults: true
+      simpleResults: false
     });
 
-    if (!results || results.size === 0) return [];
+    // Handle empty results
+    if (!results) return [];
 
-    // Convert Map to array, handling various result formats
+    // Debug: log result structure
+    console.log(`${MODULE_ID} | TVA raw results type:`, typeof results, Array.isArray(results) ? 'array' : (results instanceof Map ? 'Map' : 'other'));
+
     const searchResults = [];
-    for (const [key, data] of results.entries()) {
-      // TVA can return path as string or as object with path property
-      let imagePath = key;
-      if (typeof key === 'object' && key !== null) {
-        imagePath = key.path || key.src || key.img || String(key);
+
+    // Handle array results (common TVA format)
+    if (Array.isArray(results)) {
+      console.log(`${MODULE_ID} | TVA returned array with ${results.length} results`);
+      if (results.length > 0) {
+        console.log(`${MODULE_ID} | TVA first result sample:`, JSON.stringify(results[0]).slice(0, 200));
       }
 
-      // Extract name from path or data
-      let name = data?.name;
-      if (!name && typeof imagePath === 'string') {
-        name = imagePath.split('/').pop().replace(/\.[^/.]+$/, '');
-      }
-      if (!name) {
-        name = 'Unknown';
-      }
+      for (const item of results) {
+        const imagePath = extractPathFromTVAResult(item);
+        const name = extractNameFromTVAResult(item, imagePath);
 
-      searchResults.push({
-        path: imagePath,
-        name: name,
-        source: 'tva'
-      });
+        if (imagePath) {
+          searchResults.push({
+            path: imagePath,
+            name: name,
+            source: 'tva'
+          });
+        }
+      }
     }
+    // Handle Map results
+    else if (results instanceof Map || (results && typeof results.entries === 'function')) {
+      console.log(`${MODULE_ID} | TVA returned Map with ${results.size} results`);
+      const firstEntry = results.entries().next().value;
+      if (firstEntry) {
+        console.log(`${MODULE_ID} | TVA Map first entry - key type:`, typeof firstEntry[0], 'value type:', typeof firstEntry[1]);
+      }
+
+      for (const [key, data] of results.entries()) {
+        // With simpleResults: false, the key is typically the path and data is metadata
+        let imagePath = null;
+
+        // Key is the path string
+        if (typeof key === 'string' && key.length > 0 && (key.includes('/') || key.includes('.'))) {
+          imagePath = key;
+        }
+        // Key is an object containing path
+        else if (typeof key === 'object' && key !== null) {
+          imagePath = key.path || key.src || key.img || key.route || key.thumb;
+        }
+
+        // If key didn't have path, check data
+        if (!imagePath) {
+          imagePath = extractPathFromTVAResult(data);
+        }
+
+        // Also check if data itself is a string path
+        if (!imagePath && typeof data === 'string' && (data.includes('/') || data.includes('.'))) {
+          imagePath = data;
+        }
+
+        const name = extractNameFromTVAResult(data, imagePath) || extractNameFromTVAResult(key, imagePath);
+
+        if (imagePath) {
+          searchResults.push({
+            path: imagePath,
+            name: name,
+            source: 'tva'
+          });
+        } else {
+          console.warn(`${MODULE_ID} | TVA: Could not extract path - key:`, key, 'data:', data);
+        }
+      }
+    }
+    // Handle object with paths property (another possible format)
+    else if (results && typeof results === 'object') {
+      console.log(`${MODULE_ID} | TVA returned object, keys:`, Object.keys(results).slice(0, 5));
+
+      // Check for paths array property
+      const pathsArray = results.paths || results.images || results.results || results.data;
+      if (Array.isArray(pathsArray)) {
+        for (const item of pathsArray) {
+          const imagePath = typeof item === 'string' ? item : extractPathFromTVAResult(item);
+          const name = extractNameFromTVAResult(item, imagePath);
+
+          if (imagePath) {
+            searchResults.push({
+              path: imagePath,
+              name: name,
+              source: 'tva'
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`${MODULE_ID} | TVA search for "${searchTerm}" found ${searchResults.length} valid results`);
     return searchResults;
   } catch (error) {
     console.warn(`${MODULE_ID} | TVA search error:`, error);
     return [];
   }
+}
+
+/**
+ * Extract image path from a TVA result item
+ */
+function extractPathFromTVAResult(item) {
+  if (!item) return null;
+
+  // String path directly
+  if (typeof item === 'string' && (item.includes('/') || item.includes('.') || item.startsWith('http'))) {
+    return item;
+  }
+
+  // Object with path properties
+  if (typeof item === 'object') {
+    // Common property names for image paths
+    const pathProps = ['path', 'src', 'img', 'image', 'route', 'thumb', 'thumbnail', 'url', 'uri'];
+    for (const prop of pathProps) {
+      if (item[prop] && typeof item[prop] === 'string') {
+        return item[prop];
+      }
+    }
+
+    // Check nested properties
+    if (item.data && typeof item.data === 'object') {
+      for (const prop of pathProps) {
+        if (item.data[prop] && typeof item.data[prop] === 'string') {
+          return item.data[prop];
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract name from a TVA result item
+ */
+function extractNameFromTVAResult(item, imagePath) {
+  if (!item) {
+    // Try to extract from path
+    if (imagePath && typeof imagePath === 'string' && imagePath.includes('/')) {
+      return imagePath.split('/').pop().replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+    }
+    return 'Unknown';
+  }
+
+  // Object with name properties
+  if (typeof item === 'object') {
+    const nameProps = ['name', 'label', 'title', 'displayName', 'filename'];
+    for (const prop of nameProps) {
+      if (item[prop] && typeof item[prop] === 'string') {
+        return item[prop];
+      }
+    }
+  }
+
+  // Extract from path
+  if (imagePath && typeof imagePath === 'string' && imagePath.includes('/')) {
+    return imagePath.split('/').pop().replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+  }
+
+  return 'Unknown';
 }
 
 /**
@@ -874,30 +1008,41 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
     }
   }
 
+  // Filter out any results with invalid paths before sorting
+  const validResults = results.filter(r => {
+    if (!r.path || typeof r.path !== 'string') return false;
+    // Path must contain '/' or '.' or start with http to be valid
+    return r.path.includes('/') || r.path.includes('.') || r.path.startsWith('http');
+  });
+
+  if (validResults.length !== results.length) {
+    console.log(`${MODULE_ID} | Filtered out ${results.length - validResults.length} invalid results`);
+  }
+
   // Sort based on priority preference
   if (priority === 'faNexus') {
-    results.sort((a, b) => {
+    validResults.sort((a, b) => {
       if (a.source === 'local' && b.source !== 'local') return -1;
       if (a.source !== 'local' && b.source === 'local') return 1;
       return (a.score || 0.5) - (b.score || 0.5);
     });
   } else if (priority === 'forgeBazaar') {
-    results.sort((a, b) => {
+    validResults.sort((a, b) => {
       if (a.source === 'tva' && b.source !== 'tva') return -1;
       if (a.source !== 'tva' && b.source === 'tva') return 1;
       return (a.score || 0.5) - (b.score || 0.5);
     });
   } else {
     // 'both' - sort by score only
-    results.sort((a, b) => (a.score || 0.5) - (b.score || 0.5));
+    validResults.sort((a, b) => (a.score || 0.5) - (b.score || 0.5));
   }
 
   // Store in cache
   if (useCache) {
-    searchCache.set(cacheKey, results);
+    searchCache.set(cacheKey, validResults);
   }
 
-  return results;
+  return validResults;
 }
 
 /**
@@ -1136,7 +1281,8 @@ async function showMatchSelectionDialog(creatureInfo, matches) {
     }, {
       classes: ['token-replacer-fa-dialog'],
       width: 520,
-      height: 'auto'
+      height: 'auto',
+      resizable: true
     });
 
     dialogInstance.render(true);
@@ -1262,7 +1408,9 @@ async function processTokenReplacement() {
     close: () => {}
   }, {
     classes: ['token-replacer-fa-dialog'],
-    width: 450
+    width: 450,
+    height: 'auto',
+    resizable: true
   });
   scanDialog.render(true);
   await yieldToMain(50); // Let dialog render
@@ -1303,7 +1451,9 @@ async function processTokenReplacement() {
     close: () => {}
   }, {
     classes: ['token-replacer-fa-dialog'],
-    width: 480
+    width: 480,
+    height: 'auto',
+    resizable: true
   });
   searchDialog.render(true);
   await yieldToMain(50); // Let dialog render
@@ -1367,7 +1517,9 @@ async function processTokenReplacement() {
     close: () => {}
   }, {
     classes: ['token-replacer-fa-dialog'],
-    width: 450
+    width: 450,
+    height: 'auto',
+    resizable: true
   });
   progressDialog.render(true);
   await yieldToMain(50); // Let dialog render before processing
@@ -1425,7 +1577,9 @@ async function processTokenReplacement() {
         }
       }, {
         classes: ['token-replacer-fa-dialog'],
-        width: 450
+        width: 450,
+        height: 'auto',
+        resizable: true
       });
       progressDialog.render(true);
       await yieldToMain(50);
