@@ -1015,6 +1015,7 @@ async function showMatchSelectionDialog(creatureInfo, matches) {
 
 /**
  * Create progress HTML with escaped content
+ * Shows real-time results as tokens are processed
  */
 function createProgressHTML(current, total, status, results) {
   const percent = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -1022,6 +1023,7 @@ function createProgressHTML(current, total, status, results) {
   const failedCount = results.filter(r => r.status === 'failed').length;
   const skippedCount = results.filter(r => r.status === 'skipped').length;
   const safeStatus = escapeHtml(status);
+  const isComplete = current >= total && total > 0;
 
   let html = `
     <div class="token-replacer-fa-progress">
@@ -1032,22 +1034,27 @@ function createProgressHTML(current, total, status, results) {
     </div>
   `;
 
-  if (current >= total && total > 0) {
-    html += `
-      <div class="token-replacer-fa-summary">
-        <div class="summary-item success">
-          <div class="count">${successCount}</div>
-          <div class="label">Replaced</div>
-        </div>
-        <div class="summary-item failed">
-          <div class="count">${failedCount}</div>
-          <div class="label">No Match</div>
-        </div>
-        <div class="summary-item skipped">
-          <div class="count">${skippedCount}</div>
-          <div class="label">Skipped</div>
-        </div>
+  // Always show summary counts (live updating)
+  html += `
+    <div class="token-replacer-fa-summary">
+      <div class="summary-item success">
+        <div class="count">${successCount}</div>
+        <div class="label">Replaced</div>
       </div>
+      <div class="summary-item failed">
+        <div class="count">${failedCount}</div>
+        <div class="label">No Match</div>
+      </div>
+      <div class="summary-item skipped">
+        <div class="count">${skippedCount}</div>
+        <div class="label">Skipped</div>
+      </div>
+    </div>
+  `;
+
+  // Always show results list (scrollable, shows real-time updates)
+  if (results.length > 0) {
+    html += `
       <div class="token-replacer-fa-results">
         ${results.map(r => {
           const safeName = escapeHtml(r.name);
@@ -1060,7 +1067,7 @@ function createProgressHTML(current, total, status, results) {
                 <i class="fas ${iconClass}"></i>
               </div>
               <div class="result-name">${safeName}</div>
-              ${safeMatch ? `<div class="result-match">${safeMatch}</div>` : ''}
+              ${safeMatch ? `<div class="result-match">→ ${safeMatch}</div>` : ''}
             </div>
           `;
         }).join('')}
