@@ -1926,16 +1926,7 @@ async function processTokenReplacement() {
   mainDialog = new Dialog({
     title: TokenReplacerFA.i18n('dialog.title'),
     content: createScanProgressHTML('Initializing...', 0, 0, 0, 0),
-    buttons: {
-      cancel: {
-        icon: '<i class="fas fa-times"></i>',
-        label: TokenReplacerFA.i18n('dialog.cancel'),
-        callback: () => {
-          TokenReplacerFA.isProcessing = false;
-          mainDialog = null;
-        }
-      }
-    },
+    buttons: {},
     close: () => {
       TokenReplacerFA.isProcessing = false;
       mainDialog = null;
