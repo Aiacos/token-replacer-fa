@@ -2406,13 +2406,32 @@ async function processTokenReplacement() {
         // Handle "Browse All [Category]" button click
         if (selectionResult && selectionResult.action === 'browse') {
           const browseType = selectionResult.type;
+          console.log(`${MODULE_ID} | Browse All clicked for: ${browseType}`);
+
+          // Show loading message
+          updateMainDialogContent(`
+            <div class="token-replacer-fa-scan-progress">
+              <div class="scan-status">
+                <i class="fas fa-search fa-spin"></i>
+                <span>Searching all ${browseType} artwork...</span>
+              </div>
+            </div>
+          `);
+          await yieldToMain(50);
+
           // Search by category
           const categoryResults = await searchByCategory(browseType, localIndex);
+          console.log(`${MODULE_ID} | Browse All found ${categoryResults.length} results for ${browseType}`);
 
           if (categoryResults.length > 0) {
-            // Show category results in the same dialog
+            // Show category results in the same dialog (without Browse All button to avoid recursion)
+            const categoryCreatureInfo = {
+              ...creatureInfo,
+              actorName: `${creatureInfo.actorName} - All ${browseType}`,
+              type: null // Remove type to hide Browse All button
+            };
             updateMainDialogContent(createMatchSelectionHTML(
-              { ...creatureInfo, actorName: `${creatureInfo.actorName} (${browseType})` },
+              categoryCreatureInfo,
               categoryResults,
               tokens.length
             ));
@@ -2423,6 +2442,34 @@ async function processTokenReplacement() {
             if (categoryDialogEl) {
               selectionResult = await setupMatchSelectionHandlers(categoryDialogEl);
             }
+          } else {
+            // No results found - show message and let user skip
+            updateMainDialogContent(`
+              <div class="token-replacer-fa-no-match">
+                <div class="no-match-message">
+                  <i class="fas fa-search-minus"></i>
+                  <span>No artwork found for ${browseType}</span>
+                </div>
+              </div>
+              <div class="token-replacer-fa-selection-buttons">
+                <button type="button" class="skip-btn" data-action="skip">
+                  <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
+                </button>
+              </div>
+            `);
+            await yieldToMain(50);
+
+            // Wait for skip
+            const skipDialogEl = mainDialog?.element?.[0];
+            if (skipDialogEl) {
+              const skipBtn = skipDialogEl.querySelector('.skip-btn');
+              if (skipBtn) {
+                await new Promise(resolve => {
+                  skipBtn.addEventListener('click', () => resolve());
+                });
+              }
+            }
+            selectionResult = null;
           }
         }
 
