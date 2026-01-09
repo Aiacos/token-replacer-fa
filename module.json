@@ -2,7 +2,7 @@
   "id": "token-replacer-fa",
   "title": "Token Replacer - Forgotten Adventures",
   "description": "Automatically replaces NPC token art with matching tokens from Forgotten Adventures and The Forge Bazaar using fuzzy search.",
-  "version": "1.4.13",
+  "version": "1.4.14",
   "compatibility": {
     "minimum": "12",
     "verified": "13"

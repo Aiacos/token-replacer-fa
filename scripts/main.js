@@ -392,8 +392,30 @@ async function closeDialogSafely(dialog) {
 }
 
 /**
- * D&D 5e creature types mapped to common FA folder names
- * FA folders often use capitalized singular forms
+ * PRIMARY category terms - used for "Browse All [Category]"
+ * These are the main folder names in Forgotten Adventures
+ * Only searches for artwork actually IN that category folder
+ */
+const PRIMARY_CATEGORY_TERMS = {
+  'aberration': ['aberration', 'aberrations'],
+  'beast': ['beast', 'beasts', 'animal', 'animals'],
+  'celestial': ['celestial', 'celestials'],
+  'construct': ['construct', 'constructs', 'golem', 'golems'],
+  'dragon': ['dragon', 'dragons'],
+  'elemental': ['elemental', 'elementals'],
+  'fey': ['fey', 'fairy', 'fairies'],
+  'fiend': ['fiend', 'fiends', 'demon', 'demons', 'devil', 'devils'],
+  'giant': ['giant', 'giants'],
+  'humanoid': ['humanoid', 'humanoids'],
+  'monstrosity': ['monstrosity', 'monstrosities', 'monster', 'monsters'],
+  'ooze': ['ooze', 'oozes', 'slime', 'slimes'],
+  'plant': ['plant', 'plants'],
+  'undead': ['undead', 'zombie', 'skeleton', 'ghost', 'vampire']
+};
+
+/**
+ * EXTENDED creature type mappings - used for subtype filtering and auto-detection
+ * Includes races, classes, and specific creature names for filtering results
  */
 const CREATURE_TYPE_MAPPINGS = {
   'aberration': ['aberration', 'aberrations', 'mind flayer', 'beholder', 'illithid', 'aboleth'],
@@ -1728,22 +1750,23 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
     // Otherwise, fall through to category search
   }
 
-  // Category-based search
-  const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
+  // Category-based search - use PRIMARY terms only (not extended mappings)
+  // This ensures "Browse All Humanoid" shows only humanoid folder, not elf/dwarf/wizard etc.
+  const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
 
-  if (!categoryMappings) {
-    console.log(`${MODULE_ID} | No mappings found for category: ${categoryType}`);
+  if (!primaryTerms) {
+    console.log(`${MODULE_ID} | No primary terms found for category: ${categoryType}`);
     return results;
   }
 
-  console.log(`${MODULE_ID} | Searching ${categoryMappings.length} terms for ${categoryType}: ${categoryMappings.join(', ')}`);
+  console.log(`${MODULE_ID} | Searching ${primaryTerms.length} PRIMARY terms for ${categoryType}: ${primaryTerms.join(', ')}`);
 
-  // Search TVA for ALL mapping terms to get comprehensive results
+  // Search TVA for PRIMARY category terms only
   if (TokenReplacerFA.hasTVA) {
     let searchIndex = 0;
-    for (const term of categoryMappings) {
+    for (const term of primaryTerms) {
       searchIndex++;
-      console.log(`${MODULE_ID} | Searching term ${searchIndex}/${categoryMappings.length}: "${term}"`);
+      console.log(`${MODULE_ID} | Searching term ${searchIndex}/${primaryTerms.length}: "${term}"`);
       const tvaResults = await searchTVA(term);
       console.log(`${MODULE_ID} | Found ${tvaResults.length} results for "${term}"`);
       for (const result of tvaResults) {
