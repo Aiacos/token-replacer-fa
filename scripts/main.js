@@ -2597,11 +2597,15 @@ async function processTokenReplacement() {
     } else if (confirmReplace) {
       // Check if results are primarily from category (generic subtype like "Any race")
       const isCategoryResults = matches.length > 50 && matches.some(m => m.fromCategory);
+      // Check if results are from specific subtypes (like "Dwarf, Monk")
+      const isSubtypeResults = matches.some(m => m.fromSubtype);
+      // Show search filter for category or subtype results
+      const showFilter = isCategoryResults || isSubtypeResults;
 
-      // For category results, show search filter and hide Browse All button
-      const displayCreatureInfo = isCategoryResults ? {
+      // For category/subtype results, hide Browse All button
+      const displayCreatureInfo = showFilter ? {
         ...creatureInfo,
-        type: null // Hide Browse All button - we're already showing all category results
+        type: null // Hide Browse All button - we're already showing filtered results
       } : creatureInfo;
 
       // Show selection UI in the SAME dialog (pass token count for multi-select)
@@ -2609,7 +2613,7 @@ async function processTokenReplacement() {
         displayCreatureInfo,
         matches,
         tokens.length,
-        isCategoryResults // Show search filter for category results
+        showFilter // Show search filter for category/subtype results
       ));
       await yieldToMain(50);
 
