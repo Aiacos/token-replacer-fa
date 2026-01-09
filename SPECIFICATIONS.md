@@ -52,6 +52,7 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 - [x] Search by creature type (humanoid, beast, undead, etc.)
 - [x] Search by creature subtype (elf, dwarf, monk, etc.)
 - [x] Fuzzy matching with configurable threshold
+- [x] Process only selected tokens (if any selected), otherwise all NPC tokens
 
 #### 3.1.2 Search Sources
 - [x] Token Variant Art (TVA) cache
@@ -113,7 +114,7 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 | `searchPriority` | Choice | both | faNexus / forgeBazaar / both |
 | `autoReplace` | Boolean | false | Auto-apply best match |
 | `confirmReplace` | Boolean | true | Show confirmation dialog |
-| `fallbackFullSearch` | Boolean | false | Search all when no category match |
+| `fallbackFullSearch` | Boolean | false | Search all when no category match (**NOT IMPLEMENTED**) |
 | `useTVACache` | Boolean | true | Use TVA's pre-built cache |
 | `refreshTVACache` | Boolean | false | Refresh cache before search |
 | `additionalPaths` | String | "" | Extra directories to scan |
@@ -218,6 +219,8 @@ Extraction checks these properties in order:
 | TC-002 | Search for "humanoid" creature type | Returns 600+ results from TVA |
 | TC-003 | Search for specific actor name | Returns matching tokens |
 | TC-004 | No matches found | Shows category browser UI |
+| TC-005 | Select 2 NPC tokens, click button | Only selected tokens processed |
+| TC-006 | No tokens selected, click button | All NPC tokens processed |
 
 ### 5.2 Creature Type Detection
 
@@ -318,6 +321,7 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 |-------|--------|------------|
 | Dialog V1 deprecation warning | Deferred | Functional until v16 |
 | Large result sets slow UI | Open | Virtualization planned |
+| `fallbackFullSearch` setting not implemented | Open | Use category browser manually |
 
 ---
 
@@ -325,6 +329,7 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 - [ ] Migrate to ApplicationV2/DialogV2
 - [ ] Virtual scrolling for large result sets
+- [ ] Implement `fallbackFullSearch` setting
 - [ ] Batch apply to all tokens
 - [ ] Custom token scaling options
 - [ ] Token ring/border support
