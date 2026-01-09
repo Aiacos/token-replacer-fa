@@ -153,7 +153,7 @@ export function extractPathFromTVAResult(item) {
 
   // Direct string path
   if (typeof item === 'string') {
-    return item.startsWith('http') || item.includes('/') || item.includes('.') ? item : null;
+    return item.startsWith('http') || item.startsWith('forge://') || item.includes('/') || item.includes('.') ? item : null;
   }
 
   // Handle tuple format [path, config] from TVA
@@ -162,7 +162,7 @@ export function extractPathFromTVAResult(item) {
     if (item.length > 0) {
       const firstEl = item[0];
       if (typeof firstEl === 'string') {
-        return firstEl.startsWith('http') || firstEl.includes('/') || firstEl.includes('.') ? firstEl : null;
+        return firstEl.startsWith('http') || firstEl.startsWith('forge://') || firstEl.includes('/') || firstEl.includes('.') ? firstEl : null;
       }
       if (typeof firstEl === 'object' && firstEl !== null) {
         return extractPathFromObject(firstEl);
@@ -189,19 +189,36 @@ export function extractPathFromTVAResult(item) {
  * @returns {string|null} Path or null
  */
 export function extractPathFromObject(obj) {
-  const pathProps = ['path', 'img', 'src', 'image', 'url', 'thumb', 'thumbnail'];
+  // Include 'route' and 'uri' for TVA compatibility
+  const pathProps = ['path', 'route', 'img', 'src', 'image', 'url', 'thumb', 'thumbnail', 'uri'];
+
+  // Helper to validate path string
+  const isValidPath = (val) => val.startsWith('http') || val.startsWith('forge://') || val.includes('/') || val.includes('.');
 
   for (const prop of pathProps) {
     if (obj[prop] && typeof obj[prop] === 'string') {
       const val = obj[prop];
-      if (val.startsWith('http') || val.includes('/') || val.includes('.')) {
+      if (isValidPath(val)) {
         return val;
       }
     }
   }
 
-  // Check nested objects
+  // Check nested .data property (TVA format)
+  if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
+    for (const prop of pathProps) {
+      if (obj.data[prop] && typeof obj.data[prop] === 'string') {
+        const val = obj.data[prop];
+        if (isValidPath(val)) {
+          return val;
+        }
+      }
+    }
+  }
+
+  // Check nested objects (general case)
   for (const key of Object.keys(obj)) {
+    if (key === 'data') continue; // Already checked above
     const val = obj[key];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
       const nestedPath = extractPathFromObject(val);
