@@ -248,18 +248,37 @@ function extractCreatureInfo(token) {
 }
 
 /**
- * Get all NPC tokens on the current scene
+ * Get NPC tokens to process
+ * If tokens are selected, only process selected NPC tokens
+ * Otherwise, process all NPC tokens on the scene
  */
 function getSceneNPCTokens() {
   if (!canvas?.tokens?.placeables) {
     return [];
   }
 
+  // Check if there are selected tokens
+  const selectedTokens = canvas.tokens.controlled;
+
+  // If tokens are selected, filter to only NPC tokens from selection
+  if (selectedTokens && selectedTokens.length > 0) {
+    const selectedNPCs = selectedTokens.filter(token => {
+      const actor = token.actor;
+      if (!actor) return false;
+      return actor.type === 'npc';
+    });
+
+    if (selectedNPCs.length > 0) {
+      console.log(`${MODULE_ID} | Processing ${selectedNPCs.length} selected NPC token(s)`);
+      return selectedNPCs;
+    }
+  }
+
+  // No selection or no NPCs selected - process all NPC tokens on scene
+  console.log(`${MODULE_ID} | Processing all NPC tokens on scene`);
   return canvas.tokens.placeables.filter(token => {
     const actor = token.actor;
     if (!actor) return false;
-
-    // Check if it's an NPC type actor
     return actor.type === 'npc';
   });
 }

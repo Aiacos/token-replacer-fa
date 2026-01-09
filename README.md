@@ -190,6 +190,9 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 
 ## Changelog
 
+### v1.2.1
+- **Selected Token Support**: If tokens are selected, only processes selected NPC tokens instead of all NPCs on the scene
+
 ### v1.2.0
 - **Fixed TVA Result Parsing**: Now properly handles TVA's tuple format `[path, config]` which was causing "no matches found" issues
 - **Improved UI Contrast**: Fixed text visibility for failed/skipped items (was showing black text on dark backgrounds)
