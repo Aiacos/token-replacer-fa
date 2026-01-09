@@ -395,21 +395,23 @@ async function closeDialogSafely(dialog) {
  * D&D 5e creature types mapped to common FA folder names
  * FA folders often use capitalized singular forms
  */
+// Core search terms for each creature type (optimized for speed)
+// Keep only the most effective terms that will find the most results
 const CREATURE_TYPE_MAPPINGS = {
-  'aberration': ['aberration', 'aberrations', 'mind flayer', 'beholder', 'illithid', 'aboleth'],
-  'beast': ['beast', 'beasts', 'animal', 'animals', 'wolf', 'bear', 'horse', 'cat', 'dog', 'bird'],
-  'celestial': ['celestial', 'celestials', 'angel', 'angels', 'deva', 'planetar', 'solar'],
-  'construct': ['construct', 'constructs', 'golem', 'golems', 'robot', 'automaton', 'warforged'],
-  'dragon': ['dragon', 'dragons', 'drake', 'drakes', 'wyrm', 'wyvern', 'dragonborn'],
-  'elemental': ['elemental', 'elementals', 'genie', 'genies', 'djinni', 'efreeti', 'fire elemental', 'water elemental'],
-  'fey': ['fey', 'fairy', 'fairies', 'sprite', 'pixie', 'satyr', 'dryad', 'nymph', 'eladrin'],
-  'fiend': ['fiend', 'fiends', 'demon', 'demons', 'devil', 'devils', 'succubus', 'incubus', 'imp', 'balor'],
-  'giant': ['giant', 'giants', 'ogre', 'ogres', 'troll', 'trolls', 'cyclops', 'ettin', 'hill giant', 'frost giant'],
-  'humanoid': ['humanoid', 'humanoids', 'human', 'npc', 'goblin', 'orc', 'elf', 'dwarf', 'halfling', 'gnome', 'tiefling', 'dragonborn', 'half-elf', 'half-orc', 'hobgoblin', 'bugbear', 'kobold', 'gnoll', 'lizardfolk', 'kenku', 'tabaxi', 'firbolg', 'goliath', 'aasimar', 'genasi', 'triton', 'yuan-ti', 'githyanki', 'githzerai', 'drow', 'duergar', 'svirfneblin', 'bandit', 'guard', 'soldier', 'knight', 'mage', 'priest', 'noble', 'commoner', 'thug', 'assassin', 'spy', 'veteran', 'cultist', 'acolyte', 'berserker', 'gladiator', 'scout', 'tribal', 'pirate', 'captain', 'wizard', 'warlock', 'cleric', 'paladin', 'ranger', 'rogue', 'fighter', 'barbarian', 'monk', 'bard', 'druid', 'sorcerer'],
-  'monstrosity': ['monstrosity', 'monstrosities', 'monster', 'monsters', 'chimera', 'manticore', 'medusa', 'minotaur', 'basilisk', 'hydra', 'griffon', 'hippogriff', 'owlbear', 'roc', 'sphinx', 'kraken'],
-  'ooze': ['ooze', 'oozes', 'slime', 'slimes', 'jelly', 'pudding', 'cube', 'gelatinous'],
-  'plant': ['plant', 'plants', 'fungus', 'fungi', 'treant', 'shambling mound', 'myconid', 'blight'],
-  'undead': ['undead', 'zombie', 'zombies', 'skeleton', 'skeletons', 'ghost', 'ghosts', 'vampire', 'lich', 'wight', 'wraith', 'specter', 'mummy', 'revenant', 'banshee', 'death knight']
+  'aberration': ['aberration', 'mind flayer', 'beholder', 'illithid'],
+  'beast': ['beast', 'animal', 'wolf', 'bear'],
+  'celestial': ['celestial', 'angel'],
+  'construct': ['construct', 'golem', 'warforged'],
+  'dragon': ['dragon', 'drake', 'wyrm', 'wyvern'],
+  'elemental': ['elemental', 'genie'],
+  'fey': ['fey', 'fairy', 'sprite', 'satyr'],
+  'fiend': ['fiend', 'demon', 'devil'],
+  'giant': ['giant', 'ogre', 'troll'],
+  'humanoid': ['humanoid', 'human', 'npc', 'elf', 'dwarf', 'orc', 'goblin', 'halfling', 'gnome', 'tiefling'],
+  'monstrosity': ['monstrosity', 'monster'],
+  'ooze': ['ooze', 'slime'],
+  'plant': ['plant', 'fungus', 'treant'],
+  'undead': ['undead', 'zombie', 'skeleton', 'ghost', 'vampire']
 };
 
 /**
@@ -1688,6 +1690,7 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
  * @param {string} directSearchTerm - Optional direct search term (e.g., "dwarf", "monk")
  */
 async function searchByCategory(categoryType, localIndex, directSearchTerm = null) {
+  console.log(`${MODULE_ID} | searchByCategory START - type: ${categoryType}, directSearch: ${directSearchTerm}`);
   const results = [];
 
   // If we have a direct search term (subtype), search for that first
@@ -1731,13 +1734,20 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
   const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
   if (!categoryMappings) {
+    console.log(`${MODULE_ID} | No mappings found for category: ${categoryType}`);
     return results;
   }
 
+  console.log(`${MODULE_ID} | Searching ${categoryMappings.length} terms for ${categoryType}: ${categoryMappings.join(', ')}`);
+
   // Search TVA for ALL mapping terms to get comprehensive results
   if (TokenReplacerFA.hasTVA) {
+    let searchIndex = 0;
     for (const term of categoryMappings) {
+      searchIndex++;
+      console.log(`${MODULE_ID} | Searching term ${searchIndex}/${categoryMappings.length}: "${term}"`);
       const tvaResults = await searchTVA(term);
+      console.log(`${MODULE_ID} | Found ${tvaResults.length} results for "${term}"`);
       for (const result of tvaResults) {
         if (!results.find(r => r.path === result.path)) {
           results.push(result);
@@ -1745,6 +1755,9 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
       }
       await yieldToMain(10);
     }
+    console.log(`${MODULE_ID} | TVA search complete, total unique results: ${results.length}`);
+  } else {
+    console.log(`${MODULE_ID} | TVA not available for category search`);
   }
 
   // Also search local index by category
@@ -1763,6 +1776,7 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
   }
 
   // Return all results (no limit)
+  console.log(`${MODULE_ID} | searchByCategory END - found ${results.length} results for ${categoryType}`);
   return results;
 }
 
@@ -2042,9 +2056,12 @@ function setupMatchSelectionHandlers(dialogElement) {
 
     // Handle browse category button
     const browseBtn = container.querySelector('.browse-category-btn');
+    console.log(`${MODULE_ID} | Browse button found:`, browseBtn ? 'YES' : 'NO');
     if (browseBtn) {
+      console.log(`${MODULE_ID} | Browse button data-type:`, browseBtn.dataset.type);
       browseBtn.addEventListener('click', () => {
         const creatureType = browseBtn.dataset.type;
+        console.log(`${MODULE_ID} | Browse button clicked, type: ${creatureType}`);
         resolve({ action: 'browse', type: creatureType });
       });
     }
