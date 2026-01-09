@@ -71,7 +71,8 @@
       "searchCategory": "Search",
       "selectTypeFirst": "Please select a creature type first",
       "noResultsInCategory": "No artwork found in this category",
-      "searchBySubtype": "Quick search by subtype:"
+      "searchBySubtype": "Quick search by subtype:",
+      "browseAll": "Browse All"
     },
     "notifications": {
       "started": "Starting token art replacement...",

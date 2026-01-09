@@ -710,27 +710,13 @@ async function searchTVA(searchTerm) {
 
     // Handle empty results
     if (!results) {
-      console.log(`${MODULE_ID} | TVA search for "${searchTerm}" returned null/undefined`);
       return [];
     }
 
     const searchResults = [];
 
-    // Debug: Log the type and structure of results
-    const resultType = Array.isArray(results) ? 'Array' :
-                       (results instanceof Map) ? 'Map' :
-                       (typeof results.entries === 'function') ? 'Map-like' :
-                       typeof results;
-    console.log(`${MODULE_ID} | TVA result type for "${searchTerm}": ${resultType}`);
-
     // Handle array results (common TVA format)
     if (Array.isArray(results)) {
-      // Debug: Log first item structure
-      if (results.length > 0) {
-        const firstItem = results[0];
-        console.log(`${MODULE_ID} | TVA Array[0] type: ${Array.isArray(firstItem) ? 'Array (tuple)' : typeof firstItem}`, firstItem);
-      }
-
       for (const item of results) {
         const imagePath = extractPathFromTVAResult(item);
         const name = extractNameFromTVAResult(item, imagePath);
@@ -747,23 +733,8 @@ async function searchTVA(searchTerm) {
     // Handle Map results - TVA returns Map where key is search term, value is array of results
     else if (results instanceof Map || (results && typeof results.entries === 'function')) {
       for (const [key, data] of results.entries()) {
-        console.log(`${MODULE_ID} | TVA Map entry - key: "${key}", data type: ${Array.isArray(data) ? `Array(${data.length})` : typeof data}`);
-
         // Data is typically an Array of image results
         if (Array.isArray(data)) {
-          // Debug: log first item structure with detailed type info
-          if (data.length > 0) {
-            const firstItem = data[0];
-            const itemType = Array.isArray(firstItem) ? `Array (tuple, ${firstItem.length} elements)` : typeof firstItem;
-            console.log(`${MODULE_ID} | TVA data[0] type: ${itemType}`, firstItem);
-
-            // If it's a tuple, log both elements
-            if (Array.isArray(firstItem) && firstItem.length >= 2) {
-              console.log(`${MODULE_ID} | TVA tuple[0] (path):`, firstItem[0]);
-              console.log(`${MODULE_ID} | TVA tuple[1] (config):`, firstItem[1]);
-            }
-          }
-
           for (const item of data) {
             const imagePath = extractPathFromTVAResult(item);
             const name = extractNameFromTVAResult(item, imagePath);
@@ -805,12 +776,9 @@ async function searchTVA(searchTerm) {
     }
     // Handle object with paths property (another possible format)
     else if (results && typeof results === 'object') {
-      console.log(`${MODULE_ID} | TVA returned object, keys:`, Object.keys(results));
-
       // Check for paths array property
       const pathsArray = results.paths || results.images || results.results || results.data;
       if (Array.isArray(pathsArray)) {
-        console.log(`${MODULE_ID} | Found paths array with ${pathsArray.length} items`);
         for (const item of pathsArray) {
           const imagePath = typeof item === 'string' ? item : extractPathFromTVAResult(item);
           const name = extractNameFromTVAResult(item, imagePath);
@@ -824,15 +792,6 @@ async function searchTVA(searchTerm) {
           }
         }
       }
-    }
-
-    console.log(`${MODULE_ID} | TVA search for "${searchTerm}" found ${searchResults.length} valid results`);
-
-    // Log first few valid results for debugging
-    if (searchResults.length > 0 && searchResults.length <= 5) {
-      console.log(`${MODULE_ID} | TVA results sample:`, searchResults);
-    } else if (searchResults.length > 5) {
-      console.log(`${MODULE_ID} | TVA first 3 results:`, searchResults.slice(0, 3));
     }
 
     return searchResults;
@@ -1101,6 +1060,8 @@ function clearSearchCache() {
 
 /**
  * Combined search across all sources with caching
+ * INTELLIGENT AUTO-DETECTION: When subtype is generic (e.g., "any race"),
+ * automatically includes category-based results alongside name-based matches
  */
 async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   const searchTerms = creatureInfo.searchTerms;
@@ -1144,6 +1105,52 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
     }
   }
 
+  // INTELLIGENT AUTO-DETECTION: If subtype is generic (e.g., "any race", "any", "various"),
+  // automatically include category-based results to give users more options
+  const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
+  if (isGenericSubtype && creatureInfo.type) {
+    console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), adding ${creatureInfo.type} category results`);
+
+    // Get category mappings for the creature type
+    const categoryMappings = CREATURE_TYPE_MAPPINGS[creatureInfo.type?.toLowerCase()];
+    if (categoryMappings && TokenReplacerFA.hasTVA) {
+      // Search for category terms to add broader options
+      for (const term of categoryMappings.slice(0, 3)) { // Limit to avoid too many searches
+        // Skip if we already searched this term
+        if (searchTerms.includes(term.toLowerCase())) continue;
+
+        const categoryResults = await searchTVA(term);
+        for (const result of categoryResults) {
+          if (!results.find(r => r.path === result.path)) {
+            // Mark as category result with slightly lower implicit score
+            results.push({
+              ...result,
+              score: result.score ?? 0.6, // Give category results a moderate score
+              fromCategory: true
+            });
+          }
+        }
+      }
+    }
+
+    // Also add local index category matches
+    if (localIndex && localIndex.length > 0) {
+      const categoryMatches = localIndex.filter(img =>
+        img.category && folderMatchesCreatureType(img.category, creatureInfo.type)
+      );
+      for (const match of categoryMatches.slice(0, 20)) { // Limit category matches
+        if (!results.find(r => r.path === match.path)) {
+          results.push({
+            ...match,
+            source: 'local',
+            score: match.score ?? 0.6,
+            fromCategory: true
+          });
+        }
+      }
+    }
+  }
+
   // Filter out any results with invalid paths before sorting
   const validResults = results.filter(r => {
     if (!r.path || typeof r.path !== 'string') return false;
@@ -1155,23 +1162,27 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
     console.log(`${MODULE_ID} | Filtered out ${results.length - validResults.length} invalid results`);
   }
 
-  // Sort based on priority preference
-  if (priority === 'faNexus') {
-    validResults.sort((a, b) => {
+  // Sort: name-based matches first (lower score), then category matches
+  // Within each group, sort by score
+  validResults.sort((a, b) => {
+    // Name-based matches (fromCategory=false/undefined) come first
+    const aIsCategory = a.fromCategory === true;
+    const bIsCategory = b.fromCategory === true;
+    if (!aIsCategory && bIsCategory) return -1;
+    if (aIsCategory && !bIsCategory) return 1;
+
+    // Then apply priority preference within the group
+    if (priority === 'faNexus') {
       if (a.source === 'local' && b.source !== 'local') return -1;
       if (a.source !== 'local' && b.source === 'local') return 1;
-      return (a.score || 0.5) - (b.score || 0.5);
-    });
-  } else if (priority === 'forgeBazaar') {
-    validResults.sort((a, b) => {
+    } else if (priority === 'forgeBazaar') {
       if (a.source === 'tva' && b.source !== 'tva') return -1;
       if (a.source !== 'tva' && b.source === 'tva') return 1;
-      return (a.score || 0.5) - (b.score || 0.5);
-    });
-  } else {
-    // 'both' - sort by score only
-    validResults.sort((a, b) => (a.score || 0.5) - (b.score || 0.5));
-  }
+    }
+
+    // Finally sort by score (lower is better)
+    return (a.score || 0.5) - (b.score || 0.5);
+  });
 
   // Store in cache
   if (useCache) {
@@ -1344,6 +1355,7 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
   const safeType = escapeHtml(creatureInfo.type || 'Unknown');
   const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
   const showMultiSelect = tokenCount > 1;
+  const creatureTypeDisplay = creatureInfo.type ? creatureInfo.type.charAt(0).toUpperCase() + creatureInfo.type.slice(1) : '';
 
   return `
     <div class="token-replacer-fa-token-preview">
@@ -1357,16 +1369,16 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
 
     ${showMultiSelect ? `
     <div class="token-replacer-fa-mode-toggle">
-      <span class="mode-label">Assegnazione varianti:</span>
+      <span class="mode-label">Variant assignment:</span>
       <div class="mode-buttons">
         <button type="button" class="mode-btn active" data-mode="sequential">
-          <i class="fas fa-arrow-right"></i> Sequenziale
+          <i class="fas fa-arrow-right"></i> Sequential
         </button>
         <button type="button" class="mode-btn" data-mode="random">
-          <i class="fas fa-random"></i> Casuale
+          <i class="fas fa-random"></i> Random
         </button>
       </div>
-      <span class="mode-hint">Clicca per selezionare più varianti</span>
+      <span class="mode-hint">Click to select multiple variants</span>
     </div>
     ` : ''}
 
@@ -1390,14 +1402,19 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
 
     ${showMultiSelect ? `
     <div class="token-replacer-fa-selection-info">
-      <span class="selection-count">1 selezionata</span>
+      <span class="selection-count">1 selected</span>
     </div>
     ` : ''}
 
     <div class="token-replacer-fa-selection-buttons">
       <button type="button" class="select-btn" data-action="select">
-        <i class="fas fa-check"></i> Applica
+        <i class="fas fa-check"></i> Apply
       </button>
+      ${creatureInfo.type ? `
+      <button type="button" class="browse-category-btn" data-action="browse" data-type="${escapeHtml(creatureInfo.type)}">
+        <i class="fas fa-folder-open"></i> ${TokenReplacerFA.i18n('dialog.browseAll')} ${creatureTypeDisplay}
+      </button>
+      ` : ''}
       <button type="button" class="skip-btn" data-action="skip">
         <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
       </button>
@@ -1427,6 +1444,20 @@ function parseSubtypeTerms(subtype) {
   });
 
   return validTerms;
+}
+
+/**
+ * Check if a subtype contains generic terms (e.g., "any race", "any", "various")
+ * Used for intelligent automatic detection of when to include category results
+ */
+function hasGenericSubtype(subtype) {
+  if (!subtype) return true; // No subtype = treat as generic
+
+  const genericTerms = ['any', 'any-race', 'any race', 'anyrace', 'various', 'none', 'unknown'];
+  const subtypeLower = subtype.toLowerCase();
+
+  // Check if subtype contains any generic term
+  return genericTerms.some(g => subtypeLower.includes(g));
 }
 
 /**
@@ -1503,24 +1534,24 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
 
     ${tokenCount > 1 ? `
     <div class="token-replacer-fa-mode-toggle" style="display: none;">
-      <span class="mode-label">Assegnazione varianti:</span>
+      <span class="mode-label">Variant assignment:</span>
       <div class="mode-buttons">
         <button type="button" class="mode-btn active" data-mode="sequential">
-          <i class="fas fa-arrow-right"></i> Sequenziale
+          <i class="fas fa-arrow-right"></i> Sequential
         </button>
         <button type="button" class="mode-btn" data-mode="random">
-          <i class="fas fa-random"></i> Casuale
+          <i class="fas fa-random"></i> Random
         </button>
       </div>
     </div>
     <div class="token-replacer-fa-selection-info" style="display: none;">
-      <span class="selection-count">0 selezionate</span>
+      <span class="selection-count">0 selected</span>
     </div>
     ` : ''}
 
     <div class="token-replacer-fa-selection-buttons">
       <button type="button" class="select-btn" data-action="select" disabled>
-        <i class="fas fa-check"></i> Applica
+        <i class="fas fa-check"></i> Apply
       </button>
       <button type="button" class="skip-btn" data-action="skip">
         <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
@@ -1539,11 +1570,8 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
 async function searchByCategory(categoryType, localIndex, directSearchTerm = null) {
   const results = [];
 
-  console.log(`${MODULE_ID} | searchByCategory called - categoryType: "${categoryType}", directSearchTerm: "${directSearchTerm}", localIndex size: ${localIndex?.length || 0}`);
-
   // If we have a direct search term (subtype), search for that first
   if (directSearchTerm) {
-    console.log(`${MODULE_ID} | Searching for subtype: ${directSearchTerm}`);
 
     if (TokenReplacerFA.hasTVA) {
       const tvaResults = await searchTVA(directSearchTerm);
@@ -1576,28 +1604,20 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
     if (results.length > 0) {
       return results.slice(0, 50);
     }
-
     // Otherwise, fall through to category search
-    console.log(`${MODULE_ID} | No results for "${directSearchTerm}", falling back to category search`);
   }
 
   // Category-based search
   const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
   if (!categoryMappings) {
-    console.warn(`${MODULE_ID} | Unknown creature type: ${categoryType}`);
     return results.slice(0, 50);
   }
 
-  console.log(`${MODULE_ID} | Searching category: ${categoryType}, mappings: ${categoryMappings.join(', ')}`);
-  console.log(`${MODULE_ID} | TVA available: ${TokenReplacerFA.hasTVA}`);
-
   // Search TVA for each mapping term
   if (TokenReplacerFA.hasTVA) {
-    for (const term of categoryMappings.slice(0, 5)) { // Search more terms for better coverage
-      console.log(`${MODULE_ID} | TVA searching for term: "${term}"`);
+    for (const term of categoryMappings.slice(0, 5)) {
       const tvaResults = await searchTVA(term);
-      console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
       for (const result of tvaResults) {
         if (!results.find(r => r.path === result.path)) {
           results.push(result);
@@ -1605,9 +1625,6 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
       }
       await yieldToMain(10);
     }
-    console.log(`${MODULE_ID} | Total unique results after TVA search: ${results.length}`);
-  } else {
-    console.warn(`${MODULE_ID} | TVA not available, skipping TVA search`);
   }
 
   // Also search local index by category
@@ -1659,7 +1676,7 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
       const selectedCount = container.querySelectorAll('.match-option.selected').length;
       const countEl = container.querySelector('.selection-count');
       if (countEl) {
-        countEl.textContent = `${selectedCount} selezionat${selectedCount === 1 ? 'a' : 'e'}`;
+        countEl.textContent = `${selectedCount} selected`;
       }
       // Enable/disable select button
       if (selectBtn) {
@@ -1757,8 +1774,6 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
         const subtype = btn.dataset.subtype;
         if (!subtype) return;
 
-        console.log(`${MODULE_ID} | Subtype search button clicked: ${subtype}`);
-
         // Show loading
         resultsContainer.style.display = 'block';
         loadingEl.style.display = 'flex';
@@ -1776,8 +1791,6 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
     if (searchBtn) {
       searchBtn.addEventListener('click', async () => {
         const selectedType = selectEl?.value;
-        console.log(`${MODULE_ID} | Category search button clicked, selectedType: "${selectedType}"`);
-
         if (!selectedType) {
           ui.notifications.warn(TokenReplacerFA.i18n('dialog.selectTypeFirst'));
           return;
@@ -1791,8 +1804,6 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
 
         // Search by category
         const results = await searchByCategory(selectedType, localIndex);
-        console.log(`${MODULE_ID} | Category search returned ${results.length} results`);
-
         displayResults(results);
       });
     }
@@ -1839,14 +1850,12 @@ function setupMatchSelectionHandlers(dialogElement) {
     const matchGrid = container.querySelector('.token-replacer-fa-match-select');
     const multiSelectEnabled = matchGrid?.dataset.multiselect === 'true';
 
-    console.log(`${MODULE_ID} | Selection mode: ${multiSelectEnabled ? 'multi-select' : 'single-select'}`);
-
     // Update selection count display
     const updateSelectionCount = () => {
       const selectedCount = container.querySelectorAll('.match-option.selected').length;
       const countEl = container.querySelector('.selection-count');
       if (countEl) {
-        countEl.textContent = `${selectedCount} selezionat${selectedCount === 1 ? 'a' : 'e'}`;
+        countEl.textContent = `${selectedCount} selected`;
       }
     };
 
@@ -1857,7 +1866,6 @@ function setupMatchSelectionHandlers(dialogElement) {
         modeButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         assignmentMode = btn.dataset.mode;
-        console.log(`${MODULE_ID} | Assignment mode changed to: ${assignmentMode}`);
       });
     });
 
@@ -1883,7 +1891,6 @@ function setupMatchSelectionHandlers(dialogElement) {
 
       option.addEventListener('dblclick', () => {
         // Double-click always selects just this one and confirms
-        console.log(`${MODULE_ID} | Double-click selection: ${option.dataset.path}`);
         resolve({
           paths: [option.dataset.path],
           mode: 'sequential'
@@ -1899,7 +1906,6 @@ function setupMatchSelectionHandlers(dialogElement) {
       selectBtn.addEventListener('click', () => {
         const selectedOptions = container.querySelectorAll('.match-option.selected');
         const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
-        console.log(`${MODULE_ID} | Selected ${paths.length} artwork(s), mode: ${assignmentMode}`);
         if (paths.length > 0) {
           resolve({ paths, mode: assignmentMode });
         } else {
@@ -1910,8 +1916,16 @@ function setupMatchSelectionHandlers(dialogElement) {
 
     if (skipBtn) {
       skipBtn.addEventListener('click', () => {
-        console.log(`${MODULE_ID} | User skipped selection`);
         resolve(null);
+      });
+    }
+
+    // Handle browse category button
+    const browseBtn = container.querySelector('.browse-category-btn');
+    if (browseBtn) {
+      browseBtn.addEventListener('click', () => {
+        const creatureType = browseBtn.dataset.type;
+        resolve({ action: 'browse', type: creatureType });
       });
     }
   });
@@ -2208,8 +2222,6 @@ async function processTokenReplacement() {
           ? [...selectedPaths].sort(() => Math.random() - 0.5)
           : selectedPaths;
 
-        console.log(`${MODULE_ID} | Category browse: Applying ${shuffledPaths.length} artwork(s) to ${tokens.length} token(s) [${assignmentMode}]`);
-
         for (const token of tokens) {
           if (cancelled || !mainDialog) break;
           tokenIndex++;
@@ -2291,10 +2303,6 @@ async function processTokenReplacement() {
     const shuffledPaths = assignmentMode === 'random' && selectedPaths
       ? [...selectedPaths].sort(() => Math.random() - 0.5)
       : selectedPaths;
-
-    if (shuffledPaths && shuffledPaths.length > 0) {
-      console.log(`${MODULE_ID} | Applying ${shuffledPaths.length} artwork(s) to ${tokens.length} token(s) [${assignmentMode}]`);
-    }
 
     for (const token of tokens) {
       if (cancelled || !mainDialog) break;
