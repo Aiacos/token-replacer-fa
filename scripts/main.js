@@ -1842,33 +1842,43 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
     // Otherwise, fall through to category search
   }
 
-  // Category-based search - use FOLDER PATH filtering
-  // This ensures "Browse All Humanoid" shows everything INSIDE the Humanoid folder and subfolders
-  console.log(`${MODULE_ID} | Starting folder-based search for category: ${categoryType}`);
+  // Category-based search - search ALL related terms for comprehensive results
+  // "Browse All Humanoid" needs to find elf, dwarf, wizard, etc.
+  console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
 
   if (TokenReplacerFA.hasTVA) {
-    // First try to get all images and filter by folder path
-    console.log(`${MODULE_ID} | Getting all TVA images for folder filtering...`);
-    const allImages = await getAllTVAImages();
+    // Use full CREATURE_TYPE_MAPPINGS to get all related artwork
+    const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
-    if (allImages.length > 0) {
-      // Filter by folder path
-      const folderFiltered = filterByFolderPath(allImages, categoryType);
-      for (const result of folderFiltered) {
-        if (!results.find(r => r.path === result.path)) {
-          results.push(result);
+    if (categoryTerms) {
+      console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType}`);
+
+      let searchCount = 0;
+      for (const term of categoryTerms) {
+        searchCount++;
+        // Log progress every 10 terms
+        if (searchCount % 10 === 0 || searchCount === categoryTerms.length) {
+          console.log(`${MODULE_ID} | Search progress: ${searchCount}/${categoryTerms.length} terms`);
+        }
+
+        const tvaResults = await searchTVA(term);
+        for (const result of tvaResults) {
+          if (!results.find(r => r.path === result.path)) {
+            results.push(result);
+          }
+        }
+
+        // Yield to main thread periodically to keep UI responsive
+        if (searchCount % 5 === 0) {
+          await yieldToMain(10);
         }
       }
-      console.log(`${MODULE_ID} | Folder filtering found ${results.length} results`);
-    }
-
-    // If folder filtering didn't work well, fall back to term search
-    if (results.length < 10) {
-      console.log(`${MODULE_ID} | Folder filtering found few results, trying term search as fallback...`);
+    } else {
+      // Fallback to primary terms if no mapping exists
       const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
       if (primaryTerms) {
+        console.log(`${MODULE_ID} | No full mapping, using ${primaryTerms.length} primary terms`);
         for (const term of primaryTerms) {
-          console.log(`${MODULE_ID} | Fallback search for term: "${term}"`);
           const tvaResults = await searchTVA(term);
           for (const result of tvaResults) {
             if (!results.find(r => r.path === result.path)) {
