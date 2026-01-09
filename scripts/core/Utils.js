@@ -106,12 +106,13 @@ export function parseSubtypeTerms(subtype) {
 }
 
 /**
- * Check if subtype is generic (any, any race, etc.)
+ * Check if subtype is generic (any, any race, etc.) or absent
  * @param {string} subtype - The subtype string
- * @returns {boolean} True if subtype is generic
+ * @returns {boolean} True if subtype is generic or missing
  */
 export function hasGenericSubtype(subtype) {
-  if (!subtype) return false;
+  // No subtype means it's generic (show all)
+  if (!subtype || subtype.trim() === '') return true;
   const subtypeLower = subtype.toLowerCase().trim();
   return GENERIC_SUBTYPE_INDICATORS.some(indicator =>
     subtypeLower === indicator || subtypeLower.includes(indicator)
@@ -153,6 +154,25 @@ export function extractPathFromTVAResult(item) {
   // Direct string path
   if (typeof item === 'string') {
     return item.startsWith('http') || item.includes('/') || item.includes('.') ? item : null;
+  }
+
+  // Handle tuple format [path, config] from TVA
+  if (Array.isArray(item)) {
+    // First element is usually the path
+    if (item.length > 0) {
+      const firstEl = item[0];
+      if (typeof firstEl === 'string') {
+        return firstEl.startsWith('http') || firstEl.includes('/') || firstEl.includes('.') ? firstEl : null;
+      }
+      if (typeof firstEl === 'object' && firstEl !== null) {
+        return extractPathFromObject(firstEl);
+      }
+    }
+    // Try second element if first didn't work
+    if (item.length > 1 && typeof item[1] === 'object' && item[1] !== null) {
+      return extractPathFromObject(item[1]);
+    }
+    return null;
   }
 
   // Object with path property

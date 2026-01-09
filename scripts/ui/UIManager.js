@@ -685,7 +685,7 @@ export class UIManager {
       };
 
       const displayResults = (results) => {
-        loadingEl.style.display = 'none';
+        if (loadingEl) loadingEl.style.display = 'none';
 
         const categoryFilter = container.querySelector('.category-filter');
         const categoryVisibleCount = container.querySelector('.category-visible-count');
@@ -694,7 +694,7 @@ export class UIManager {
 
         if (results.length === 0) {
           if (categoryFilter) categoryFilter.style.display = 'none';
-          matchGrid.innerHTML = `
+          if (matchGrid) matchGrid.innerHTML = `
             <div class="no-results-message">
               <i class="fas fa-folder-open"></i>
               <span>${i18n('dialog.noResultsInCategory')}</span>
@@ -710,6 +710,7 @@ export class UIManager {
           if (categorySearchInput) categorySearchInput.value = '';
         }
 
+        if (!matchGrid) return;
         matchGrid.innerHTML = results.map((match, idx) => {
           const safeMatchName = escapeHtml(match.name);
           const safePath = escapeHtml(match.path);
@@ -779,10 +780,10 @@ export class UIManager {
           const subtype = btn.dataset.subtype;
           if (!subtype) return;
 
-          resultsContainer.style.display = 'block';
-          loadingEl.style.display = 'flex';
-          matchGrid.innerHTML = '';
-          selectBtn.disabled = true;
+          if (resultsContainer) resultsContainer.style.display = 'block';
+          if (loadingEl) loadingEl.style.display = 'flex';
+          if (matchGrid) matchGrid.innerHTML = '';
+          if (selectBtn) selectBtn.disabled = true;
 
           const results = await searchByCategory(creatureInfo.type, localIndex, subtype);
           displayResults(results);
@@ -798,16 +799,18 @@ export class UIManager {
             return;
           }
 
-          resultsContainer.style.display = 'block';
-          loadingEl.style.display = 'block';
-          loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, {
-            current: 0, total: 1, term: 'initializing...', resultsFound: 0
-          });
-          matchGrid.innerHTML = '';
-          selectBtn.disabled = true;
+          if (resultsContainer) resultsContainer.style.display = 'block';
+          if (loadingEl) {
+            loadingEl.style.display = 'block';
+            loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, {
+              current: 0, total: 1, term: 'initializing...', resultsFound: 0
+            });
+          }
+          if (matchGrid) matchGrid.innerHTML = '';
+          if (selectBtn) selectBtn.disabled = true;
 
           const results = await searchByCategory(selectedType, localIndex, null, (progress) => {
-            loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, progress);
+            if (loadingEl) loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, progress);
           });
           displayResults(results);
         });

@@ -239,6 +239,7 @@ async function processTokenReplacement() {
     uiManager.updateDialogContent(
       uiManager.createErrorHTML(TokenReplacerFA.i18n('notifications.missingDeps'))
     );
+    TokenReplacerFA.isProcessing = false;
     return;
   }
 
@@ -355,11 +356,6 @@ async function processTokenReplacement() {
       const dialogEl = uiManager.getDialogElement();
       if (dialogEl) {
         const selectionResult = await uiManager.setupMatchSelectionHandlers(dialogEl);
-
-        if (selectionResult === 'cancel') {
-          cancelled = true;
-          break;
-        }
 
         if (selectionResult?.paths) {
           selectedPaths = selectionResult.paths;

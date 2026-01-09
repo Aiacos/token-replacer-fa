@@ -74,23 +74,32 @@ export class SearchService {
 
     try {
       const results = [];
+      const seenPaths = new Set(); // Use Set for O(1) duplicate check
       const searchResults = await this.tvaAPI.doImageSearch(searchTerm, {
         searchType: 'all',
         algorithm: { fuzzy: true }
       });
 
-      if (!searchResults || searchResults.length === 0) return [];
+      // Handle various TVA return formats (array, object, Map)
+      if (!searchResults) return [];
 
-      for (const item of searchResults) {
+      const items = Array.isArray(searchResults)
+        ? searchResults
+        : (searchResults instanceof Map ? Array.from(searchResults.values()) : [searchResults]);
+
+      if (items.length === 0) return [];
+
+      for (const item of items) {
         const imagePath = extractPathFromTVAResult(item);
-        if (!imagePath) continue;
+        if (!imagePath || seenPaths.has(imagePath)) continue;
 
+        seenPaths.add(imagePath);
         const name = extractNameFromTVAResult(item, imagePath);
         results.push({
           path: imagePath,
           name: name,
           source: 'tva',
-          score: item.score ?? 0.5
+          score: item?.score ?? 0.5
         });
       }
 
@@ -160,6 +169,7 @@ export class SearchService {
   async searchByCategory(categoryType, localIndex, directSearchTerm = null, progressCallback = null) {
     console.log(`${MODULE_ID} | searchByCategory START - type: ${categoryType}, directSearch: ${directSearchTerm}`);
     const results = [];
+    const seenPaths = new Set(); // Use Set for O(1) duplicate check
 
     // Direct search term mode
     if (directSearchTerm) {
@@ -170,14 +180,15 @@ export class SearchService {
       if (this.hasTVA) {
         const tvaResults = await this.searchTVA(directSearchTerm);
         for (const result of tvaResults) {
-          if (!results.find(r => r.path === result.path)) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
             results.push(result);
           }
         }
       }
 
       // Search local index
-      if (localIndex && localIndex.length > 0) {
+      if (localIndex?.length > 0) {
         const termLower = directSearchTerm.toLowerCase();
         const localMatches = localIndex.filter(img =>
           img.name?.toLowerCase().includes(termLower) ||
@@ -185,7 +196,8 @@ export class SearchService {
           img.category?.toLowerCase().includes(termLower)
         );
         for (const match of localMatches) {
-          if (!results.find(r => r.path === match.path)) {
+          if (!seenPaths.has(match.path)) {
+            seenPaths.add(match.path);
             results.push({ ...match, source: 'local' });
           }
         }
@@ -229,7 +241,8 @@ export class SearchService {
 
           const tvaResults = await this.searchTVA(term);
           for (const result of tvaResults) {
-            if (!results.find(r => r.path === result.path)) {
+            if (!seenPaths.has(result.path)) {
+              seenPaths.add(result.path);
               results.push(result);
             }
           }
@@ -259,7 +272,8 @@ export class SearchService {
 
             const tvaResults = await this.searchTVA(term);
             for (const result of tvaResults) {
-              if (!results.find(r => r.path === result.path)) {
+              if (!seenPaths.has(result.path)) {
+                seenPaths.add(result.path);
                 results.push(result);
               }
             }
@@ -270,7 +284,7 @@ export class SearchService {
     }
 
     // Search local index by category
-    if (localIndex && localIndex.length > 0) {
+    if (localIndex?.length > 0) {
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'local index', resultsFound: results.length });
       }
@@ -279,7 +293,8 @@ export class SearchService {
         img.category && this.folderMatchesCreatureType(img.category, categoryType)
       );
       for (const match of categoryMatches) {
-        if (!results.find(r => r.path === match.path)) {
+        if (!seenPaths.has(match.path)) {
+          seenPaths.add(match.path);
           results.push({ ...match, source: 'local' });
         }
       }
@@ -345,9 +360,15 @@ export class SearchService {
       return results;
     }
 
+    // Use Set for O(1) duplicate check
+    const seenPaths = new Set();
+
     // Standard search flow
-    if (localIndex.length > 0 && (priority === 'faNexus' || priority === 'both')) {
+    if (localIndex?.length > 0 && (priority === 'faNexus' || priority === 'both')) {
       const localResults = await this.searchLocalIndex(searchTerms, localIndex, creatureInfo.type);
+      for (const r of localResults) {
+        seenPaths.add(r.path);
+      }
       results.push(...localResults);
     }
 
@@ -355,7 +376,8 @@ export class SearchService {
       for (const term of searchTerms) {
         const tvaResults = await this.searchTVA(term);
         for (const result of tvaResults) {
-          if (!results.find(r => r.path === result.path)) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
             results.push(result);
           }
         }
@@ -371,7 +393,8 @@ export class SearchService {
       const categoryResults = await this.searchByCategory(creatureInfo.type, localIndex);
 
       for (const result of categoryResults) {
-        if (!results.find(r => r.path === result.path)) {
+        if (!seenPaths.has(result.path)) {
+          seenPaths.add(result.path);
           results.push({
             ...result,
             score: result.score ?? 0.6,
@@ -380,12 +403,13 @@ export class SearchService {
         }
       }
 
-      if (localIndex && localIndex.length > 0) {
+      if (localIndex?.length > 0) {
         const categoryMatches = localIndex.filter(img =>
           img.category && this.folderMatchesCreatureType(img.category, creatureInfo.type)
         );
         for (const match of categoryMatches) {
-          if (!results.find(r => r.path === match.path)) {
+          if (!seenPaths.has(match.path)) {
+            seenPaths.add(match.path);
             results.push({
               ...match,
               source: 'local',
