@@ -1277,26 +1277,25 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
 
   if (subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type) {
-    // Case 2: Specific subtypes with category
-    // e.g., "Humanoid (Dwarf, Monk)" → get Humanoid category AND filter by "dwarf" OR "monk"
+    // Case 2: Specific subtypes with category - AND logic
+    // e.g., "Humanoid (Dwarf, Monk)" → (Humanoid) AND (Dwarf) AND (Monk)
     console.log(`${MODULE_ID} | Auto-detection: Category "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
-    console.log(`${MODULE_ID} | Logic: (${creatureInfo.type}) AND (${subtypeTerms.join(' OR ')})`);
+    console.log(`${MODULE_ID} | Logic: (${creatureInfo.type}) AND (${subtypeTerms.join(' AND ')})`);
 
     // First, get all results from the category
     const categoryResults = await searchByCategory(creatureInfo.type, localIndex);
     console.log(`${MODULE_ID} | Category "${creatureInfo.type}" returned ${categoryResults.length} results`);
 
-    // Then filter by subtype terms (must match at least one)
+    // Then filter by subtype terms (must match ALL terms - AND logic)
     const filteredResults = categoryResults.filter(result => {
       const nameLower = (result.name || '').toLowerCase();
       const pathLower = (result.path || '').toLowerCase();
-      // Check if name or path contains any of the subtype terms
-      return subtypeTerms.some(term =>
-        nameLower.includes(term) || pathLower.includes(term)
-      );
+      const combinedText = nameLower + ' ' + pathLower;
+      // Check if name or path contains ALL of the subtype terms (AND logic)
+      return subtypeTerms.every(term => combinedText.includes(term));
     });
 
-    console.log(`${MODULE_ID} | After subtype filter: ${filteredResults.length} results match (${subtypeTerms.join(' OR ')})`);
+    console.log(`${MODULE_ID} | After subtype filter: ${filteredResults.length} results match (${subtypeTerms.join(' AND ')})`);
 
     for (const result of filteredResults) {
       if (!results.find(r => r.path === result.path)) {
