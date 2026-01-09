@@ -426,7 +426,7 @@ export class SearchService {
     // Filter and sort results
     const validResults = results.filter(r => {
       if (!r.path || typeof r.path !== 'string') return false;
-      return r.path.includes('/') || r.path.includes('.') || r.path.startsWith('http');
+      return r.path.includes('/') || r.path.includes('.') || r.path.startsWith('http') || r.path.startsWith('forge://');
     });
 
     validResults.sort((a, b) => {

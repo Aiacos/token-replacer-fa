@@ -188,6 +188,7 @@ export class ScanService {
     if (!tvaAPI) return [];
 
     const results = [];
+    const seenPaths = new Set(); // Use Set for O(1) duplicate check
 
     try {
       // Try to get images using doImageSearch with broad search
@@ -196,8 +197,8 @@ export class ScanService {
       for (const term of broadSearches) {
         try {
           const searchResults = await tvaAPI.doImageSearch(term, {
-            searchType: 'all',
-            algorithm: { fuzzy: true }
+            searchType: 'Portrait',
+            simpleResults: false
           });
 
           if (searchResults && Array.isArray(searchResults)) {
@@ -209,11 +210,12 @@ export class ScanService {
               if (typeof item === 'string') {
                 imagePath = item;
               } else if (typeof item === 'object' && item !== null) {
-                imagePath = item.path || item.img || item.src || item.image;
+                imagePath = item.path || item.route || item.img || item.src || item.image || item.uri;
                 name = item.name || item.label || item.title || 'Unknown';
               }
 
-              if (imagePath && !results.find(r => r.path === imagePath)) {
+              if (imagePath && !seenPaths.has(imagePath)) {
+                seenPaths.add(imagePath);
                 if (name === 'Unknown' && imagePath) {
                   name = imagePath.split('/').pop()?.replace(/\.[^/.]+$/, '')
                     .replace(/[-_]/g, ' ').trim() || 'Unknown';
