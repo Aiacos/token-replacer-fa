@@ -1580,12 +1580,11 @@ async function replaceTokenImage(token, imagePath) {
  * Create match selection HTML (for embedding in main dialog)
  * Supports multi-select for variations with sequential/random assignment
  */
-function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, hideBrowseButton = false) {
+function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
   const safeName = escapeHtml(creatureInfo.actorName);
   const safeType = escapeHtml(creatureInfo.type || 'Unknown');
   const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
   const showMultiSelect = tokenCount > 1;
-  const creatureTypeDisplay = creatureInfo.type ? creatureInfo.type.charAt(0).toUpperCase() + creatureInfo.type.slice(1) : '';
   const totalCount = matches.length;
 
   return `
@@ -1649,11 +1648,6 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, hideBro
       <button type="button" class="select-btn" data-action="select">
         <i class="fas fa-check"></i> Apply
       </button>
-      ${creatureInfo.type && !hideBrowseButton ? `
-      <button type="button" class="browse-category-btn" data-action="browse" data-type="${escapeHtml(creatureInfo.type)}">
-        <i class="fas fa-folder-open"></i> ${TokenReplacerFA.i18n('dialog.browseAll')} ${creatureTypeDisplay}
-      </button>
-      ` : ''}
       <button type="button" class="skip-btn" data-action="skip">
         <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
       </button>
@@ -2378,18 +2372,6 @@ function setupMatchSelectionHandlers(dialogElement) {
         resolve(null);
       });
     }
-
-    // Handle browse category button
-    const browseBtn = container.querySelector('.browse-category-btn');
-    console.log(`${MODULE_ID} | Browse button found:`, browseBtn ? 'YES' : 'NO');
-    if (browseBtn) {
-      console.log(`${MODULE_ID} | Browse button data-type:`, browseBtn.dataset.type);
-      browseBtn.addEventListener('click', () => {
-        const creatureType = browseBtn.dataset.type;
-        console.log(`${MODULE_ID} | Browse button clicked, type: ${creatureType}`);
-        resolve({ action: 'browse', type: creatureType });
-      });
-    }
   });
 }
 
@@ -2731,93 +2713,22 @@ async function processTokenReplacement() {
       // High confidence match, auto-replace all tokens of this type
       selectedPaths = [bestMatch.path];
     } else if (confirmReplace) {
-      // Check if results are primarily from category (generic subtype like "Any race")
-      const isCategoryResults = matches.length > 50 && matches.some(m => m.fromCategory);
-      // Check if results are from specific subtypes (like "Dwarf, Monk")
-      const isSubtypeResults = matches.some(m => m.fromSubtype);
-      // Hide Browse All button when showing category/subtype results (already filtered)
-      const hideBrowseAll = isCategoryResults || isSubtypeResults;
-
       // Show selection UI in the SAME dialog (pass token count for multi-select)
       updateMainDialogContent(createMatchSelectionHTML(
         creatureInfo,
         matches,
-        tokens.length,
-        hideBrowseAll
+        tokens.length
       ));
       await yieldToMain(50);
 
       // Wait for user selection
       const dialogEl = mainDialog?.element?.[0];
       if (dialogEl) {
-        let selectionResult = await setupMatchSelectionHandlers(dialogEl);
+        const selectionResult = await setupMatchSelectionHandlers(dialogEl);
 
         if (selectionResult === 'cancel') {
           cancelled = true;
           break;
-        }
-
-        // Handle "Browse All [Category]" button click
-        if (selectionResult && selectionResult.action === 'browse') {
-          const browseType = selectionResult.type;
-          console.log(`${MODULE_ID} | Browse All clicked for: ${browseType}`);
-
-          // Show initial progress
-          updateMainDialogContent(createSearchProgressHTML(browseType, {
-            current: 0, total: 1, term: 'initializing...', resultsFound: 0
-          }));
-          await yieldToMain(50);
-
-          // Search by category with progress updates
-          const categoryResults = await searchByCategory(browseType, localIndex, null, (progress) => {
-            updateMainDialogContent(createSearchProgressHTML(browseType, progress));
-          });
-          console.log(`${MODULE_ID} | Browse All found ${categoryResults.length} results for ${browseType}`);
-
-          if (categoryResults.length > 0) {
-            // Show category results in the same dialog (hide Browse All to avoid recursion)
-            updateMainDialogContent(createMatchSelectionHTML(
-              creatureInfo,
-              categoryResults,
-              tokens.length,
-              true // hideBrowseButton - already showing all category results
-            ));
-            await yieldToMain(50);
-
-            // Wait for selection from category results
-            const categoryDialogEl = mainDialog?.element?.[0];
-            if (categoryDialogEl) {
-              selectionResult = await setupMatchSelectionHandlers(categoryDialogEl);
-            }
-          } else {
-            // No results found - show message and let user skip
-            updateMainDialogContent(`
-              <div class="token-replacer-fa-no-match">
-                <div class="no-match-message">
-                  <i class="fas fa-search-minus"></i>
-                  <span>No artwork found for ${browseType}</span>
-                </div>
-              </div>
-              <div class="token-replacer-fa-selection-buttons">
-                <button type="button" class="skip-btn" data-action="skip">
-                  <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
-                </button>
-              </div>
-            `);
-            await yieldToMain(50);
-
-            // Wait for skip
-            const skipDialogEl = mainDialog?.element?.[0];
-            if (skipDialogEl) {
-              const skipBtn = skipDialogEl.querySelector('.skip-btn');
-              if (skipBtn) {
-                await new Promise(resolve => {
-                  skipBtn.addEventListener('click', () => resolve());
-                });
-              }
-            }
-            selectionResult = null;
-          }
         }
 
         if (selectionResult && selectionResult.paths) {
