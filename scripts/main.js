@@ -1337,11 +1337,13 @@ async function replaceTokenImage(token, imagePath) {
 
 /**
  * Create match selection HTML (for embedding in main dialog)
+ * Supports multi-select for variations with sequential/random assignment
  */
-function createMatchSelectionHTML(creatureInfo, matches) {
+function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
   const safeName = escapeHtml(creatureInfo.actorName);
   const safeType = escapeHtml(creatureInfo.type || 'Unknown');
   const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+  const showMultiSelect = tokenCount > 1;
 
   return `
     <div class="token-replacer-fa-token-preview">
@@ -1349,10 +1351,27 @@ function createMatchSelectionHTML(creatureInfo, matches) {
       <div class="token-info">
         <div class="token-name">${safeName}</div>
         <div class="token-type">${safeType} ${safeSubtype}</div>
+        ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
       </div>
     </div>
-    <div class="token-replacer-fa-match-select">
-      ${matches.slice(0, 12).map((match, idx) => {
+
+    ${showMultiSelect ? `
+    <div class="token-replacer-fa-mode-toggle">
+      <span class="mode-label">Assegnazione varianti:</span>
+      <div class="mode-buttons">
+        <button type="button" class="mode-btn active" data-mode="sequential">
+          <i class="fas fa-arrow-right"></i> Sequenziale
+        </button>
+        <button type="button" class="mode-btn" data-mode="random">
+          <i class="fas fa-random"></i> Casuale
+        </button>
+      </div>
+      <span class="mode-hint">Clicca per selezionare più varianti</span>
+    </div>
+    ` : ''}
+
+    <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}">
+      ${matches.slice(0, 20).map((match, idx) => {
         const safeMatchName = escapeHtml(match.name);
         const safePath = escapeHtml(match.path);
         const scoreDisplay = match.score !== undefined
@@ -1363,13 +1382,19 @@ function createMatchSelectionHTML(creatureInfo, matches) {
             <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
             <div class="match-name">${safeMatchName}</div>
             <div class="match-score">${scoreDisplay}</div>
+            <div class="match-check"><i class="fas fa-check"></i></div>
           </div>
         `;
       }).join('')}
     </div>
+
+    <div class="token-replacer-fa-selection-info">
+      <span class="selection-count">1 selezionata</span>
+    </div>
+
     <div class="token-replacer-fa-selection-buttons">
       <button type="button" class="select-btn" data-action="select">
-        <i class="fas fa-check"></i> Select
+        <i class="fas fa-check"></i> Applica
       </button>
       <button type="button" class="skip-btn" data-action="skip">
         <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
@@ -1378,17 +1403,17 @@ function createMatchSelectionHTML(creatureInfo, matches) {
         <i class="fas fa-times"></i> ${TokenReplacerFA.i18n('dialog.cancel')}
       </button>
     </div>
-    <p style="font-size: 11px; color: #888; margin-top: 10px; text-align: center;">
-      Double-click an image to select it directly.
-    </p>
   `;
 }
 
 /**
  * Setup match selection event handlers
- * Returns a Promise that resolves with the selected path or 'skip'/'cancel'
+ * Returns a Promise that resolves with:
+ * - { paths: [array of paths], mode: 'sequential'|'random' }
+ * - null (skip)
+ * - 'cancel'
  */
-function setupMatchSelectionHandlers(dialogElement) {
+function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
   return new Promise((resolve) => {
     const container = dialogElement.querySelector('.dialog-content');
     if (!container) {
@@ -1396,16 +1421,56 @@ function setupMatchSelectionHandlers(dialogElement) {
       return;
     }
 
+    let assignmentMode = 'sequential';
+    const matchGrid = container.querySelector('.token-replacer-fa-match-select');
+    const multiSelectEnabled = matchGrid?.dataset.multiselect === 'true';
+
+    // Update selection count display
+    const updateSelectionCount = () => {
+      const selectedCount = container.querySelectorAll('.match-option.selected').length;
+      const countEl = container.querySelector('.selection-count');
+      if (countEl) {
+        countEl.textContent = `${selectedCount} selezionat${selectedCount === 1 ? 'a' : 'e'}`;
+      }
+    };
+
+    // Handle mode toggle buttons
+    const modeButtons = container.querySelectorAll('.mode-btn');
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        assignmentMode = btn.dataset.mode;
+      });
+    });
+
     // Handle match option clicks
     const options = container.querySelectorAll('.match-option');
     options.forEach(option => {
-      option.addEventListener('click', () => {
-        options.forEach(o => o.classList.remove('selected'));
-        option.classList.add('selected');
+      option.addEventListener('click', (e) => {
+        if (multiSelectEnabled) {
+          // Multi-select mode: toggle selection
+          option.classList.toggle('selected');
+          // Ensure at least one is selected
+          const selectedCount = container.querySelectorAll('.match-option.selected').length;
+          if (selectedCount === 0) {
+            option.classList.add('selected');
+          }
+          updateSelectionCount();
+        } else {
+          // Single-select mode
+          options.forEach(o => o.classList.remove('selected'));
+          option.classList.add('selected');
+          updateSelectionCount();
+        }
       });
 
       option.addEventListener('dblclick', () => {
-        resolve(option.dataset.path);
+        // Double-click always selects just this one and confirms
+        resolve({
+          paths: [option.dataset.path],
+          mode: 'sequential'
+        });
       });
     });
 
@@ -1416,8 +1481,13 @@ function setupMatchSelectionHandlers(dialogElement) {
 
     if (selectBtn) {
       selectBtn.addEventListener('click', () => {
-        const selected = container.querySelector('.match-option.selected');
-        resolve(selected ? selected.dataset.path : null);
+        const selectedOptions = container.querySelectorAll('.match-option.selected');
+        const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+        if (paths.length > 0) {
+          resolve({ paths, mode: assignmentMode });
+        } else {
+          resolve(null);
+        }
       });
     }
 
@@ -1723,25 +1793,31 @@ async function processTokenReplacement() {
     const bestMatch = matches[0];
     const matchScore = bestMatch.score !== undefined ? (1 - bestMatch.score) : 0.8;
 
-    // Determine path to use
-    let selectedPath = null;
+    // Determine paths to use (can be multiple for variations)
+    let selectedPaths = null;
+    let assignmentMode = 'sequential';
 
     if (autoReplace && matchScore >= (1 - threshold)) {
       // High confidence match, auto-replace all tokens of this type
-      selectedPath = bestMatch.path;
+      selectedPaths = [bestMatch.path];
     } else if (confirmReplace) {
-      // Show selection UI in the SAME dialog
-      updateMainDialogContent(createMatchSelectionHTML(creatureInfo, matches));
+      // Show selection UI in the SAME dialog (pass token count for multi-select)
+      updateMainDialogContent(createMatchSelectionHTML(creatureInfo, matches, tokens.length));
       await yieldToMain(50);
 
       // Wait for user selection
       const dialogEl = mainDialog?.element?.[0];
       if (dialogEl) {
-        selectedPath = await setupMatchSelectionHandlers(dialogEl);
+        const selectionResult = await setupMatchSelectionHandlers(dialogEl);
 
-        if (selectedPath === 'cancel') {
+        if (selectionResult === 'cancel') {
           cancelled = true;
           break;
+        }
+
+        if (selectionResult && selectionResult.paths) {
+          selectedPaths = selectionResult.paths;
+          assignmentMode = selectionResult.mode || 'sequential';
         }
       }
 
@@ -1750,24 +1826,36 @@ async function processTokenReplacement() {
       await yieldToMain(50);
     } else {
       // No confirmation, use best match
-      selectedPath = bestMatch.path;
+      selectedPaths = [bestMatch.path];
     }
 
-    // Apply selected path to ALL tokens of this creature type
+    // Apply selected paths to tokens of this creature type
+    // Use sequential or random assignment based on user choice
+    let pathIndex = 0;
+    const shuffledPaths = assignmentMode === 'random' && selectedPaths
+      ? [...selectedPaths].sort(() => Math.random() - 0.5)
+      : selectedPaths;
+
     for (const token of tokens) {
       if (cancelled || !mainDialog) break;
 
       tokenIndex++;
 
-      if (selectedPath) {
+      if (shuffledPaths && shuffledPaths.length > 0) {
+        // Get path for this token (cycle through if multiple)
+        const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
+        const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
+
         // Replace the token
-        const success = await replaceTokenImage(token, selectedPath);
+        const success = await replaceTokenImage(token, pathForToken);
         updateProgress(tokenIndex, npcTokens.length,
           TokenReplacerFA.i18n('dialog.replacing'), {
           name: `${creatureInfo.actorName} (${token.name})`,
           status: success ? 'success' : 'failed',
-          match: bestMatch.name
+          match: matchName
         });
+
+        pathIndex++;
       } else {
         // Skipped
         updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {

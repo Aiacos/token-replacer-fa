@@ -190,6 +190,13 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 
 ## Changelog
 
+### v1.3.0
+- **Multi-Select Variations**: When multiple artwork variations exist, you can now select multiple and assign them to tokens
+- **Assignment Modes**: Choose between Sequential (default) or Random assignment for variations
+- **Improved UI**: Completely redesigned dialog layout with better sizing, scrolling, and visibility
+- **Visual Checkmarks**: Selected artworks now show clear checkmark indicators
+- **Token Count Display**: Shows how many tokens will be affected when selecting artwork
+
 ### v1.2.1
 - **Selected Token Support**: If tokens are selected, only processes selected NPC tokens instead of all NPCs on the scene
 
