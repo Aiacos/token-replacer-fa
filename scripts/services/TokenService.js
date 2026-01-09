@@ -33,11 +33,26 @@ export class TokenService {
     };
 
     // Get creature type from dnd5e system
+    // Handle multiple formats: object with value property or direct string
     if (actor.system?.details?.type) {
       const typeData = actor.system.details.type;
-      info.type = typeData.value || null;
-      info.subtype = typeData.subtype || null;
-      info.custom = typeData.custom || null;
+      if (typeof typeData === 'string') {
+        info.type = typeData || null;
+      } else if (typeof typeData === 'object') {
+        info.type = typeData.value || typeData.label || null;
+        info.subtype = typeData.subtype || null;
+        info.custom = typeData.custom || null;
+      }
+    }
+
+    // Fallback: check for creatureType field (some systems use this)
+    if (!info.type && actor.system?.details?.creatureType) {
+      info.type = actor.system.details.creatureType;
+    }
+
+    // Debug log to help troubleshoot type extraction issues
+    if (!info.type) {
+      console.warn(`${MODULE_ID} | Could not extract creature type for ${actor.name}. Details:`, actor.system?.details);
     }
 
     // Get race if available
