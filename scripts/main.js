@@ -717,6 +717,149 @@ function createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir
 }
 
 /**
+ * Get ALL images from TVA cache for folder-based filtering
+ * Returns array of {path, name, source} objects
+ */
+async function getAllTVAImages() {
+  const api = TokenReplacerFA.tvaAPI;
+  if (!api) return [];
+
+  try {
+    // Method 1: Try to access TVA's internal caches directly
+    const tvaModule = game.modules.get('token-variants');
+    if (tvaModule?.api?.caches) {
+      const allImages = [];
+      const caches = tvaModule.api.caches;
+
+      // TVA caches is typically a Map or object with cached search results
+      if (caches instanceof Map) {
+        for (const [key, value] of caches.entries()) {
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const path = extractPathFromTVAResult(item);
+              if (path) {
+                allImages.push({
+                  path: path,
+                  name: extractNameFromTVAResult(item, path),
+                  source: 'tva'
+                });
+              }
+            }
+          }
+        }
+      } else if (typeof caches === 'object') {
+        for (const [key, value] of Object.entries(caches)) {
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const path = extractPathFromTVAResult(item);
+              if (path) {
+                allImages.push({
+                  path: path,
+                  name: extractNameFromTVAResult(item, path),
+                  source: 'tva'
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (allImages.length > 0) {
+        console.log(`${MODULE_ID} | Got ${allImages.length} images from TVA caches`);
+        return allImages;
+      }
+    }
+
+    // Method 2: Do a broad search with wildcard/empty to get many results
+    // Try searching with "*" which some APIs treat as wildcard
+    console.log(`${MODULE_ID} | Trying broad TVA search...`);
+    const broadResults = await api.doImageSearch('*', {
+      searchType: 'Portrait',
+      simpleResults: false
+    });
+
+    if (broadResults) {
+      const allImages = [];
+
+      if (Array.isArray(broadResults)) {
+        for (const item of broadResults) {
+          const path = extractPathFromTVAResult(item);
+          if (path) {
+            allImages.push({
+              path: path,
+              name: extractNameFromTVAResult(item, path),
+              source: 'tva'
+            });
+          }
+        }
+      } else if (broadResults instanceof Map) {
+        for (const [key, value] of broadResults.entries()) {
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const path = extractPathFromTVAResult(item);
+              if (path) {
+                allImages.push({
+                  path: path,
+                  name: extractNameFromTVAResult(item, path),
+                  source: 'tva'
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (allImages.length > 0) {
+        console.log(`${MODULE_ID} | Got ${allImages.length} images from broad TVA search`);
+        return allImages;
+      }
+    }
+
+    return [];
+  } catch (error) {
+    console.error(`${MODULE_ID} | Error getting all TVA images:`, error);
+    return [];
+  }
+}
+
+/**
+ * Filter images by folder path
+ * Returns images that are inside the specified category folder
+ */
+function filterByFolderPath(images, categoryType) {
+  if (!images || !categoryType) return [];
+
+  const categoryLower = categoryType.toLowerCase();
+  const categoryTerms = PRIMARY_CATEGORY_TERMS[categoryLower] || [categoryLower];
+
+  console.log(`${MODULE_ID} | Filtering ${images.length} images for folder: ${categoryType}`);
+
+  const filtered = images.filter(img => {
+    if (!img.path) return false;
+    const pathLower = img.path.toLowerCase();
+
+    // Check if path contains category folder
+    // Match patterns like: /Humanoid/, /humanoid/, Humanoid/, etc.
+    for (const term of categoryTerms) {
+      const termLower = term.toLowerCase();
+      // Check for folder patterns
+      if (pathLower.includes(`/${termLower}/`) ||
+          pathLower.includes(`/${termLower}s/`) ||
+          pathLower.startsWith(`${termLower}/`) ||
+          pathLower.startsWith(`${termLower}s/`) ||
+          pathLower.includes(`\\${termLower}\\`) ||
+          pathLower.includes(`\\${termLower}s\\`)) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  console.log(`${MODULE_ID} | Filtered to ${filtered.length} images in ${categoryType} folder`);
+  return filtered;
+}
+
+/**
  * Search using Token Variant Art API
  */
 async function searchTVA(searchTerm) {
@@ -1750,31 +1893,41 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
     // Otherwise, fall through to category search
   }
 
-  // Category-based search - use PRIMARY terms only (not extended mappings)
-  // This ensures "Browse All Humanoid" shows only humanoid folder, not elf/dwarf/wizard etc.
-  const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
+  // Category-based search - use FOLDER PATH filtering
+  // This ensures "Browse All Humanoid" shows everything INSIDE the Humanoid folder and subfolders
+  console.log(`${MODULE_ID} | Starting folder-based search for category: ${categoryType}`);
 
-  if (!primaryTerms) {
-    console.log(`${MODULE_ID} | No primary terms found for category: ${categoryType}`);
-    return results;
-  }
-
-  console.log(`${MODULE_ID} | Searching ${primaryTerms.length} PRIMARY terms for ${categoryType}: ${primaryTerms.join(', ')}`);
-
-  // Search TVA for PRIMARY category terms only
   if (TokenReplacerFA.hasTVA) {
-    let searchIndex = 0;
-    for (const term of primaryTerms) {
-      searchIndex++;
-      console.log(`${MODULE_ID} | Searching term ${searchIndex}/${primaryTerms.length}: "${term}"`);
-      const tvaResults = await searchTVA(term);
-      console.log(`${MODULE_ID} | Found ${tvaResults.length} results for "${term}"`);
-      for (const result of tvaResults) {
+    // First try to get all images and filter by folder path
+    console.log(`${MODULE_ID} | Getting all TVA images for folder filtering...`);
+    const allImages = await getAllTVAImages();
+
+    if (allImages.length > 0) {
+      // Filter by folder path
+      const folderFiltered = filterByFolderPath(allImages, categoryType);
+      for (const result of folderFiltered) {
         if (!results.find(r => r.path === result.path)) {
           results.push(result);
         }
       }
-      await yieldToMain(10);
+      console.log(`${MODULE_ID} | Folder filtering found ${results.length} results`);
+    }
+
+    // If folder filtering didn't work well, fall back to term search
+    if (results.length < 10) {
+      console.log(`${MODULE_ID} | Folder filtering found few results, trying term search as fallback...`);
+      const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
+      if (primaryTerms) {
+        for (const term of primaryTerms) {
+          console.log(`${MODULE_ID} | Fallback search for term: "${term}"`);
+          const tvaResults = await searchTVA(term);
+          for (const result of tvaResults) {
+            if (!results.find(r => r.path === result.path)) {
+              results.push(result);
+            }
+          }
+        }
+      }
     }
     console.log(`${MODULE_ID} | TVA search complete, total unique results: ${results.length}`);
   } else {
