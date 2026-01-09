@@ -1276,49 +1276,35 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
   const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
 
-  if (subtypeTerms.length > 0 && !isGenericSubtype) {
-    // Case 2: Specific subtypes - ONLY search for those exact terms
-    // e.g., "Humanoid (Dwarf, Monk)" → search "dwarf" and "monk" only
-    console.log(`${MODULE_ID} | Auto-detection: Specific subtypes found (${subtypeTerms.join(', ')}), searching ONLY these terms`);
+  if (subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type) {
+    // Case 2: Specific subtypes with category
+    // e.g., "Humanoid (Dwarf, Monk)" → get Humanoid category AND filter by "dwarf" OR "monk"
+    console.log(`${MODULE_ID} | Auto-detection: Category "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
+    console.log(`${MODULE_ID} | Logic: (${creatureInfo.type}) AND (${subtypeTerms.join(' OR ')})`);
 
-    if (TokenReplacerFA.hasTVA) {
-      for (const term of subtypeTerms) {
-        if (searchTerms.includes(term.toLowerCase())) continue;
+    // First, get all results from the category
+    const categoryResults = await searchByCategory(creatureInfo.type, localIndex);
+    console.log(`${MODULE_ID} | Category "${creatureInfo.type}" returned ${categoryResults.length} results`);
 
-        console.log(`${MODULE_ID} | Searching subtype term: "${term}"`);
-        const subtypeResults = await searchTVA(term);
-        console.log(`${MODULE_ID} | Found ${subtypeResults.length} results for "${term}"`);
+    // Then filter by subtype terms (must match at least one)
+    const filteredResults = categoryResults.filter(result => {
+      const nameLower = (result.name || '').toLowerCase();
+      const pathLower = (result.path || '').toLowerCase();
+      // Check if name or path contains any of the subtype terms
+      return subtypeTerms.some(term =>
+        nameLower.includes(term) || pathLower.includes(term)
+      );
+    });
 
-        for (const result of subtypeResults) {
-          if (!results.find(r => r.path === result.path)) {
-            results.push({
-              ...result,
-              score: result.score ?? 0.4,
-              fromSubtype: true
-            });
-          }
-        }
-      }
-    }
+    console.log(`${MODULE_ID} | After subtype filter: ${filteredResults.length} results match (${subtypeTerms.join(' OR ')})`);
 
-    // Also search local index for subtype terms
-    if (localIndex && localIndex.length > 0) {
-      for (const term of subtypeTerms) {
-        const termLower = term.toLowerCase();
-        const localMatches = localIndex.filter(img =>
-          img.name?.toLowerCase().includes(termLower) ||
-          img.fileName?.toLowerCase().includes(termLower)
-        );
-        for (const match of localMatches) {
-          if (!results.find(r => r.path === match.path)) {
-            results.push({
-              ...match,
-              source: 'local',
-              score: match.score ?? 0.4,
-              fromSubtype: true
-            });
-          }
-        }
+    for (const result of filteredResults) {
+      if (!results.find(r => r.path === result.path)) {
+        results.push({
+          ...result,
+          score: result.score ?? 0.4,
+          fromSubtype: true
+        });
       }
     }
 
