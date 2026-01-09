@@ -1388,9 +1388,11 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
       }).join('')}
     </div>
 
+    ${showMultiSelect ? `
     <div class="token-replacer-fa-selection-info">
       <span class="selection-count">1 selezionata</span>
     </div>
+    ` : ''}
 
     <div class="token-replacer-fa-selection-buttons">
       <button type="button" class="select-btn" data-action="select">
@@ -1413,10 +1415,11 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
  * - null (skip)
  * - 'cancel'
  */
-function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
+function setupMatchSelectionHandlers(dialogElement) {
   return new Promise((resolve) => {
     const container = dialogElement.querySelector('.dialog-content');
     if (!container) {
+      console.warn(`${MODULE_ID} | No dialog-content found`);
       resolve(null);
       return;
     }
@@ -1424,6 +1427,8 @@ function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
     let assignmentMode = 'sequential';
     const matchGrid = container.querySelector('.token-replacer-fa-match-select');
     const multiSelectEnabled = matchGrid?.dataset.multiselect === 'true';
+
+    console.log(`${MODULE_ID} | Selection mode: ${multiSelectEnabled ? 'multi-select' : 'single-select'}`);
 
     // Update selection count display
     const updateSelectionCount = () => {
@@ -1441,6 +1446,7 @@ function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
         modeButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         assignmentMode = btn.dataset.mode;
+        console.log(`${MODULE_ID} | Assignment mode changed to: ${assignmentMode}`);
       });
     });
 
@@ -1461,12 +1467,12 @@ function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
           // Single-select mode
           options.forEach(o => o.classList.remove('selected'));
           option.classList.add('selected');
-          updateSelectionCount();
         }
       });
 
       option.addEventListener('dblclick', () => {
         // Double-click always selects just this one and confirms
+        console.log(`${MODULE_ID} | Double-click selection: ${option.dataset.path}`);
         resolve({
           paths: [option.dataset.path],
           mode: 'sequential'
@@ -1483,6 +1489,7 @@ function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
       selectBtn.addEventListener('click', () => {
         const selectedOptions = container.querySelectorAll('.match-option.selected');
         const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+        console.log(`${MODULE_ID} | Selected ${paths.length} artwork(s), mode: ${assignmentMode}`);
         if (paths.length > 0) {
           resolve({ paths, mode: assignmentMode });
         } else {
@@ -1492,11 +1499,17 @@ function setupMatchSelectionHandlers(dialogElement, isMultiSelect = false) {
     }
 
     if (skipBtn) {
-      skipBtn.addEventListener('click', () => resolve(null));
+      skipBtn.addEventListener('click', () => {
+        console.log(`${MODULE_ID} | User skipped selection`);
+        resolve(null);
+      });
     }
 
     if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => resolve('cancel'));
+      cancelBtn.addEventListener('click', () => {
+        console.log(`${MODULE_ID} | User cancelled`);
+        resolve('cancel');
+      });
     }
   });
 }
@@ -1835,6 +1848,10 @@ async function processTokenReplacement() {
     const shuffledPaths = assignmentMode === 'random' && selectedPaths
       ? [...selectedPaths].sort(() => Math.random() - 0.5)
       : selectedPaths;
+
+    if (shuffledPaths && shuffledPaths.length > 0) {
+      console.log(`${MODULE_ID} | Applying ${shuffledPaths.length} artwork(s) to ${tokens.length} token(s) [${assignmentMode}]`);
+    }
 
     for (const token of tokens) {
       if (cancelled || !mainDialog) break;
