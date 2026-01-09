@@ -1567,12 +1567,13 @@ async function replaceTokenImage(token, imagePath) {
  * Create match selection HTML (for embedding in main dialog)
  * Supports multi-select for variations with sequential/random assignment
  */
-function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
+function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, showSearchFilter = false) {
   const safeName = escapeHtml(creatureInfo.actorName);
   const safeType = escapeHtml(creatureInfo.type || 'Unknown');
   const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
   const showMultiSelect = tokenCount > 1;
   const creatureTypeDisplay = creatureInfo.type ? creatureInfo.type.charAt(0).toUpperCase() + creatureInfo.type.slice(1) : '';
+  const totalCount = matches.length;
 
   return `
     <div class="token-replacer-fa-token-preview">
@@ -1583,6 +1584,16 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
         ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
       </div>
     </div>
+
+    ${showSearchFilter ? `
+    <div class="token-replacer-fa-search-filter">
+      <div class="search-input-wrapper">
+        <i class="fas fa-search"></i>
+        <input type="text" class="search-filter-input" placeholder="Filter artwork..." autocomplete="off">
+      </div>
+      <div class="result-count">Showing <span class="visible-count">${totalCount}</span> of <span class="total-count">${totalCount}</span> results</div>
+    </div>
+    ` : ''}
 
     ${showMultiSelect ? `
     <div class="token-replacer-fa-mode-toggle">
@@ -1599,7 +1610,7 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
     </div>
     ` : ''}
 
-    <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}">
+    <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}" data-total="${totalCount}">
       ${matches.map((match, idx) => {
         const safeMatchName = escapeHtml(match.name);
         const safePath = escapeHtml(match.path);
@@ -1607,7 +1618,7 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
           ? `${Math.round((1 - match.score) * 100)}%`
           : escapeHtml(match.source || '');
         return `
-          <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}">
+          <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
             <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
             <div class="match-name">${safeMatchName}</div>
             <div class="match-score">${scoreDisplay}</div>
@@ -2126,6 +2137,51 @@ function setupMatchSelectionHandlers(dialogElement) {
       }
     };
 
+    // Setup search filter
+    const searchInput = container.querySelector('.search-filter-input');
+    const visibleCountEl = container.querySelector('.visible-count');
+    if (searchInput) {
+      let debounceTimer = null;
+      searchInput.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const filterText = searchInput.value.toLowerCase().trim();
+          const allOptions = container.querySelectorAll('.match-option');
+          let visibleCount = 0;
+
+          allOptions.forEach(option => {
+            const name = option.dataset.name || '';
+            const path = option.dataset.path?.toLowerCase() || '';
+            const matches = !filterText || name.includes(filterText) || path.includes(filterText);
+
+            if (matches) {
+              option.style.display = '';
+              visibleCount++;
+            } else {
+              option.style.display = 'none';
+              option.classList.remove('selected');
+            }
+          });
+
+          // Update visible count
+          if (visibleCountEl) {
+            visibleCountEl.textContent = visibleCount;
+          }
+
+          // Ensure at least one visible option is selected
+          const visibleSelected = container.querySelectorAll('.match-option:not([style*="display: none"]).selected');
+          if (visibleSelected.length === 0) {
+            const firstVisible = container.querySelector('.match-option:not([style*="display: none"])');
+            if (firstVisible) {
+              firstVisible.classList.add('selected');
+            }
+          }
+
+          updateSelectionCount();
+        }, 150);
+      });
+    }
+
     // Handle mode toggle buttons
     const modeButtons = container.querySelectorAll('.mode-btn');
     modeButtons.forEach(btn => {
@@ -2539,8 +2595,22 @@ async function processTokenReplacement() {
       // High confidence match, auto-replace all tokens of this type
       selectedPaths = [bestMatch.path];
     } else if (confirmReplace) {
+      // Check if results are primarily from category (generic subtype like "Any race")
+      const isCategoryResults = matches.length > 50 && matches.some(m => m.fromCategory);
+
+      // For category results, show search filter and hide Browse All button
+      const displayCreatureInfo = isCategoryResults ? {
+        ...creatureInfo,
+        type: null // Hide Browse All button - we're already showing all category results
+      } : creatureInfo;
+
       // Show selection UI in the SAME dialog (pass token count for multi-select)
-      updateMainDialogContent(createMatchSelectionHTML(creatureInfo, matches, tokens.length));
+      updateMainDialogContent(createMatchSelectionHTML(
+        displayCreatureInfo,
+        matches,
+        tokens.length,
+        isCategoryResults // Show search filter for category results
+      ));
       await yieldToMain(50);
 
       // Wait for user selection
@@ -2583,7 +2653,8 @@ async function processTokenReplacement() {
             updateMainDialogContent(createMatchSelectionHTML(
               categoryCreatureInfo,
               categoryResults,
-              tokens.length
+              tokens.length,
+              true // Show search filter for category results
             ));
             await yieldToMain(50);
 
