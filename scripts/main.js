@@ -1105,10 +1105,56 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
     }
   }
 
-  // INTELLIGENT AUTO-DETECTION: If subtype is generic (e.g., "any race", "any", "various"),
-  // automatically include category-based results to give users more options
+  // INTELLIGENT AUTO-DETECTION for subtypes
+  // Case 1: Generic subtype ("any race", "any") → include category-based results
+  // Case 2: Specific subtypes ("Monk, Human, Elf") → search for those specific terms
   const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
-  if (isGenericSubtype && creatureInfo.type) {
+  const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
+
+  if (subtypeTerms.length > 0 && !isGenericSubtype) {
+    // Case 2: Specific subtypes - search for each term
+    console.log(`${MODULE_ID} | Auto-detection: Specific subtypes found (${subtypeTerms.join(', ')}), searching for each`);
+
+    if (TokenReplacerFA.hasTVA) {
+      for (const term of subtypeTerms) {
+        // Skip if we already searched this term
+        if (searchTerms.includes(term.toLowerCase())) continue;
+
+        const subtypeResults = await searchTVA(term);
+        for (const result of subtypeResults) {
+          if (!results.find(r => r.path === result.path)) {
+            results.push({
+              ...result,
+              score: result.score ?? 0.4, // Give subtype results good score
+              fromSubtype: true
+            });
+          }
+        }
+      }
+    }
+
+    // Also search local index for subtype terms
+    if (localIndex && localIndex.length > 0) {
+      for (const term of subtypeTerms) {
+        const termLower = term.toLowerCase();
+        const localMatches = localIndex.filter(img =>
+          img.name?.toLowerCase().includes(termLower) ||
+          img.fileName?.toLowerCase().includes(termLower)
+        );
+        for (const match of localMatches.slice(0, 10)) {
+          if (!results.find(r => r.path === match.path)) {
+            results.push({
+              ...match,
+              source: 'local',
+              score: match.score ?? 0.4,
+              fromSubtype: true
+            });
+          }
+        }
+      }
+    }
+  } else if (isGenericSubtype && creatureInfo.type) {
+    // Case 1: Generic subtype - include category-based results
     console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), adding ${creatureInfo.type} category results`);
 
     // Get category mappings for the creature type
@@ -1162,14 +1208,24 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
     console.log(`${MODULE_ID} | Filtered out ${results.length - validResults.length} invalid results`);
   }
 
-  // Sort: name-based matches first (lower score), then category matches
+  // Sort: name-based matches first, then subtype matches, then category matches
   // Within each group, sort by score
   validResults.sort((a, b) => {
-    // Name-based matches (fromCategory=false/undefined) come first
+    // Priority: name matches > subtype matches > category matches
+    const aIsSubtype = a.fromSubtype === true;
+    const bIsSubtype = b.fromSubtype === true;
     const aIsCategory = a.fromCategory === true;
     const bIsCategory = b.fromCategory === true;
-    if (!aIsCategory && bIsCategory) return -1;
-    if (aIsCategory && !bIsCategory) return 1;
+    const aIsName = !aIsSubtype && !aIsCategory;
+    const bIsName = !bIsSubtype && !bIsCategory;
+
+    // Name matches come first
+    if (aIsName && !bIsName) return -1;
+    if (!aIsName && bIsName) return 1;
+
+    // Then subtype matches
+    if (aIsSubtype && bIsCategory) return -1;
+    if (aIsCategory && bIsSubtype) return 1;
 
     // Then apply priority preference within the group
     if (priority === 'faNexus') {
