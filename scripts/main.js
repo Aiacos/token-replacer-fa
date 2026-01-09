@@ -1779,10 +1779,7 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
       </div>
 
       <div class="category-results" style="display: none;">
-        <div class="category-results-loading" style="display: none;">
-          <i class="fas fa-spinner fa-spin"></i>
-          <span>${TokenReplacerFA.i18n('dialog.searching', { name: '' })}</span>
-        </div>
+        <div class="category-results-loading" style="display: none;"></div>
         <div class="token-replacer-fa-search-filter category-filter" style="display: none;">
           <div class="search-input-wrapper">
             <i class="fas fa-search"></i>
@@ -1824,18 +1821,55 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
 }
 
 /**
+ * Create HTML for category search progress bar
+ * Shows current term on left, percentage on right
+ */
+function createSearchProgressHTML(categoryType, progress) {
+  const { current, total, term, resultsFound } = progress;
+  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+  const safeTerm = escapeHtml(term || '');
+  const safeCategory = escapeHtml(categoryType || '');
+
+  return `
+    <div class="token-replacer-fa-search-progress">
+      <div class="search-progress-header">
+        <i class="fas fa-search fa-spin"></i>
+        <span>Searching ${safeCategory} artwork...</span>
+      </div>
+      <div class="search-progress-bar-container">
+        <div class="search-progress-info">
+          <span class="search-term">Searching: <strong>${safeTerm}</strong></span>
+          <span class="search-percent">${percent}%</span>
+        </div>
+        <div class="search-progress-bar">
+          <div class="search-progress-fill" style="width: ${percent}%"></div>
+        </div>
+        <div class="search-progress-stats">
+          <span>${current} / ${total} terms</span>
+          <span>${resultsFound} results found</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Search for images by creature type category or direct term
  * Returns results from TVA filtered by category folder names
  * @param {string} categoryType - The creature type category (e.g., "humanoid")
  * @param {Array} localIndex - Local image index
  * @param {string} directSearchTerm - Optional direct search term (e.g., "dwarf", "monk")
+ * @param {Function} progressCallback - Optional callback for progress updates: {current, total, term, resultsFound}
  */
-async function searchByCategory(categoryType, localIndex, directSearchTerm = null) {
+async function searchByCategory(categoryType, localIndex, directSearchTerm = null, progressCallback = null) {
   console.log(`${MODULE_ID} | searchByCategory START - type: ${categoryType}, directSearch: ${directSearchTerm}`);
   const results = [];
 
   // If we have a direct search term (subtype), search for that first
   if (directSearchTerm) {
+    if (progressCallback) {
+      progressCallback({ current: 0, total: 1, term: directSearchTerm, resultsFound: 0 });
+    }
 
     if (TokenReplacerFA.hasTVA) {
       const tvaResults = await searchTVA(directSearchTerm);
@@ -1864,6 +1898,10 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
       }
     }
 
+    if (progressCallback) {
+      progressCallback({ current: 1, total: 1, term: directSearchTerm, resultsFound: results.length });
+    }
+
     // If we found results with direct term, return them
     if (results.length > 0) {
       return results.slice(0, 50);
@@ -1881,13 +1919,25 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
 
     if (categoryTerms) {
       console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType}`);
+      const totalTerms = categoryTerms.length;
 
       let searchCount = 0;
       for (const term of categoryTerms) {
         searchCount++;
+
+        // Report progress
+        if (progressCallback) {
+          progressCallback({
+            current: searchCount,
+            total: totalTerms,
+            term: term,
+            resultsFound: results.length
+          });
+        }
+
         // Log progress every 10 terms
-        if (searchCount % 10 === 0 || searchCount === categoryTerms.length) {
-          console.log(`${MODULE_ID} | Search progress: ${searchCount}/${categoryTerms.length} terms`);
+        if (searchCount % 10 === 0 || searchCount === totalTerms) {
+          console.log(`${MODULE_ID} | Search progress: ${searchCount}/${totalTerms} terms, ${results.length} results`);
         }
 
         const tvaResults = await searchTVA(term);
@@ -1898,8 +1948,8 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
         }
 
         // Yield to main thread periodically to keep UI responsive
-        if (searchCount % 5 === 0) {
-          await yieldToMain(10);
+        if (searchCount % 3 === 0) {
+          await yieldToMain(5);
         }
       }
     } else {
@@ -1907,7 +1957,20 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
       const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
       if (primaryTerms) {
         console.log(`${MODULE_ID} | No full mapping, using ${primaryTerms.length} primary terms`);
+        const totalTerms = primaryTerms.length;
+        let searchCount = 0;
+
         for (const term of primaryTerms) {
+          searchCount++;
+          if (progressCallback) {
+            progressCallback({
+              current: searchCount,
+              total: totalTerms,
+              term: term,
+              resultsFound: results.length
+            });
+          }
+
           const tvaResults = await searchTVA(term);
           for (const result of tvaResults) {
             if (!results.find(r => r.path === result.path)) {
@@ -1924,6 +1987,10 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
 
   // Also search local index by category
   if (localIndex && localIndex.length > 0) {
+    if (progressCallback) {
+      progressCallback({ current: 0, total: 1, term: 'local index', resultsFound: results.length });
+    }
+
     const categoryMatches = localIndex.filter(img =>
       img.category && folderMatchesCreatureType(img.category, categoryType)
     );
@@ -2144,14 +2211,19 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
           return;
         }
 
-        // Show loading
+        // Show loading with progress bar
         resultsContainer.style.display = 'block';
-        loadingEl.style.display = 'flex';
+        loadingEl.style.display = 'block';
+        loadingEl.innerHTML = createSearchProgressHTML(selectedType, {
+          current: 0, total: 1, term: 'initializing...', resultsFound: 0
+        });
         matchGrid.innerHTML = '';
         selectBtn.disabled = true;
 
-        // Search by category
-        const results = await searchByCategory(selectedType, localIndex);
+        // Search by category with progress updates
+        const results = await searchByCategory(selectedType, localIndex, null, (progress) => {
+          loadingEl.innerHTML = createSearchProgressHTML(selectedType, progress);
+        });
         displayResults(results);
       });
     }
@@ -2690,19 +2762,16 @@ async function processTokenReplacement() {
           const browseType = selectionResult.type;
           console.log(`${MODULE_ID} | Browse All clicked for: ${browseType}`);
 
-          // Show loading message
-          updateMainDialogContent(`
-            <div class="token-replacer-fa-scan-progress">
-              <div class="scan-status">
-                <i class="fas fa-search fa-spin"></i>
-                <span>Searching all ${browseType} artwork...</span>
-              </div>
-            </div>
-          `);
+          // Show initial progress
+          updateMainDialogContent(createSearchProgressHTML(browseType, {
+            current: 0, total: 1, term: 'initializing...', resultsFound: 0
+          }));
           await yieldToMain(50);
 
-          // Search by category
-          const categoryResults = await searchByCategory(browseType, localIndex);
+          // Search by category with progress updates
+          const categoryResults = await searchByCategory(browseType, localIndex, null, (progress) => {
+            updateMainDialogContent(createSearchProgressHTML(browseType, progress));
+          });
           console.log(`${MODULE_ID} | Browse All found ${categoryResults.length} results for ${browseType}`);
 
           if (categoryResults.length > 0) {

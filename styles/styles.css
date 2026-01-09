@@ -600,6 +600,93 @@
 }
 
 /* ============================================
+   SEARCH PROGRESS BAR (Category Search)
+   ============================================ */
+.token-replacer-fa-search-progress {
+  padding: 16px;
+}
+
+.token-replacer-fa-search-progress .search-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #fff;
+}
+
+.token-replacer-fa-search-progress .search-progress-header i {
+  color: #4ade80;
+  font-size: 16px;
+}
+
+.token-replacer-fa-search-progress .search-progress-bar-container {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.token-replacer-fa-search-progress .search-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.token-replacer-fa-search-progress .search-term {
+  font-size: 12px;
+  color: #aaa;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-replacer-fa-search-progress .search-term strong {
+  color: #4ade80;
+}
+
+.token-replacer-fa-search-progress .search-percent {
+  font-size: 14px;
+  font-weight: 700;
+  color: #4ade80;
+  margin-left: 12px;
+  min-width: 45px;
+  text-align: right;
+}
+
+.token-replacer-fa-search-progress .search-progress-bar {
+  width: 100%;
+  height: 12px;
+  background-color: #1a1a1a;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #333;
+}
+
+.token-replacer-fa-search-progress .search-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  transition: width 0.15s ease;
+  border-radius: 6px;
+}
+
+.token-replacer-fa-search-progress .search-progress-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #666;
+}
+
+.token-replacer-fa-search-progress .search-progress-stats span:last-child {
+  color: #4ade80;
+}
+
+/* ============================================
    PARALLEL BATCH STYLES
    ============================================ */
 .token-replacer-fa-scan-progress .parallel-batch {
