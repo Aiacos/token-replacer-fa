@@ -70,7 +70,8 @@
       "selectType": "-- Seleziona un tipo --",
       "searchCategory": "Cerca",
       "selectTypeFirst": "Seleziona prima un tipo di creatura",
-      "noResultsInCategory": "Nessuna artwork trovata in questa categoria"
+      "noResultsInCategory": "Nessuna artwork trovata in questa categoria",
+      "searchBySubtype": "Ricerca rapida per sottotipo:"
     },
     "notifications": {
       "started": "Inizio sostituzione token art...",

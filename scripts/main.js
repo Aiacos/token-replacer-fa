@@ -1406,8 +1406,33 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
 }
 
 /**
+ * Parse subtype string to extract individual terms
+ * Filters out generic terms like "any", "any-race", etc.
+ */
+function parseSubtypeTerms(subtype) {
+  if (!subtype) return [];
+
+  // Generic terms to ignore
+  const genericTerms = ['any', 'any-race', 'any race', 'anyrace', 'various', 'none', 'unknown'];
+
+  // Split by comma, semicolon, or "and"
+  const parts = subtype.split(/[,;]|\s+and\s+/i)
+    .map(p => p.trim().toLowerCase())
+    .filter(p => p.length > 0);
+
+  // Filter out generic terms
+  const validTerms = parts.filter(term => {
+    const termLower = term.toLowerCase();
+    return !genericTerms.some(g => termLower.includes(g));
+  });
+
+  return validTerms;
+}
+
+/**
  * Create HTML for no-match scenario with creature type dropdown
  * Allows user to browse by category when fuzzy search fails
+ * Also shows quick search buttons for subtypes (e.g., Dwarf, Monk)
  */
 function createNoMatchHTML(creatureInfo, tokenCount = 1) {
   const safeName = escapeHtml(creatureInfo.actorName);
@@ -1416,6 +1441,10 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
 
   // Build creature type options from CREATURE_TYPE_MAPPINGS
   const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort();
+
+  // Parse subtypes for quick search buttons
+  const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
+  const hasValidSubtypes = subtypeTerms.length > 0;
 
   return `
     <div class="token-replacer-fa-token-preview">
@@ -1432,6 +1461,20 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
         <i class="fas fa-search-minus"></i>
         <span>${TokenReplacerFA.i18n('dialog.noMatch', { name: creatureInfo.actorName })}</span>
       </div>
+
+      ${hasValidSubtypes ? `
+      <div class="subtype-search">
+        <label>${TokenReplacerFA.i18n('dialog.searchBySubtype')}</label>
+        <div class="subtype-buttons">
+          ${subtypeTerms.map(term => {
+            const displayName = term.charAt(0).toUpperCase() + term.slice(1);
+            return `<button type="button" class="subtype-search-btn" data-subtype="${escapeHtml(term)}">
+              <i class="fas fa-search"></i> ${escapeHtml(displayName)}
+            </button>`;
+          }).join('')}
+        </div>
+      </div>
+      ` : ''}
 
       <div class="category-search">
         <label for="creature-type-select">${TokenReplacerFA.i18n('dialog.browseByType')}</label>
@@ -1487,16 +1530,61 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
 }
 
 /**
- * Search for images by creature type category
+ * Search for images by creature type category or direct term
  * Returns results from TVA filtered by category folder names
+ * @param {string} categoryType - The creature type category (e.g., "humanoid")
+ * @param {Array} localIndex - Local image index
+ * @param {string} directSearchTerm - Optional direct search term (e.g., "dwarf", "monk")
  */
-async function searchByCategory(categoryType, localIndex) {
+async function searchByCategory(categoryType, localIndex, directSearchTerm = null) {
   const results = [];
-  const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType.toLowerCase()];
+
+  // If we have a direct search term (subtype), search for that first
+  if (directSearchTerm) {
+    console.log(`${MODULE_ID} | Searching for subtype: ${directSearchTerm}`);
+
+    if (TokenReplacerFA.hasTVA) {
+      const tvaResults = await searchTVA(directSearchTerm);
+      for (const result of tvaResults) {
+        if (!results.find(r => r.path === result.path)) {
+          results.push(result);
+        }
+      }
+    }
+
+    // Also search local index for the term
+    if (localIndex && localIndex.length > 0) {
+      const termLower = directSearchTerm.toLowerCase();
+      const localMatches = localIndex.filter(img =>
+        img.name?.toLowerCase().includes(termLower) ||
+        img.fileName?.toLowerCase().includes(termLower) ||
+        img.category?.toLowerCase().includes(termLower)
+      );
+      for (const match of localMatches) {
+        if (!results.find(r => r.path === match.path)) {
+          results.push({
+            ...match,
+            source: 'local'
+          });
+        }
+      }
+    }
+
+    // If we found results with direct term, return them
+    if (results.length > 0) {
+      return results.slice(0, 50);
+    }
+
+    // Otherwise, fall through to category search
+    console.log(`${MODULE_ID} | No results for "${directSearchTerm}", falling back to category search`);
+  }
+
+  // Category-based search
+  const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
   if (!categoryMappings) {
     console.warn(`${MODULE_ID} | Unknown creature type: ${categoryType}`);
-    return [];
+    return results.slice(0, 50);
   }
 
   console.log(`${MODULE_ID} | Searching category: ${categoryType}, mappings: ${categoryMappings.join(', ')}`);
@@ -1611,7 +1699,72 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
       });
     };
 
-    // Handle search button click
+    // Helper function to display search results
+    const displayResults = (results) => {
+      loadingEl.style.display = 'none';
+
+      if (results.length === 0) {
+        matchGrid.innerHTML = `
+          <div class="no-results-message">
+            <i class="fas fa-folder-open"></i>
+            <span>${TokenReplacerFA.i18n('dialog.noResultsInCategory')}</span>
+          </div>
+        `;
+        return;
+      }
+
+      // Show results
+      matchGrid.innerHTML = results.map((match, idx) => {
+        const safeMatchName = escapeHtml(match.name);
+        const safePath = escapeHtml(match.path);
+        const scoreDisplay = match.score !== undefined
+          ? `${Math.round((1 - match.score) * 100)}%`
+          : escapeHtml(match.source || '');
+        return `
+          <div class="match-option" data-index="${idx}" data-path="${safePath}">
+            <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
+            <div class="match-name">${safeMatchName}</div>
+            <div class="match-score">${scoreDisplay}</div>
+            <div class="match-check"><i class="fas fa-check"></i></div>
+          </div>
+        `;
+      }).join('');
+
+      // Show mode toggle and selection info for multi-select
+      if (multiSelectEnabled) {
+        if (modeToggle) modeToggle.style.display = 'flex';
+        if (selectionInfo) selectionInfo.style.display = 'block';
+        setupModeButtons();
+      }
+
+      // Setup click handlers for new options
+      setupMatchOptions();
+      updateSelectionCount();
+    };
+
+    // Handle subtype search buttons (e.g., "Dwarf", "Monk")
+    const subtypeButtons = container.querySelectorAll('.subtype-search-btn');
+    subtypeButtons.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const subtype = btn.dataset.subtype;
+        if (!subtype) return;
+
+        console.log(`${MODULE_ID} | Subtype search button clicked: ${subtype}`);
+
+        // Show loading
+        resultsContainer.style.display = 'block';
+        loadingEl.style.display = 'flex';
+        matchGrid.innerHTML = '';
+        selectBtn.disabled = true;
+
+        // Search by subtype (with fallback to creature type category)
+        const results = await searchByCategory(creatureInfo.type, localIndex, subtype);
+
+        displayResults(results);
+      });
+    });
+
+    // Handle search button click (category dropdown)
     if (searchBtn) {
       searchBtn.addEventListener('click', async () => {
         const selectedType = selectEl?.value;
@@ -1629,45 +1782,7 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
         // Search by category
         const results = await searchByCategory(selectedType, localIndex);
 
-        loadingEl.style.display = 'none';
-
-        if (results.length === 0) {
-          matchGrid.innerHTML = `
-            <div class="no-results-message">
-              <i class="fas fa-folder-open"></i>
-              <span>${TokenReplacerFA.i18n('dialog.noResultsInCategory')}</span>
-            </div>
-          `;
-          return;
-        }
-
-        // Show results
-        matchGrid.innerHTML = results.map((match, idx) => {
-          const safeMatchName = escapeHtml(match.name);
-          const safePath = escapeHtml(match.path);
-          const scoreDisplay = match.score !== undefined
-            ? `${Math.round((1 - match.score) * 100)}%`
-            : escapeHtml(match.source || '');
-          return `
-            <div class="match-option" data-index="${idx}" data-path="${safePath}">
-              <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
-              <div class="match-name">${safeMatchName}</div>
-              <div class="match-score">${scoreDisplay}</div>
-              <div class="match-check"><i class="fas fa-check"></i></div>
-            </div>
-          `;
-        }).join('');
-
-        // Show mode toggle and selection info for multi-select
-        if (multiSelectEnabled) {
-          if (modeToggle) modeToggle.style.display = 'flex';
-          if (selectionInfo) selectionInfo.style.display = 'block';
-          setupModeButtons();
-        }
-
-        // Setup click handlers for new options
-        setupMatchOptions();
-        updateSelectionCount();
+        displayResults(results);
       });
     }
 
