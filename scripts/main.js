@@ -1447,17 +1447,34 @@ function parseSubtypeTerms(subtype) {
 }
 
 /**
- * Check if a subtype contains generic terms (e.g., "any race", "any", "various")
+ * Check if a subtype is purely generic (e.g., "any race", "any", "various")
  * Used for intelligent automatic detection of when to include category results
+ * Returns true ONLY if the subtype contains ONLY generic terms (no specific races/classes)
  */
 function hasGenericSubtype(subtype) {
   if (!subtype) return true; // No subtype = treat as generic
 
   const genericTerms = ['any', 'any-race', 'any race', 'anyrace', 'various', 'none', 'unknown'];
-  const subtypeLower = subtype.toLowerCase();
+  const subtypeLower = subtype.toLowerCase().trim();
 
-  // Check if subtype contains any generic term
-  return genericTerms.some(g => subtypeLower.includes(g));
+  // Check if the entire subtype is just a generic term
+  if (genericTerms.some(g => subtypeLower === g)) {
+    return true;
+  }
+
+  // Check if subtype contains ONLY generic terms (no specific values)
+  // Split by comma, semicolon, or "and"
+  const parts = subtypeLower.split(/[,;]|\s+and\s+/i)
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+
+  // If ALL parts are generic, it's generic
+  // If ANY part is specific (not in genericTerms), it's NOT generic
+  const allGeneric = parts.every(part =>
+    genericTerms.some(g => part.includes(g))
+  );
+
+  return allGeneric;
 }
 
 /**
@@ -2276,11 +2293,34 @@ async function processTokenReplacement() {
       // Wait for user selection
       const dialogEl = mainDialog?.element?.[0];
       if (dialogEl) {
-        const selectionResult = await setupMatchSelectionHandlers(dialogEl);
+        let selectionResult = await setupMatchSelectionHandlers(dialogEl);
 
         if (selectionResult === 'cancel') {
           cancelled = true;
           break;
+        }
+
+        // Handle "Browse All [Category]" button click
+        if (selectionResult && selectionResult.action === 'browse') {
+          const browseType = selectionResult.type;
+          // Search by category
+          const categoryResults = await searchByCategory(browseType, localIndex);
+
+          if (categoryResults.length > 0) {
+            // Show category results in the same dialog
+            updateMainDialogContent(createMatchSelectionHTML(
+              { ...creatureInfo, actorName: `${creatureInfo.actorName} (${browseType})` },
+              categoryResults,
+              tokens.length
+            ));
+            await yieldToMain(50);
+
+            // Wait for selection from category results
+            const categoryDialogEl = mainDialog?.element?.[0];
+            if (categoryDialogEl) {
+              selectionResult = await setupMatchSelectionHandlers(categoryDialogEl);
+            }
+          }
         }
 
         if (selectionResult && selectionResult.paths) {
