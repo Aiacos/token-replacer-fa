@@ -1271,55 +1271,31 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   }
 
   // INTELLIGENT AUTO-DETECTION for subtypes
-  // Case 1: Generic subtype ("any race", "any") → include category-based results
-  // Case 2: Specific subtypes ("Monk, Human, Elf") → search for those specific terms
+  // Case 1: Generic subtype ("any race", "any") → use searchByCategory for all category results
+  // Case 2: Specific subtypes ("Monk, Human, Elf") → search ONLY those specific terms
   const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
   const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
 
   if (subtypeTerms.length > 0 && !isGenericSubtype) {
-    // Case 2: Specific subtypes - search for each term AND get category results filtered by subtypes
-    console.log(`${MODULE_ID} | Auto-detection: Specific subtypes found (${subtypeTerms.join(', ')}), searching for each and filtering category`);
+    // Case 2: Specific subtypes - ONLY search for those exact terms
+    // e.g., "Humanoid (Dwarf, Monk)" → search "dwarf" and "monk" only
+    console.log(`${MODULE_ID} | Auto-detection: Specific subtypes found (${subtypeTerms.join(', ')}), searching ONLY these terms`);
 
-    // First, search directly for each subtype term
     if (TokenReplacerFA.hasTVA) {
       for (const term of subtypeTerms) {
-        // Skip if we already searched this term
         if (searchTerms.includes(term.toLowerCase())) continue;
 
+        console.log(`${MODULE_ID} | Searching subtype term: "${term}"`);
         const subtypeResults = await searchTVA(term);
+        console.log(`${MODULE_ID} | Found ${subtypeResults.length} results for "${term}"`);
+
         for (const result of subtypeResults) {
           if (!results.find(r => r.path === result.path)) {
             results.push({
               ...result,
-              score: result.score ?? 0.4, // Give subtype results good score
+              score: result.score ?? 0.4,
               fromSubtype: true
             });
-          }
-        }
-      }
-
-      // Also get ALL category results filtered by subtype terms
-      // e.g., for "Humanoid (Dwarf, Monk)" - get all humanoid tokens that match "dwarf" or "monk"
-      if (creatureInfo.type) {
-        const categoryMappings = CREATURE_TYPE_MAPPINGS[creatureInfo.type?.toLowerCase()];
-        if (categoryMappings) {
-          for (const categoryTerm of categoryMappings) {
-            if (searchTerms.includes(categoryTerm.toLowerCase())) continue;
-
-            const categoryResults = await searchTVA(categoryTerm);
-            for (const result of categoryResults) {
-              // Only include if the result name matches one of the subtype terms
-              const resultNameLower = (result.name || result.path || '').toLowerCase();
-              const matchesSubtype = subtypeTerms.some(st => resultNameLower.includes(st));
-
-              if (matchesSubtype && !results.find(r => r.path === result.path)) {
-                results.push({
-                  ...result,
-                  score: result.score ?? 0.5,
-                  fromSubtype: true
-                });
-              }
-            }
           }
         }
       }
@@ -1344,50 +1320,23 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
           }
         }
       }
-
-      // Also filter category matches by subtype
-      if (creatureInfo.type) {
-        const categoryMatches = localIndex.filter(img =>
-          img.category && folderMatchesCreatureType(img.category, creatureInfo.type)
-        );
-        for (const match of categoryMatches) {
-          const matchNameLower = (match.name || match.fileName || '').toLowerCase();
-          const matchesSubtype = subtypeTerms.some(st => matchNameLower.includes(st));
-
-          if (matchesSubtype && !results.find(r => r.path === match.path)) {
-            results.push({
-              ...match,
-              source: 'local',
-              score: match.score ?? 0.5,
-              fromSubtype: true
-            });
-          }
-        }
-      }
     }
+
+    console.log(`${MODULE_ID} | Subtype search complete, found ${results.length} total results`);
   } else if (isGenericSubtype && creatureInfo.type) {
-    // Case 1: Generic subtype - include ALL category-based results
-    console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), adding ALL ${creatureInfo.type} category results`);
+    // Case 1: Generic subtype - use searchByCategory for comprehensive results
+    console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), using searchByCategory for ${creatureInfo.type}`);
 
-    // Get category mappings for the creature type
-    const categoryMappings = CREATURE_TYPE_MAPPINGS[creatureInfo.type?.toLowerCase()];
-    if (categoryMappings && TokenReplacerFA.hasTVA) {
-      // Search for ALL category terms to get comprehensive results
-      for (const term of categoryMappings) {
-        // Skip if we already searched this term
-        if (searchTerms.includes(term.toLowerCase())) continue;
+    const categoryResults = await searchByCategory(creatureInfo.type, localIndex);
+    console.log(`${MODULE_ID} | searchByCategory returned ${categoryResults.length} results`);
 
-        const categoryResults = await searchTVA(term);
-        for (const result of categoryResults) {
-          if (!results.find(r => r.path === result.path)) {
-            // Mark as category result with slightly lower implicit score
-            results.push({
-              ...result,
-              score: result.score ?? 0.6, // Give category results a moderate score
-              fromCategory: true
-            });
-          }
-        }
+    for (const result of categoryResults) {
+      if (!results.find(r => r.path === result.path)) {
+        results.push({
+          ...result,
+          score: result.score ?? 0.6,
+          fromCategory: true
+        });
       }
     }
 
