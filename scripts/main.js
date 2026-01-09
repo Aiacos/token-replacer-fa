@@ -1401,9 +1401,6 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
       <button type="button" class="skip-btn" data-action="skip">
         <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
       </button>
-      <button type="button" class="cancel-btn" data-action="cancel">
-        <i class="fas fa-times"></i> ${TokenReplacerFA.i18n('dialog.cancel')}
-      </button>
     </div>
   `;
 }
@@ -1483,7 +1480,6 @@ function setupMatchSelectionHandlers(dialogElement) {
     // Handle button clicks
     const selectBtn = container.querySelector('.select-btn');
     const skipBtn = container.querySelector('.skip-btn');
-    const cancelBtn = container.querySelector('.cancel-btn');
 
     if (selectBtn) {
       selectBtn.addEventListener('click', () => {
@@ -1502,13 +1498,6 @@ function setupMatchSelectionHandlers(dialogElement) {
       skipBtn.addEventListener('click', () => {
         console.log(`${MODULE_ID} | User skipped selection`);
         resolve(null);
-      });
-    }
-
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => {
-        console.log(`${MODULE_ID} | User cancelled`);
-        resolve('cancel');
       });
     }
   });

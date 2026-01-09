@@ -291,15 +291,6 @@
   background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
 }
 
-.token-replacer-fa-selection-buttons .cancel-btn {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: #fff;
-}
-
-.token-replacer-fa-selection-buttons .cancel-btn:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-}
-
 /* ============================================
    PROGRESS BAR
    ============================================ */
