@@ -65,7 +65,12 @@
       "skipped": "Skipped",
       "replaceAll": "Replace All",
       "cancel": "Cancel",
-      "close": "Close"
+      "close": "Close",
+      "browseByType": "Browse by creature type:",
+      "selectType": "-- Select a type --",
+      "searchCategory": "Search",
+      "selectTypeFirst": "Please select a creature type first",
+      "noResultsInCategory": "No artwork found in this category"
     },
     "notifications": {
       "started": "Starting token art replacement...",

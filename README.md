@@ -190,6 +190,12 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 
 ## Changelog
 
+### v1.4.0
+- **Category Browser on No Match**: When no fuzzy search matches are found, a dropdown menu now appears allowing you to browse artwork by creature type (Humanoid, Aberration, Beast, Undead, etc.)
+- **Creature Type Detection**: The dropdown pre-selects the creature type from the token's character sheet
+- **Multi-Select in Category Browser**: When browsing by category with multiple tokens, you can select multiple artworks with sequential/random assignment
+- **Improved UX**: Users can now always find artwork even when automatic search fails
+
 ### v1.3.0
 - **Multi-Select Variations**: When multiple artwork variations exist, you can now select multiple and assign them to tokens
 - **Assignment Modes**: Choose between Sequential (default) or Random assignment for variations

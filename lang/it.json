@@ -65,7 +65,12 @@
       "skipped": "Saltato",
       "replaceAll": "Sostituisci Tutti",
       "cancel": "Annulla",
-      "close": "Chiudi"
+      "close": "Chiudi",
+      "browseByType": "Cerca per tipo creatura:",
+      "selectType": "-- Seleziona un tipo --",
+      "searchCategory": "Cerca",
+      "selectTypeFirst": "Seleziona prima un tipo di creatura",
+      "noResultsInCategory": "Nessuna artwork trovata in questa categoria"
     },
     "notifications": {
       "started": "Inizio sostituzione token art...",

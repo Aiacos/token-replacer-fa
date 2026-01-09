@@ -1406,6 +1406,294 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
 }
 
 /**
+ * Create HTML for no-match scenario with creature type dropdown
+ * Allows user to browse by category when fuzzy search fails
+ */
+function createNoMatchHTML(creatureInfo, tokenCount = 1) {
+  const safeName = escapeHtml(creatureInfo.actorName);
+  const safeType = escapeHtml(creatureInfo.type || 'Unknown');
+  const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+
+  // Build creature type options from CREATURE_TYPE_MAPPINGS
+  const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort();
+
+  return `
+    <div class="token-replacer-fa-token-preview">
+      <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
+      <div class="token-info">
+        <div class="token-name">${safeName}</div>
+        <div class="token-type">${safeType} ${safeSubtype}</div>
+        ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
+      </div>
+    </div>
+
+    <div class="token-replacer-fa-no-match">
+      <div class="no-match-message">
+        <i class="fas fa-search-minus"></i>
+        <span>${TokenReplacerFA.i18n('dialog.noMatch', { name: creatureInfo.actorName })}</span>
+      </div>
+
+      <div class="category-search">
+        <label for="creature-type-select">${TokenReplacerFA.i18n('dialog.browseByType')}</label>
+        <select id="creature-type-select" class="creature-type-select">
+          <option value="">${TokenReplacerFA.i18n('dialog.selectType')}</option>
+          ${creatureTypes.map(type => {
+            const selected = type === creatureInfo.type?.toLowerCase() ? 'selected' : '';
+            const displayName = type.charAt(0).toUpperCase() + type.slice(1);
+            return `<option value="${type}" ${selected}>${displayName}</option>`;
+          }).join('')}
+        </select>
+        <button type="button" class="search-category-btn">
+          <i class="fas fa-search"></i> ${TokenReplacerFA.i18n('dialog.searchCategory')}
+        </button>
+      </div>
+
+      <div class="category-results" style="display: none;">
+        <div class="category-results-loading" style="display: none;">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>${TokenReplacerFA.i18n('dialog.searching', { name: '' })}</span>
+        </div>
+        <div class="token-replacer-fa-match-select" data-multiselect="${tokenCount > 1}">
+        </div>
+      </div>
+    </div>
+
+    ${tokenCount > 1 ? `
+    <div class="token-replacer-fa-mode-toggle" style="display: none;">
+      <span class="mode-label">Assegnazione varianti:</span>
+      <div class="mode-buttons">
+        <button type="button" class="mode-btn active" data-mode="sequential">
+          <i class="fas fa-arrow-right"></i> Sequenziale
+        </button>
+        <button type="button" class="mode-btn" data-mode="random">
+          <i class="fas fa-random"></i> Casuale
+        </button>
+      </div>
+    </div>
+    <div class="token-replacer-fa-selection-info" style="display: none;">
+      <span class="selection-count">0 selezionate</span>
+    </div>
+    ` : ''}
+
+    <div class="token-replacer-fa-selection-buttons">
+      <button type="button" class="select-btn" data-action="select" disabled>
+        <i class="fas fa-check"></i> Applica
+      </button>
+      <button type="button" class="skip-btn" data-action="skip">
+        <i class="fas fa-forward"></i> ${TokenReplacerFA.i18n('dialog.skip')}
+      </button>
+    </div>
+  `;
+}
+
+/**
+ * Search for images by creature type category
+ * Returns results from TVA filtered by category folder names
+ */
+async function searchByCategory(categoryType, localIndex) {
+  const results = [];
+  const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType.toLowerCase()];
+
+  if (!categoryMappings) {
+    console.warn(`${MODULE_ID} | Unknown creature type: ${categoryType}`);
+    return [];
+  }
+
+  console.log(`${MODULE_ID} | Searching category: ${categoryType}, mappings: ${categoryMappings.join(', ')}`);
+
+  // Search TVA for each mapping term
+  if (TokenReplacerFA.hasTVA) {
+    for (const term of categoryMappings.slice(0, 3)) { // Limit to first 3 terms
+      const tvaResults = await searchTVA(term);
+      for (const result of tvaResults) {
+        if (!results.find(r => r.path === result.path)) {
+          results.push(result);
+        }
+      }
+      await yieldToMain(10);
+    }
+  }
+
+  // Also search local index by category
+  if (localIndex && localIndex.length > 0) {
+    const categoryMatches = localIndex.filter(img =>
+      img.category && folderMatchesCreatureType(img.category, categoryType)
+    );
+    for (const match of categoryMatches) {
+      if (!results.find(r => r.path === match.path)) {
+        results.push({
+          ...match,
+          source: 'local'
+        });
+      }
+    }
+  }
+
+  // Limit results
+  return results.slice(0, 50);
+}
+
+/**
+ * Setup no-match handlers for category browsing
+ * Returns a Promise that resolves with selected paths or null
+ */
+function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCount) {
+  return new Promise((resolve) => {
+    const container = dialogElement.querySelector('.dialog-content');
+    if (!container) {
+      resolve(null);
+      return;
+    }
+
+    let assignmentMode = 'sequential';
+    const multiSelectEnabled = tokenCount > 1;
+
+    const selectEl = container.querySelector('.creature-type-select');
+    const searchBtn = container.querySelector('.search-category-btn');
+    const resultsContainer = container.querySelector('.category-results');
+    const matchGrid = container.querySelector('.token-replacer-fa-match-select');
+    const loadingEl = container.querySelector('.category-results-loading');
+    const selectBtn = container.querySelector('.select-btn');
+    const skipBtn = container.querySelector('.skip-btn');
+    const modeToggle = container.querySelector('.token-replacer-fa-mode-toggle');
+    const selectionInfo = container.querySelector('.token-replacer-fa-selection-info');
+
+    // Update selection count display
+    const updateSelectionCount = () => {
+      const selectedCount = container.querySelectorAll('.match-option.selected').length;
+      const countEl = container.querySelector('.selection-count');
+      if (countEl) {
+        countEl.textContent = `${selectedCount} selezionat${selectedCount === 1 ? 'a' : 'e'}`;
+      }
+      // Enable/disable select button
+      if (selectBtn) {
+        selectBtn.disabled = selectedCount === 0;
+      }
+    };
+
+    // Handle mode toggle buttons
+    const setupModeButtons = () => {
+      const modeButtons = container.querySelectorAll('.mode-btn');
+      modeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          modeButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          assignmentMode = btn.dataset.mode;
+        });
+      });
+    };
+
+    // Setup match option click handlers
+    const setupMatchOptions = () => {
+      const options = container.querySelectorAll('.match-option');
+      options.forEach(option => {
+        option.addEventListener('click', () => {
+          if (multiSelectEnabled) {
+            option.classList.toggle('selected');
+            const selectedCount = container.querySelectorAll('.match-option.selected').length;
+            if (selectedCount === 0) {
+              option.classList.add('selected');
+            }
+            updateSelectionCount();
+          } else {
+            options.forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            updateSelectionCount();
+          }
+        });
+
+        option.addEventListener('dblclick', () => {
+          resolve({
+            paths: [option.dataset.path],
+            mode: 'sequential'
+          });
+        });
+      });
+    };
+
+    // Handle search button click
+    if (searchBtn) {
+      searchBtn.addEventListener('click', async () => {
+        const selectedType = selectEl?.value;
+        if (!selectedType) {
+          ui.notifications.warn(TokenReplacerFA.i18n('dialog.selectTypeFirst'));
+          return;
+        }
+
+        // Show loading
+        resultsContainer.style.display = 'block';
+        loadingEl.style.display = 'flex';
+        matchGrid.innerHTML = '';
+        selectBtn.disabled = true;
+
+        // Search by category
+        const results = await searchByCategory(selectedType, localIndex);
+
+        loadingEl.style.display = 'none';
+
+        if (results.length === 0) {
+          matchGrid.innerHTML = `
+            <div class="no-results-message">
+              <i class="fas fa-folder-open"></i>
+              <span>${TokenReplacerFA.i18n('dialog.noResultsInCategory')}</span>
+            </div>
+          `;
+          return;
+        }
+
+        // Show results
+        matchGrid.innerHTML = results.map((match, idx) => {
+          const safeMatchName = escapeHtml(match.name);
+          const safePath = escapeHtml(match.path);
+          const scoreDisplay = match.score !== undefined
+            ? `${Math.round((1 - match.score) * 100)}%`
+            : escapeHtml(match.source || '');
+          return `
+            <div class="match-option" data-index="${idx}" data-path="${safePath}">
+              <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
+              <div class="match-name">${safeMatchName}</div>
+              <div class="match-score">${scoreDisplay}</div>
+              <div class="match-check"><i class="fas fa-check"></i></div>
+            </div>
+          `;
+        }).join('');
+
+        // Show mode toggle and selection info for multi-select
+        if (multiSelectEnabled) {
+          if (modeToggle) modeToggle.style.display = 'flex';
+          if (selectionInfo) selectionInfo.style.display = 'block';
+          setupModeButtons();
+        }
+
+        // Setup click handlers for new options
+        setupMatchOptions();
+        updateSelectionCount();
+      });
+    }
+
+    // Handle select button
+    if (selectBtn) {
+      selectBtn.addEventListener('click', () => {
+        const selectedOptions = container.querySelectorAll('.match-option.selected');
+        const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+        if (paths.length > 0) {
+          resolve({ paths, mode: assignmentMode });
+        } else {
+          resolve(null);
+        }
+      });
+    }
+
+    // Handle skip button
+    if (skipBtn) {
+      skipBtn.addEventListener('click', () => {
+        resolve(null);
+      });
+    }
+  });
+}
+
+/**
  * Setup match selection event handlers
  * Returns a Promise that resolves with:
  * - { paths: [array of paths], mode: 'sequential'|'random' }
@@ -1778,16 +2066,65 @@ async function processTokenReplacement() {
 
     const { matches, tokens, creatureInfo } = data;
 
-    // If no matches for this creature type, mark all tokens as failed
+    // If no matches for this creature type, show category browser UI
     if (matches.length === 0) {
-      for (const token of tokens) {
-        tokenIndex++;
-        updateProgress(tokenIndex, npcTokens.length,
-          TokenReplacerFA.i18n('dialog.noMatch', { name: creatureInfo.actorName }), {
-          name: creatureInfo.actorName,
-          status: 'failed'
-        });
+      // Show no-match UI with category dropdown
+      updateMainDialogContent(createNoMatchHTML(creatureInfo, tokens.length));
+      await yieldToMain(50);
+
+      // Wait for user to browse by category or skip
+      const dialogEl = mainDialog?.element?.[0];
+      let selectionResult = null;
+
+      if (dialogEl) {
+        selectionResult = await setupNoMatchHandlers(dialogEl, creatureInfo, localIndex, tokens.length);
       }
+
+      // Process the selection result
+      if (selectionResult && selectionResult.paths && selectionResult.paths.length > 0) {
+        // User selected artwork from category browser
+        const selectedPaths = selectionResult.paths;
+        const assignmentMode = selectionResult.mode || 'sequential';
+        let pathIndex = 0;
+
+        const shuffledPaths = assignmentMode === 'random'
+          ? [...selectedPaths].sort(() => Math.random() - 0.5)
+          : selectedPaths;
+
+        console.log(`${MODULE_ID} | Category browse: Applying ${shuffledPaths.length} artwork(s) to ${tokens.length} token(s) [${assignmentMode}]`);
+
+        for (const token of tokens) {
+          if (cancelled || !mainDialog) break;
+          tokenIndex++;
+
+          const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
+          const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
+
+          const success = await replaceTokenImage(token, pathForToken);
+          updateProgress(tokenIndex, npcTokens.length,
+            TokenReplacerFA.i18n('dialog.replacing'), {
+            name: `${creatureInfo.actorName} (${token.name})`,
+            status: success ? 'success' : 'failed',
+            match: matchName
+          });
+
+          pathIndex++;
+        }
+      } else {
+        // User skipped - mark all as skipped
+        for (const token of tokens) {
+          tokenIndex++;
+          updateProgress(tokenIndex, npcTokens.length,
+            TokenReplacerFA.i18n('dialog.skipped'), {
+            name: `${creatureInfo.actorName} (${token.name})`,
+            status: 'skipped'
+          });
+        }
+      }
+
+      // Restore progress view
+      updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+      await yieldToMain(50);
       continue;
     }
 
