@@ -273,15 +273,22 @@ export class UIManager {
         ` : ''}
 
         <div class="category-search">
-          <label for="creature-type-select">${i18n('dialog.browseByType')}</label>
-          <select id="creature-type-select" class="creature-type-select">
-            <option value="">${i18n('dialog.selectType')}</option>
-            ${creatureTypes.map(type => {
-              const selected = type === creatureInfo.type?.toLowerCase() ? 'selected' : '';
-              const displayName = type.charAt(0).toUpperCase() + type.slice(1);
-              return `<option value="${type}" ${selected}>${displayName}</option>`;
-            }).join('')}
-          </select>
+          <label>${i18n('dialog.browseByType')}</label>
+          <div class="search-input-wrapper category-type-search">
+            <i class="fas fa-search"></i>
+            <input type="text"
+                   class="category-type-input"
+                   placeholder="Search creature type or name..."
+                   value="${escapeHtml(creatureInfo.type || '')}"
+                   autocomplete="off"
+                   list="creature-type-suggestions">
+            <datalist id="creature-type-suggestions">
+              ${creatureTypes.map(type => {
+                const displayName = type.charAt(0).toUpperCase() + type.slice(1);
+                return `<option value="${displayName}">`;
+              }).join('')}
+            </datalist>
+          </div>
           <button type="button" class="search-category-btn">
             <i class="fas fa-search"></i> ${i18n('dialog.searchCategory')}
           </button>
@@ -625,7 +632,7 @@ export class UIManager {
       let assignmentMode = 'sequential';
       const multiSelectEnabled = tokenCount > 1;
 
-      const selectEl = container.querySelector('.creature-type-select');
+      const typeInput = container.querySelector('.category-type-input');
       const searchBtn = container.querySelector('.search-category-btn');
       const resultsContainer = container.querySelector('.category-results');
       const matchGrid = container.querySelector('.token-replacer-fa-match-select');
@@ -793,11 +800,15 @@ export class UIManager {
       // Handle search button click
       if (searchBtn) {
         searchBtn.addEventListener('click', async () => {
-          const selectedType = selectEl?.value;
-          if (!selectedType) {
+          const searchTerm = typeInput?.value?.trim().toLowerCase();
+          if (!searchTerm) {
             ui.notifications.warn(i18n('dialog.selectTypeFirst'));
             return;
           }
+
+          // Check if it matches a known creature type, otherwise use as direct search
+          const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS);
+          const selectedType = creatureTypes.find(t => t === searchTerm) || searchTerm;
 
           if (resultsContainer) resultsContainer.style.display = 'block';
           if (loadingEl) {
@@ -813,6 +824,16 @@ export class UIManager {
             if (loadingEl) loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, progress);
           });
           displayResults(results);
+        });
+      }
+
+      // Handle Enter key in search input
+      if (typeInput) {
+        typeInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            searchBtn?.click();
+          }
         });
       }
 

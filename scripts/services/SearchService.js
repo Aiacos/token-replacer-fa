@@ -76,8 +76,8 @@ export class SearchService {
       const results = [];
       const seenPaths = new Set(); // Use Set for O(1) duplicate check
       const searchResults = await this.tvaAPI.doImageSearch(searchTerm, {
-        searchType: 'all',
-        algorithm: { fuzzy: true }
+        searchType: 'Portrait',
+        simpleResults: false
       });
 
       // Handle various TVA return formats (array, object, Map)

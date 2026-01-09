@@ -449,7 +449,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
         icon: 'fas fa-wand-magic-sparkles',
         button: true,
         visible: true,
-        onClick: () => processTokenReplacement()
+        onChange: () => processTokenReplacement(),  // v13+ uses onChange
+        onClick: () => processTokenReplacement()    // v12 fallback
       });
     }
   } else {
@@ -464,7 +465,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
       order: toolCount + 1,
       button: true,
       visible: true,
-      onClick: () => processTokenReplacement()
+      onChange: () => processTokenReplacement(),  // v13+ uses onChange
+      onClick: () => processTokenReplacement()    // v12 fallback
     };
   }
 });
