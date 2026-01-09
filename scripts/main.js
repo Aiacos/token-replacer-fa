@@ -396,20 +396,20 @@ async function closeDialogSafely(dialog) {
  * FA folders often use capitalized singular forms
  */
 const CREATURE_TYPE_MAPPINGS = {
-  'aberration': ['aberration', 'aberrations', 'mind flayer', 'beholder'],
-  'beast': ['beast', 'beasts', 'animal', 'animals'],
-  'celestial': ['celestial', 'celestials', 'angel', 'angels'],
-  'construct': ['construct', 'constructs', 'golem', 'golems', 'robot'],
-  'dragon': ['dragon', 'dragons', 'drake', 'drakes', 'wyrm'],
-  'elemental': ['elemental', 'elementals', 'genie', 'genies'],
-  'fey': ['fey', 'fairy', 'fairies', 'sprite', 'pixie'],
-  'fiend': ['fiend', 'fiends', 'demon', 'demons', 'devil', 'devils'],
-  'giant': ['giant', 'giants', 'ogre', 'ogres', 'troll', 'trolls'],
-  'humanoid': ['humanoid', 'humanoids', 'human', 'npc', 'goblin', 'orc', 'elf', 'dwarf'],
-  'monstrosity': ['monstrosity', 'monstrosities', 'monster', 'monsters'],
-  'ooze': ['ooze', 'oozes', 'slime', 'slimes'],
-  'plant': ['plant', 'plants', 'fungus', 'fungi'],
-  'undead': ['undead', 'zombie', 'zombies', 'skeleton', 'skeletons', 'ghost', 'ghosts', 'vampire', 'lich']
+  'aberration': ['aberration', 'aberrations', 'mind flayer', 'beholder', 'illithid', 'aboleth'],
+  'beast': ['beast', 'beasts', 'animal', 'animals', 'wolf', 'bear', 'horse', 'cat', 'dog', 'bird'],
+  'celestial': ['celestial', 'celestials', 'angel', 'angels', 'deva', 'planetar', 'solar'],
+  'construct': ['construct', 'constructs', 'golem', 'golems', 'robot', 'automaton', 'warforged'],
+  'dragon': ['dragon', 'dragons', 'drake', 'drakes', 'wyrm', 'wyvern', 'dragonborn'],
+  'elemental': ['elemental', 'elementals', 'genie', 'genies', 'djinni', 'efreeti', 'fire elemental', 'water elemental'],
+  'fey': ['fey', 'fairy', 'fairies', 'sprite', 'pixie', 'satyr', 'dryad', 'nymph', 'eladrin'],
+  'fiend': ['fiend', 'fiends', 'demon', 'demons', 'devil', 'devils', 'succubus', 'incubus', 'imp', 'balor'],
+  'giant': ['giant', 'giants', 'ogre', 'ogres', 'troll', 'trolls', 'cyclops', 'ettin', 'hill giant', 'frost giant'],
+  'humanoid': ['humanoid', 'humanoids', 'human', 'npc', 'goblin', 'orc', 'elf', 'dwarf', 'halfling', 'gnome', 'tiefling', 'dragonborn', 'half-elf', 'half-orc', 'hobgoblin', 'bugbear', 'kobold', 'gnoll', 'lizardfolk', 'kenku', 'tabaxi', 'firbolg', 'goliath', 'aasimar', 'genasi', 'triton', 'yuan-ti', 'githyanki', 'githzerai', 'drow', 'duergar', 'svirfneblin', 'bandit', 'guard', 'soldier', 'knight', 'mage', 'priest', 'noble', 'commoner', 'thug', 'assassin', 'spy', 'veteran', 'cultist', 'acolyte', 'berserker', 'gladiator', 'scout', 'tribal', 'pirate', 'captain', 'wizard', 'warlock', 'cleric', 'paladin', 'ranger', 'rogue', 'fighter', 'barbarian', 'monk', 'bard', 'druid', 'sorcerer'],
+  'monstrosity': ['monstrosity', 'monstrosities', 'monster', 'monsters', 'chimera', 'manticore', 'medusa', 'minotaur', 'basilisk', 'hydra', 'griffon', 'hippogriff', 'owlbear', 'roc', 'sphinx', 'kraken'],
+  'ooze': ['ooze', 'oozes', 'slime', 'slimes', 'jelly', 'pudding', 'cube', 'gelatinous'],
+  'plant': ['plant', 'plants', 'fungus', 'fungi', 'treant', 'shambling mound', 'myconid', 'blight'],
+  'undead': ['undead', 'zombie', 'zombies', 'skeleton', 'skeletons', 'ghost', 'ghosts', 'vampire', 'lich', 'wight', 'wraith', 'specter', 'mummy', 'revenant', 'banshee', 'death knight']
 };
 
 /**
@@ -1154,14 +1154,14 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
       }
     }
   } else if (isGenericSubtype && creatureInfo.type) {
-    // Case 1: Generic subtype - include category-based results
-    console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), adding ${creatureInfo.type} category results`);
+    // Case 1: Generic subtype - include ALL category-based results
+    console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), adding ALL ${creatureInfo.type} category results`);
 
     // Get category mappings for the creature type
     const categoryMappings = CREATURE_TYPE_MAPPINGS[creatureInfo.type?.toLowerCase()];
     if (categoryMappings && TokenReplacerFA.hasTVA) {
-      // Search for category terms to add broader options
-      for (const term of categoryMappings.slice(0, 3)) { // Limit to avoid too many searches
+      // Search for ALL category terms to get comprehensive results
+      for (const term of categoryMappings) {
         // Skip if we already searched this term
         if (searchTerms.includes(term.toLowerCase())) continue;
 
@@ -1179,12 +1179,12 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
       }
     }
 
-    // Also add local index category matches
+    // Also add ALL local index category matches
     if (localIndex && localIndex.length > 0) {
       const categoryMatches = localIndex.filter(img =>
         img.category && folderMatchesCreatureType(img.category, creatureInfo.type)
       );
-      for (const match of categoryMatches.slice(0, 20)) { // Limit category matches
+      for (const match of categoryMatches) {
         if (!results.find(r => r.path === match.path)) {
           results.push({
             ...match,
@@ -1439,7 +1439,7 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
     ` : ''}
 
     <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}">
-      ${matches.slice(0, 20).map((match, idx) => {
+      ${matches.slice(0, 100).map((match, idx) => {
         const safeMatchName = escapeHtml(match.name);
         const safePath = escapeHtml(match.path);
         const scoreDisplay = match.score !== undefined
@@ -1684,12 +1684,12 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
   const categoryMappings = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
   if (!categoryMappings) {
-    return results.slice(0, 50);
+    return results;
   }
 
-  // Search TVA for each mapping term
+  // Search TVA for ALL mapping terms to get comprehensive results
   if (TokenReplacerFA.hasTVA) {
-    for (const term of categoryMappings.slice(0, 5)) {
+    for (const term of categoryMappings) {
       const tvaResults = await searchTVA(term);
       for (const result of tvaResults) {
         if (!results.find(r => r.path === result.path)) {
@@ -1715,8 +1715,8 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
     }
   }
 
-  // Limit results
-  return results.slice(0, 50);
+  // Return all results (no limit)
+  return results;
 }
 
 /**
