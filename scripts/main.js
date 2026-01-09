@@ -1486,7 +1486,7 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
     ` : ''}
 
     <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}">
-      ${matches.slice(0, 100).map((match, idx) => {
+      ${matches.map((match, idx) => {
         const safeMatchName = escapeHtml(match.name);
         const safePath = escapeHtml(match.path);
         const scoreDisplay = match.score !== undefined
