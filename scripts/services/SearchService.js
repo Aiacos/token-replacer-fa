@@ -124,6 +124,7 @@ export class SearchService {
     if (!Fuse) return [];
 
     const results = [];
+    const seenPaths = new Set(); // Use Set for O(1) duplicate check
     const threshold = game.settings.get(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
 
     const fuseOptions = {
@@ -139,13 +140,14 @@ export class SearchService {
       const searchResults = fuse.search(term);
       for (const result of searchResults) {
         const item = result.item;
-        if (!results.find(r => r.path === item.path)) {
+        if (!seenPaths.has(item.path)) {
           // Optionally filter by creature type
           if (creatureType && item.category) {
             if (!this.folderMatchesCreatureType(item.category, creatureType)) {
               continue;
             }
           }
+          seenPaths.add(item.path);
           results.push({
             ...item,
             score: result.score,
