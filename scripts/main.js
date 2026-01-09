@@ -86,6 +86,34 @@ function escapeHtml(text) {
 }
 
 /**
+ * Parse filter text into individual terms for AND logic filtering
+ * Supports comma, space, and colon as delimiters
+ * @param {string} filterText - The raw filter input text
+ * @returns {string[]} Array of lowercase filter terms
+ */
+function parseFilterTerms(filterText) {
+  if (!filterText) return [];
+  return filterText
+    .toLowerCase()
+    .trim()
+    .split(/[,\s:]+/)
+    .map(t => t.trim())
+    .filter(t => t.length > 0);
+}
+
+/**
+ * Check if text matches all filter terms (AND logic)
+ * @param {string} text - The text to check against
+ * @param {string[]} filterTerms - Array of terms that must all be present
+ * @returns {boolean} True if all terms are found in text
+ */
+function matchesAllTerms(text, filterTerms) {
+  if (!filterTerms || filterTerms.length === 0) return true;
+  const textLower = (text || '').toLowerCase();
+  return filterTerms.every(term => textLower.includes(term));
+}
+
+/**
  * Register module settings
  * Note: Using string keys - Foundry handles localization via lang files
  */
@@ -1552,7 +1580,7 @@ async function replaceTokenImage(token, imagePath) {
  * Create match selection HTML (for embedding in main dialog)
  * Supports multi-select for variations with sequential/random assignment
  */
-function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, showSearchFilter = false) {
+function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, hideBrowseButton = false) {
   const safeName = escapeHtml(creatureInfo.actorName);
   const safeType = escapeHtml(creatureInfo.type || 'Unknown');
   const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
@@ -1570,15 +1598,13 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, showSea
       </div>
     </div>
 
-    ${showSearchFilter ? `
     <div class="token-replacer-fa-search-filter">
       <div class="search-input-wrapper">
         <i class="fas fa-search"></i>
-        <input type="text" class="search-filter-input" placeholder="Filter artwork..." autocomplete="off">
+        <input type="text" class="search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
       </div>
       <div class="result-count">Showing <span class="visible-count">${totalCount}</span> of <span class="total-count">${totalCount}</span> results</div>
     </div>
-    ` : ''}
 
     ${showMultiSelect ? `
     <div class="token-replacer-fa-mode-toggle">
@@ -1623,7 +1649,7 @@ function createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1, showSea
       <button type="button" class="select-btn" data-action="select">
         <i class="fas fa-check"></i> Apply
       </button>
-      ${creatureInfo.type ? `
+      ${creatureInfo.type && !hideBrowseButton ? `
       <button type="button" class="browse-category-btn" data-action="browse" data-type="${escapeHtml(creatureInfo.type)}">
         <i class="fas fa-folder-open"></i> ${TokenReplacerFA.i18n('dialog.browseAll')} ${creatureTypeDisplay}
       </button>
@@ -1756,6 +1782,13 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
         <div class="category-results-loading" style="display: none;">
           <i class="fas fa-spinner fa-spin"></i>
           <span>${TokenReplacerFA.i18n('dialog.searching', { name: '' })}</span>
+        </div>
+        <div class="token-replacer-fa-search-filter category-filter" style="display: none;">
+          <div class="search-input-wrapper">
+            <i class="fas fa-search"></i>
+            <input type="text" class="category-search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
+          </div>
+          <div class="result-count">Showing <span class="category-visible-count">0</span> of <span class="category-total-count">0</span> results</div>
         </div>
         <div class="token-replacer-fa-match-select" data-multiselect="${tokenCount > 1}">
         </div>
@@ -1991,7 +2024,14 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
     const displayResults = (results) => {
       loadingEl.style.display = 'none';
 
+      // Get filter elements
+      const categoryFilter = container.querySelector('.category-filter');
+      const categoryVisibleCount = container.querySelector('.category-visible-count');
+      const categoryTotalCount = container.querySelector('.category-total-count');
+      const categorySearchInput = container.querySelector('.category-search-filter-input');
+
       if (results.length === 0) {
+        if (categoryFilter) categoryFilter.style.display = 'none';
         matchGrid.innerHTML = `
           <div class="no-results-message">
             <i class="fas fa-folder-open"></i>
@@ -1999,6 +2039,14 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
           </div>
         `;
         return;
+      }
+
+      // Show filter and update counts
+      if (categoryFilter) {
+        categoryFilter.style.display = 'block';
+        if (categoryVisibleCount) categoryVisibleCount.textContent = results.length;
+        if (categoryTotalCount) categoryTotalCount.textContent = results.length;
+        if (categorySearchInput) categorySearchInput.value = '';
       }
 
       // Show results
@@ -2009,7 +2057,7 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
           ? `${Math.round((1 - match.score) * 100)}%`
           : escapeHtml(match.source || '');
         return `
-          <div class="match-option" data-index="${idx}" data-path="${safePath}">
+          <div class="match-option" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
             <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
             <div class="match-name">${safeMatchName}</div>
             <div class="match-score">${scoreDisplay}</div>
@@ -2028,6 +2076,43 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
       // Setup click handlers for new options
       setupMatchOptions();
       updateSelectionCount();
+
+      // Setup category search filter with AND logic (comma, space, colon delimiters)
+      if (categorySearchInput) {
+        let debounceTimer = null;
+        categorySearchInput.addEventListener('input', () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            const filterTerms = parseFilterTerms(categorySearchInput.value);
+            const allOptions = matchGrid.querySelectorAll('.match-option');
+            let visibleCount = 0;
+
+            allOptions.forEach(option => {
+              const name = option.dataset.name || '';
+              const path = option.dataset.path || '';
+              const matches = matchesAllTerms(name + ' ' + path, filterTerms);
+
+              if (matches) {
+                option.style.display = '';
+                visibleCount++;
+              } else {
+                option.style.display = 'none';
+                option.classList.remove('selected');
+              }
+            });
+
+            if (categoryVisibleCount) categoryVisibleCount.textContent = visibleCount;
+
+            // Ensure at least one is selected
+            const visibleSelected = matchGrid.querySelectorAll('.match-option:not([style*="display: none"]).selected');
+            if (visibleSelected.length === 0) {
+              const firstVisible = matchGrid.querySelector('.match-option:not([style*="display: none"])');
+              if (firstVisible) firstVisible.classList.add('selected');
+            }
+            updateSelectionCount();
+          }, 150);
+        });
+      }
     };
 
     // Handle subtype search buttons (e.g., "Dwarf", "Monk")
@@ -2122,7 +2207,7 @@ function setupMatchSelectionHandlers(dialogElement) {
       }
     };
 
-    // Setup search filter
+    // Setup search filter with AND logic (comma, space, colon delimiters)
     const searchInput = container.querySelector('.search-filter-input');
     const visibleCountEl = container.querySelector('.visible-count');
     if (searchInput) {
@@ -2130,14 +2215,14 @@ function setupMatchSelectionHandlers(dialogElement) {
       searchInput.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          const filterText = searchInput.value.toLowerCase().trim();
+          const filterTerms = parseFilterTerms(searchInput.value);
           const allOptions = container.querySelectorAll('.match-option');
           let visibleCount = 0;
 
           allOptions.forEach(option => {
             const name = option.dataset.name || '';
-            const path = option.dataset.path?.toLowerCase() || '';
-            const matches = !filterText || name.includes(filterText) || path.includes(filterText);
+            const path = option.dataset.path || '';
+            const matches = matchesAllTerms(name + ' ' + path, filterTerms);
 
             if (matches) {
               option.style.display = '';
@@ -2148,20 +2233,14 @@ function setupMatchSelectionHandlers(dialogElement) {
             }
           });
 
-          // Update visible count
-          if (visibleCountEl) {
-            visibleCountEl.textContent = visibleCount;
-          }
+          if (visibleCountEl) visibleCountEl.textContent = visibleCount;
 
           // Ensure at least one visible option is selected
           const visibleSelected = container.querySelectorAll('.match-option:not([style*="display: none"]).selected');
           if (visibleSelected.length === 0) {
             const firstVisible = container.querySelector('.match-option:not([style*="display: none"])');
-            if (firstVisible) {
-              firstVisible.classList.add('selected');
-            }
+            if (firstVisible) firstVisible.classList.add('selected');
           }
-
           updateSelectionCount();
         }, 150);
       });
@@ -2584,21 +2663,15 @@ async function processTokenReplacement() {
       const isCategoryResults = matches.length > 50 && matches.some(m => m.fromCategory);
       // Check if results are from specific subtypes (like "Dwarf, Monk")
       const isSubtypeResults = matches.some(m => m.fromSubtype);
-      // Show search filter for category or subtype results
-      const showFilter = isCategoryResults || isSubtypeResults;
-
-      // For category/subtype results, hide Browse All button
-      const displayCreatureInfo = showFilter ? {
-        ...creatureInfo,
-        type: null // Hide Browse All button - we're already showing filtered results
-      } : creatureInfo;
+      // Hide Browse All button when showing category/subtype results (already filtered)
+      const hideBrowseAll = isCategoryResults || isSubtypeResults;
 
       // Show selection UI in the SAME dialog (pass token count for multi-select)
       updateMainDialogContent(createMatchSelectionHTML(
-        displayCreatureInfo,
+        creatureInfo,
         matches,
         tokens.length,
-        showFilter // Show search filter for category/subtype results
+        hideBrowseAll
       ));
       await yieldToMain(50);
 
@@ -2633,17 +2706,12 @@ async function processTokenReplacement() {
           console.log(`${MODULE_ID} | Browse All found ${categoryResults.length} results for ${browseType}`);
 
           if (categoryResults.length > 0) {
-            // Show category results in the same dialog (without Browse All button to avoid recursion)
-            const categoryCreatureInfo = {
-              ...creatureInfo,
-              actorName: `${creatureInfo.actorName} - All ${browseType}`,
-              type: null // Remove type to hide Browse All button
-            };
+            // Show category results in the same dialog (hide Browse All to avoid recursion)
             updateMainDialogContent(createMatchSelectionHTML(
-              categoryCreatureInfo,
+              creatureInfo,
               categoryResults,
               tokens.length,
-              true // Show search filter for category results
+              true // hideBrowseButton - already showing all category results
             ));
             await yieldToMain(50);
 
