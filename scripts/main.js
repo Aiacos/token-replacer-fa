@@ -1273,17 +1273,54 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
   // If using TVA cache mode, prioritize TVA for all searches
   const useTVAForAll = TokenReplacerFA.hasTVA && useTVACache;
 
+  // Check if we have specific subtypes requiring AND logic
+  // e.g., "Humanoid (Dwarf, Monk)" requires results matching BOTH Dwarf AND Monk
+  const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
+  const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
+  const hasSpecificSubtypes = subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type;
+
+  // Case: Specific subtypes with AND logic - ONLY use filtered category results
+  if (hasSpecificSubtypes) {
+    console.log(`${MODULE_ID} | AND Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
+    console.log(`${MODULE_ID} | Logic: (${creatureInfo.type}) AND (${subtypeTerms.join(' AND ')})`);
+
+    // Get all results from the category
+    const categoryResults = await searchByCategory(creatureInfo.type, localIndex);
+    console.log(`${MODULE_ID} | Category "${creatureInfo.type}" returned ${categoryResults.length} results`);
+
+    // Filter by subtype terms - ALL terms must match (AND logic)
+    const filteredResults = categoryResults.filter(result => {
+      const nameLower = (result.name || '').toLowerCase();
+      const pathLower = (result.path || '').toLowerCase();
+      const combinedText = nameLower + ' ' + pathLower;
+      return subtypeTerms.every(term => combinedText.includes(term));
+    });
+
+    console.log(`${MODULE_ID} | After AND filter: ${filteredResults.length} results match (${subtypeTerms.join(' AND ')})`);
+
+    // Add filtered results - these are the ONLY results for specific subtypes
+    for (const result of filteredResults) {
+      results.push({
+        ...result,
+        score: result.score ?? 0.3,
+        fromSubtype: true
+      });
+    }
+
+    // Cache and return immediately - don't mix with name-based searches
+    searchCache.set(cacheKey, results);
+    return results;
+  }
+
+  // Standard search flow for non-specific-subtype cases
   // Search local index (FA Nexus and other local sources)
-  // Only if we have a local index built (not in TVA cache mode)
   if (localIndex.length > 0 && (priority === 'faNexus' || priority === 'both')) {
     const localResults = await searchLocalIndex(searchTerms, localIndex, creatureInfo.type);
     results.push(...localResults);
   }
 
   // Search Token Variant Art
-  // In TVA cache mode, always use TVA regardless of priority setting
   if (TokenReplacerFA.hasTVA && (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')) {
-    // Search TVA for each term, prioritizing actor name
     for (const term of searchTerms) {
       const tvaResults = await searchTVA(term);
       for (const result of tvaResults) {
@@ -1291,52 +1328,14 @@ async function searchTokenArt(creatureInfo, localIndex, useCache = true) {
           results.push(result);
         }
       }
-      // If we found good results with the first term (actor name), stop
       if (tvaResults.length >= 5 && term === searchTerms[0]) {
         break;
       }
     }
   }
 
-  // INTELLIGENT AUTO-DETECTION for subtypes
-  // Case 1: Generic subtype ("any race", "any") → use searchByCategory for all category results
-  // Case 2: Specific subtypes ("Monk, Human, Elf") → search ONLY those specific terms
-  const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
-  const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
-
-  if (subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type) {
-    // Case 2: Specific subtypes with category - AND logic
-    // e.g., "Humanoid (Dwarf, Monk)" → (Humanoid) AND (Dwarf) AND (Monk)
-    console.log(`${MODULE_ID} | Auto-detection: Category "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
-    console.log(`${MODULE_ID} | Logic: (${creatureInfo.type}) AND (${subtypeTerms.join(' AND ')})`);
-
-    // First, get all results from the category
-    const categoryResults = await searchByCategory(creatureInfo.type, localIndex);
-    console.log(`${MODULE_ID} | Category "${creatureInfo.type}" returned ${categoryResults.length} results`);
-
-    // Then filter by subtype terms (must match ALL terms - AND logic)
-    const filteredResults = categoryResults.filter(result => {
-      const nameLower = (result.name || '').toLowerCase();
-      const pathLower = (result.path || '').toLowerCase();
-      const combinedText = nameLower + ' ' + pathLower;
-      // Check if name or path contains ALL of the subtype terms (AND logic)
-      return subtypeTerms.every(term => combinedText.includes(term));
-    });
-
-    console.log(`${MODULE_ID} | After subtype filter: ${filteredResults.length} results match (${subtypeTerms.join(' AND ')})`);
-
-    for (const result of filteredResults) {
-      if (!results.find(r => r.path === result.path)) {
-        results.push({
-          ...result,
-          score: result.score ?? 0.4,
-          fromSubtype: true
-        });
-      }
-    }
-
-    console.log(`${MODULE_ID} | Subtype search complete, found ${results.length} total results`);
-  } else if (isGenericSubtype && creatureInfo.type) {
+  // Case: Generic subtype ("any race") - show all category results
+  if (isGenericSubtype && creatureInfo.type) {
     // Case 1: Generic subtype - use searchByCategory for comprehensive results
     console.log(`${MODULE_ID} | Auto-detection: Generic subtype ("${creatureInfo.subtype || 'none'}"), using searchByCategory for ${creatureInfo.type}`);
 
