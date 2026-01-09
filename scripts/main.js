@@ -1539,6 +1539,8 @@ function createNoMatchHTML(creatureInfo, tokenCount = 1) {
 async function searchByCategory(categoryType, localIndex, directSearchTerm = null) {
   const results = [];
 
+  console.log(`${MODULE_ID} | searchByCategory called - categoryType: "${categoryType}", directSearchTerm: "${directSearchTerm}", localIndex size: ${localIndex?.length || 0}`);
+
   // If we have a direct search term (subtype), search for that first
   if (directSearchTerm) {
     console.log(`${MODULE_ID} | Searching for subtype: ${directSearchTerm}`);
@@ -1588,11 +1590,14 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
   }
 
   console.log(`${MODULE_ID} | Searching category: ${categoryType}, mappings: ${categoryMappings.join(', ')}`);
+  console.log(`${MODULE_ID} | TVA available: ${TokenReplacerFA.hasTVA}`);
 
   // Search TVA for each mapping term
   if (TokenReplacerFA.hasTVA) {
-    for (const term of categoryMappings.slice(0, 3)) { // Limit to first 3 terms
+    for (const term of categoryMappings.slice(0, 5)) { // Search more terms for better coverage
+      console.log(`${MODULE_ID} | TVA searching for term: "${term}"`);
       const tvaResults = await searchTVA(term);
+      console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
       for (const result of tvaResults) {
         if (!results.find(r => r.path === result.path)) {
           results.push(result);
@@ -1600,6 +1605,9 @@ async function searchByCategory(categoryType, localIndex, directSearchTerm = nul
       }
       await yieldToMain(10);
     }
+    console.log(`${MODULE_ID} | Total unique results after TVA search: ${results.length}`);
+  } else {
+    console.warn(`${MODULE_ID} | TVA not available, skipping TVA search`);
   }
 
   // Also search local index by category
@@ -1768,6 +1776,8 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
     if (searchBtn) {
       searchBtn.addEventListener('click', async () => {
         const selectedType = selectEl?.value;
+        console.log(`${MODULE_ID} | Category search button clicked, selectedType: "${selectedType}"`);
+
         if (!selectedType) {
           ui.notifications.warn(TokenReplacerFA.i18n('dialog.selectTypeFirst'));
           return;
@@ -1781,6 +1791,7 @@ function setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCoun
 
         // Search by category
         const results = await searchByCategory(selectedType, localIndex);
+        console.log(`${MODULE_ID} | Category search returned ${results.length} results`);
 
         displayResults(results);
       });
