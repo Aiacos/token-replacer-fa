@@ -1,6 +1,6 @@
 /**
  * Token Replacer FA - Search Service
- * Handles all search operations using pre-built index for O(1) lookups
+ * Handles all search operations using TVA's doImageSearch API
  * @module services/SearchService
  */
 
@@ -14,11 +14,10 @@ import {
   extractPathFromTVAResult,
   extractNameFromTVAResult
 } from '../core/Utils.js';
-import { indexService } from './IndexService.js';
 
 /**
  * SearchService class for handling search operations
- * Now uses IndexService for O(1) keyword lookups instead of repeated TVA API calls
+ * Uses TVA's doImageSearch API directly for reliable results
  */
 export class SearchService {
   constructor() {
@@ -34,14 +33,6 @@ export class SearchService {
     this.tvaAPI = game.modules.get('token-variants')?.api;
     this.hasTVA = !!this.tvaAPI;
     console.log(`${MODULE_ID} | SearchService initialized. TVA available: ${this.hasTVA}`);
-    console.log(`${MODULE_ID} | IndexService ready: ${indexService.isBuilt}`);
-  }
-
-  /**
-   * Check if the index is ready for fast searches
-   */
-  get useIndex() {
-    return indexService.isBuilt;
   }
 
   /**
@@ -75,41 +66,12 @@ export class SearchService {
   }
 
   /**
-   * Search using the pre-built index (fast O(1) lookup)
-   * @param {string} searchTerm - Term to search
-   * @returns {Array} Search results
-   */
-  searchIndex(searchTerm) {
-    if (!this.useIndex) return [];
-    return indexService.search(searchTerm);
-  }
-
-  /**
-   * Search multiple terms using index with OR logic (fast)
-   * @param {string[]} terms - Terms to search
-   * @returns {Array} Search results
-   */
-  searchIndexOR(terms) {
-    if (!this.useIndex) return [];
-    return indexService.searchMultiple(terms);
-  }
-
-  /**
    * Search Token Variant Art for a term
-   * Uses index if available (fast), falls back to TVA API (slow)
+   * Uses TVA's doImageSearch API directly
    * @param {string} searchTerm - Term to search
    * @returns {Promise<Array>} Search results
    */
   async searchTVA(searchTerm) {
-    // Use fast index if available
-    if (this.useIndex) {
-      const indexResults = this.searchIndex(searchTerm);
-      if (indexResults.length > 0) {
-        return indexResults;
-      }
-    }
-
-    // Fallback to TVA API (slower)
     if (!this.hasTVA || !this.tvaAPI) return [];
 
     try {
@@ -201,7 +163,7 @@ export class SearchService {
 
   /**
    * Search by creature type category
-   * Uses fast index if available, falls back to TVA API
+   * Uses TVA's doImageSearch API directly
    * @param {string} categoryType - Creature type category
    * @param {Array} localIndex - Local image index
    * @param {string} directSearchTerm - Optional direct search term
@@ -219,24 +181,7 @@ export class SearchService {
         progressCallback({ current: 0, total: 1, term: directSearchTerm, resultsFound: 0 });
       }
 
-      // FAST PATH: Use index if available
-      if (this.useIndex) {
-        console.log(`${MODULE_ID} | Using FAST index for direct search: "${directSearchTerm}"`);
-        const startTime = performance.now();
-
-        const indexResults = indexService.search(directSearchTerm);
-
-        const elapsed = Math.round(performance.now() - startTime);
-        console.log(`${MODULE_ID} | Index direct search completed in ${elapsed}ms - found ${indexResults.length} results`);
-
-        if (progressCallback) {
-          progressCallback({ current: 1, total: 1, term: directSearchTerm, resultsFound: indexResults.length });
-        }
-
-        return indexResults.slice(0, 100);
-      }
-
-      // SLOW PATH: TVA API
+      // Search TVA
       if (this.hasTVA) {
         const tvaResults = await this.searchTVA(directSearchTerm);
         for (const result of tvaResults) {
@@ -253,7 +198,8 @@ export class SearchService {
         const localMatches = localIndex.filter(img =>
           img.name?.toLowerCase().includes(termLower) ||
           img.fileName?.toLowerCase().includes(termLower) ||
-          img.category?.toLowerCase().includes(termLower)
+          img.category?.toLowerCase().includes(termLower) ||
+          img.path?.toLowerCase().includes(termLower)
         );
         for (const match of localMatches) {
           if (!seenPaths.has(match.path)) {
@@ -267,40 +213,13 @@ export class SearchService {
         progressCallback({ current: 1, total: 1, term: directSearchTerm, resultsFound: results.length });
       }
 
-      if (results.length > 0) {
-        return results.slice(0, 100);
-      }
+      console.log(`${MODULE_ID} | Direct search for "${directSearchTerm}" found ${results.length} results`);
+      return results;
     }
 
-    // Category-based comprehensive search
+    // Category-based comprehensive search using TVA
     console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
 
-    // FAST PATH: Use index for category search
-    if (this.useIndex) {
-      console.log(`${MODULE_ID} | Using FAST index for category: "${categoryType}"`);
-      const startTime = performance.now();
-
-      const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()] ||
-                           PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()] ||
-                           [categoryType];
-
-      if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: categoryType, resultsFound: 0 });
-      }
-
-      const indexResults = indexService.searchMultiple(categoryTerms);
-
-      const elapsed = Math.round(performance.now() - startTime);
-      console.log(`${MODULE_ID} | Index category search completed in ${elapsed}ms - found ${indexResults.length} results`);
-
-      if (progressCallback) {
-        progressCallback({ current: 1, total: 1, term: categoryType, resultsFound: indexResults.length });
-      }
-
-      return indexResults;
-    }
-
-    // SLOW PATH: TVA API calls
     if (this.hasTVA) {
       const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
@@ -419,30 +338,11 @@ export class SearchService {
     // Case: Specific subtypes - search each term separately (OR logic)
     if (hasSpecificSubtypes) {
       console.log(`${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
+      console.log(`${MODULE_ID} | Searching TVA for each subtype separately, combining results`);
 
-      // FAST PATH: Use pre-built index if available
-      if (this.useIndex) {
-        console.log(`${MODULE_ID} | Using FAST index search (O(1) lookups)`);
-        const startTime = performance.now();
-
-        const indexResults = this.searchIndexOR(subtypeTerms);
-
-        const elapsed = Math.round(performance.now() - startTime);
-        console.log(`${MODULE_ID} | Index search completed in ${elapsed}ms - found ${indexResults.length} results`);
-
-        const validResults = indexResults.map(r => ({
-          ...r,
-          fromSubtype: true
-        }));
-
-        this.searchCache.set(cacheKey, validResults);
-        return validResults;
-      }
-
-      // SLOW PATH: Fall back to TVA API calls
-      console.log(`${MODULE_ID} | Using SLOW TVA API search (index not built)`);
       const seenPaths = new Set();
 
+      // Search TVA for each subtype term separately
       for (const term of subtypeTerms) {
         console.log(`${MODULE_ID} | Searching TVA for subtype: "${term}"`);
 
@@ -464,7 +364,7 @@ export class SearchService {
         }
       }
 
-      // Also search local index for each subtype
+      // Also search local index for each subtype (contains matching)
       if (localIndex?.length > 0) {
         for (const term of subtypeTerms) {
           const termLower = term.toLowerCase();
