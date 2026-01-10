@@ -327,36 +327,69 @@ export class SearchService {
     const results = [];
     const useTVAForAll = this.hasTVA && useTVACache;
 
-    // Check for specific subtypes requiring AND logic
+    // Check for specific subtypes
     const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
     const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
     const hasSpecificSubtypes = subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type;
 
-    // Case: Specific subtypes with AND logic
+    // Case: Specific subtypes - search each term separately (OR logic)
     if (hasSpecificSubtypes) {
-      console.log(`${MODULE_ID} | AND Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
-      console.log(`${MODULE_ID} | Logic: (${creatureInfo.type}) AND (${subtypeTerms.join(' AND ')})`);
+      console.log(`${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
+      console.log(`${MODULE_ID} | Logic: Searching for each subtype separately, then combining results`);
 
-      const categoryResults = await this.searchByCategory(creatureInfo.type, localIndex);
-      console.log(`${MODULE_ID} | Category "${creatureInfo.type}" returned ${categoryResults.length} results`);
+      const seenPaths = new Set();
 
-      // Filter by ALL subtype terms (AND logic)
-      const filteredResults = categoryResults.filter(result => {
-        const nameLower = (result.name || '').toLowerCase();
-        const pathLower = (result.path || '').toLowerCase();
-        const combinedText = nameLower + ' ' + pathLower;
-        return subtypeTerms.every(term => combinedText.includes(term));
-      });
+      // Search each subtype term separately in TVA for more results
+      for (const term of subtypeTerms) {
+        console.log(`${MODULE_ID} | Searching TVA for subtype: "${term}"`);
 
-      console.log(`${MODULE_ID} | After AND filter: ${filteredResults.length} results match (${subtypeTerms.join(' AND ')})`);
+        if (this.hasTVA) {
+          const tvaResults = await this.searchTVA(term);
+          console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
 
-      for (const result of filteredResults) {
-        results.push({
-          ...result,
-          score: result.score ?? 0.3,
-          fromSubtype: true
-        });
+          for (const result of tvaResults) {
+            if (!seenPaths.has(result.path)) {
+              seenPaths.add(result.path);
+              results.push({
+                ...result,
+                score: result.score ?? 0.3,
+                fromSubtype: true,
+                matchedTerm: term
+              });
+            }
+          }
+        }
       }
+
+      // Also search local index for each subtype
+      if (localIndex?.length > 0) {
+        for (const term of subtypeTerms) {
+          const termLower = term.toLowerCase();
+          const localMatches = localIndex.filter(img => {
+            const nameLower = (img.name || '').toLowerCase();
+            const pathLower = (img.path || '').toLowerCase();
+            const categoryLower = (img.category || '').toLowerCase();
+            return nameLower.includes(termLower) ||
+                   pathLower.includes(termLower) ||
+                   categoryLower.includes(termLower);
+          });
+
+          for (const match of localMatches) {
+            if (!seenPaths.has(match.path)) {
+              seenPaths.add(match.path);
+              results.push({
+                ...match,
+                source: 'local',
+                score: match.score ?? 0.4,
+                fromSubtype: true,
+                matchedTerm: term
+              });
+            }
+          }
+        }
+      }
+
+      console.log(`${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`);
 
       this.searchCache.set(cacheKey, results);
       return results;

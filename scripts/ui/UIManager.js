@@ -5,7 +5,7 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
-import { escapeHtml, parseFilterTerms, matchesAllTerms, parseSubtypeTerms } from '../core/Utils.js';
+import { escapeHtml, parseFilterTerms, matchesAllTerms } from '../core/Utils.js';
 
 /**
  * Get localized string
@@ -239,8 +239,6 @@ export class UIManager {
     const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
 
     const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort();
-    const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
-    const hasValidSubtypes = subtypeTerms.length > 0;
 
     return `
       <div class="token-replacer-fa-token-preview">
@@ -257,20 +255,6 @@ export class UIManager {
           <i class="fas fa-search-minus"></i>
           <span>${i18n('dialog.noMatch', { name: creatureInfo.actorName })}</span>
         </div>
-
-        ${hasValidSubtypes ? `
-        <div class="subtype-search">
-          <label>${i18n('dialog.searchBySubtype')}</label>
-          <div class="subtype-buttons">
-            ${subtypeTerms.map(term => {
-              const displayName = term.charAt(0).toUpperCase() + term.slice(1);
-              return `<button type="button" class="subtype-search-btn" data-subtype="${escapeHtml(term)}">
-                <i class="fas fa-search"></i> ${escapeHtml(displayName)}
-              </button>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
 
         <div class="category-search">
           <label>${i18n('dialog.browseByType')}</label>
@@ -779,23 +763,6 @@ export class UIManager {
           });
         }
       };
-
-      // Handle subtype search buttons
-      const subtypeButtons = container.querySelectorAll('.subtype-search-btn');
-      subtypeButtons.forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const subtype = btn.dataset.subtype;
-          if (!subtype) return;
-
-          if (resultsContainer) resultsContainer.style.display = 'block';
-          if (loadingEl) loadingEl.style.display = 'flex';
-          if (matchGrid) matchGrid.innerHTML = '';
-          if (selectBtn) selectBtn.disabled = true;
-
-          const results = await searchByCategory(creatureInfo.type, localIndex, subtype);
-          displayResults(results);
-        });
-      });
 
       // Handle search button click
       if (searchBtn) {

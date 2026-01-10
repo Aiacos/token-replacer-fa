@@ -65,9 +65,10 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 - [x] Support object format `{ value, subtype, custom }`
 - [x] Fallback to `creatureType` property
 
-#### 3.1.4 AND Logic for Subtypes
+#### 3.1.4 OR Logic for Subtypes
 - [x] Parse multiple subtypes: "Dwarf, Monk" → ["dwarf", "monk"]
-- [x] Filter results requiring ALL terms present
+- [x] Search TVA separately for each subtype term
+- [x] Combine results (OR logic) - show all Dwarf images AND all Monk images
 - [x] Support delimiters: comma, semicolon, slash, ampersand
 
 #### 3.1.5 Generic Subtype Detection
@@ -97,7 +98,6 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 
 #### 3.2.4 No Match Handling
 - [x] Search bar for creature type (with autocomplete)
-- [x] Subtype search buttons
 - [x] Progress bar during category search
 - [x] Enter key to trigger search
 
@@ -231,13 +231,13 @@ Extraction checks these properties in order:
 | TC-103 | `{ value: "humanoid", subtype: "any race" }` | Generic subtype (show all) |
 | TC-104 | `{ value: "humanoid", subtype: "" }` | Generic subtype (show all) |
 
-### 5.3 AND Logic
+### 5.3 Subtype OR Logic / Filter AND Logic
 
 | Test | Input | Expected |
 |------|-------|----------|
-| TC-201 | Subtype: "Dwarf, Monk" | Filter for BOTH dwarf AND monk |
-| TC-202 | Filter: "female warrior" | Show only results with both terms |
-| TC-203 | Filter: "elf:archer" | Show only results with both terms |
+| TC-201 | Subtype: "Dwarf, Monk" | Show all Dwarf images AND all Monk images (OR) |
+| TC-202 | Filter: "female warrior" | Show only results with both terms (AND) |
+| TC-203 | Filter: "elf:archer" | Show only results with both terms (AND) |
 
 ### 5.4 TVA Integration
 
@@ -306,6 +306,8 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.1.0 | 2026-01-10 | Changed subtype search to OR logic, removed quick search buttons |
+| 2.0.5 | 2026-01-09 | Code review fixes (forge:// filter, TVA params) |
 | 2.0.4 | 2026-01-09 | TVA compatibility fixes (route, uri, forge://, .data) |
 | 2.0.3 | 2026-01-09 | Critical fixes (TVA params, onChange, search bar) |
 | 2.0.2 | 2026-01-09 | Code review, O(1) optimizations |
