@@ -8,6 +8,25 @@ export const MODULE_TITLE = 'Token Replacer - Forgotten Adventures';
 export const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
 
 /**
+ * Folders to exclude from token search (assets, props, textures, etc.)
+ * These contain environment assets, not character tokens
+ */
+export const EXCLUDED_FOLDERS = [
+  'dungeon_decor',
+  'dungeon_of_torment',
+  'interior_props',
+  'magic_&_effects',
+  'magic_and_effects',
+  'modular_caves',
+  'organic_lairs',
+  'prefabs',
+  'table_clutter',
+  'textures',
+  'wilderness',
+  'wonders_of_underdark'
+];
+
+/**
  * Primary search terms for each creature category
  * Used as fallback when full mappings aren't needed
  */

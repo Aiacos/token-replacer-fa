@@ -4,7 +4,7 @@
  * @module services/IndexService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 /**
@@ -107,13 +107,25 @@ class IndexService {
   }
 
   /**
+   * Check if a path is from an excluded folder (assets, props, etc.)
+   * @param {string} path - Image path to check
+   * @returns {boolean} True if path should be excluded
+   */
+  isExcludedPath(path) {
+    if (!path) return true;
+    const pathLower = path.toLowerCase();
+    return EXCLUDED_FOLDERS.some(folder => pathLower.includes(folder));
+  }
+
+  /**
    * Add an image to the index
    * @param {string} path - Image path
    * @param {string} name - Image name
    * @param {number} score - Optional relevance score
    */
   addImage(path, name, score = 0.5) {
-    if (!path || this.pathIndex.has(path)) return;
+    // Skip if no path, already indexed, or from excluded folder
+    if (!path || this.pathIndex.has(path) || this.isExcludedPath(path)) return;
 
     const index = this.images.length;
     const keywords = this.extractKeywords(path, name);
