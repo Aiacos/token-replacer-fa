@@ -80,7 +80,9 @@
       "noTokens": "Nessun token NPC trovato nella scena corrente",
       "missingDeps": "Si consiglia Token Variant Art o FA Nexus per risultati migliori",
       "error": "Errore nella sostituzione del token: {error}",
-      "inProgress": "Sostituzione token già in corso"
+      "inProgress": "Sostituzione token già in corso",
+      "buildingIndex": "Costruzione indice di ricerca token...",
+      "indexReady": "Indice token pronto! {count} immagini indicizzate per ricerca veloce."
     }
   }
 }

@@ -9,6 +9,7 @@ import { loadFuse, yieldToMain } from './core/Utils.js';
 import { TokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { scanService } from './services/ScanService.js';
+import { indexService } from './services/IndexService.js';
 import { uiManager } from './ui/UIManager.js';
 
 /**
@@ -422,7 +423,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.1.0`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.2.0`);
   registerSettings();
 });
 
@@ -431,6 +432,23 @@ Hooks.once('ready', async () => {
   await loadFuse();
   console.log(`${MODULE_ID} | Token Variant Art available: ${TokenReplacerFA.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${TokenReplacerFA.hasFANexus}`);
+
+  // Build the search index in background for fast searches
+  if (TokenReplacerFA.hasTVA) {
+    console.log(`${MODULE_ID} | Building search index in background...`);
+    ui.notifications.info(TokenReplacerFA.i18n('notifications.buildingIndex'));
+
+    // Build index with progress notification
+    indexService.build((progress) => {
+      if (progress.phase === 'complete') {
+        const stats = indexService.getStats();
+        console.log(`${MODULE_ID} | Index ready: ${stats.totalImages} images, ${stats.totalKeywords} keywords, built in ${stats.buildTimeMs}ms`);
+        ui.notifications.info(TokenReplacerFA.i18n('notifications.indexReady', { count: stats.totalImages }));
+      }
+    }).catch(err => {
+      console.warn(`${MODULE_ID} | Index build failed:`, err);
+    });
+  }
 });
 
 /**

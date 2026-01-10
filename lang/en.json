@@ -80,7 +80,9 @@
       "noTokens": "No NPC tokens found on current scene",
       "missingDeps": "Token Variant Art or FA Nexus module recommended for best results",
       "error": "Error replacing token: {error}",
-      "inProgress": "Token replacement already in progress"
+      "inProgress": "Token replacement already in progress",
+      "buildingIndex": "Building token search index...",
+      "indexReady": "Token index ready! {count} images indexed for fast search."
     }
   }
 }
