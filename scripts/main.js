@@ -423,7 +423,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.2.0`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.2.1`);
   registerSettings();
 });
 

@@ -106,31 +106,95 @@ export class IndexService {
   }
 
   /**
-   * Get all images from TVA cache
+   * Get all images from TVA cache - DIRECT ACCESS
+   * TVA stores images in CACHED_IMAGES object internally
    * @private
    */
   async _getAllTVAImages(progressCallback = null) {
-    const tvaAPI = game.modules.get('token-variants')?.api;
-    if (!tvaAPI) return [];
+    const tvaModule = game.modules.get('token-variants');
+    if (!tvaModule?.active) return [];
 
     const results = [];
     const seenPaths = new Set();
 
     try {
-      // Use broad search terms to get as many images as possible
+      // Method 1: Try to access TVA's internal CACHED_IMAGES directly
+      // TVA exposes this through various paths
+      let cachedImages = null;
+
+      // Try different access paths for TVA's internal cache
+      const possiblePaths = [
+        () => globalThis.TVA?.CACHED_IMAGES,
+        () => window.TVA?.CACHED_IMAGES,
+        () => tvaModule.CACHED_IMAGES,
+        () => game.modules.get('token-variants')?.CACHED_IMAGES,
+        () => globalThis.TokenVariants?.CACHED_IMAGES,
+      ];
+
+      for (const getCache of possiblePaths) {
+        try {
+          const cache = getCache();
+          if (cache && typeof cache === 'object' && Object.keys(cache).length > 0) {
+            cachedImages = cache;
+            console.log(`${MODULE_ID} | Found TVA CACHED_IMAGES directly!`);
+            break;
+          }
+        } catch (e) {
+          // Try next path
+        }
+      }
+
+      // If we found the cache directly, extract all images
+      if (cachedImages) {
+        console.log(`${MODULE_ID} | Reading TVA cache directly (${Object.keys(cachedImages).length} categories)`);
+
+        if (progressCallback) {
+          progressCallback({ phase: 'tva', progress: 10, message: 'Reading TVA cache directly...' });
+        }
+
+        let categoryCount = 0;
+        const totalCategories = Object.keys(cachedImages).length;
+
+        for (const [category, images] of Object.entries(cachedImages)) {
+          if (Array.isArray(images)) {
+            for (const img of images) {
+              const imagePath = img.path || img.route || img.img || img.src;
+              if (imagePath && !seenPaths.has(imagePath)) {
+                seenPaths.add(imagePath);
+                results.push({
+                  path: imagePath,
+                  name: img.name || imagePath.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown',
+                  tags: img.tags || [],
+                  source: 'tva-cache'
+                });
+              }
+            }
+          }
+
+          categoryCount++;
+          if (progressCallback && categoryCount % 5 === 0) {
+            progressCallback({
+              phase: 'tva',
+              progress: Math.round((categoryCount / totalCategories) * 90) + 10,
+              message: `Reading TVA cache: ${results.length} images...`
+            });
+          }
+        }
+
+        console.log(`${MODULE_ID} | Extracted ${results.length} images from TVA cache directly`);
+        return results;
+      }
+
+      // Method 2: Fallback - use API with broad searches (slower)
+      console.log(`${MODULE_ID} | TVA cache not directly accessible, falling back to API searches`);
+      const tvaAPI = tvaModule?.api;
+      if (!tvaAPI) return results;
+
       const broadTerms = [
-        // Creature types
         'humanoid', 'beast', 'undead', 'fiend', 'dragon', 'elemental',
         'fey', 'celestial', 'construct', 'aberration', 'monstrosity',
-        'giant', 'plant', 'ooze',
-        // Common terms
-        'token', 'creature', 'monster', 'npc', 'character', 'enemy',
-        // Races
-        'human', 'elf', 'dwarf', 'orc', 'goblin', 'kobold',
-        // Classes
-        'warrior', 'mage', 'rogue', 'cleric', 'ranger', 'paladin',
-        // Common monsters
-        'skeleton', 'zombie', 'wolf', 'bear', 'spider', 'demon'
+        'giant', 'plant', 'ooze', 'token', 'creature', 'monster',
+        'human', 'elf', 'dwarf', 'orc', 'goblin', 'skeleton', 'zombie'
       ];
 
       const totalTerms = broadTerms.length;
@@ -175,7 +239,6 @@ export class IndexService {
           });
         }
 
-        // Yield every few terms to keep UI responsive
         if (processedTerms % 3 === 0) {
           await yieldToMain(5);
         }
