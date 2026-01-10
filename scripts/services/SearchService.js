@@ -14,6 +14,7 @@ import {
   extractPathFromTVAResult,
   extractNameFromTVAResult
 } from '../core/Utils.js';
+import { indexService } from './IndexService.js';
 
 /**
  * SearchService class for handling search operations
@@ -255,14 +256,39 @@ export class SearchService {
       return results;
     }
 
-    // Category-based comprehensive search using TVA
+    // Category-based comprehensive search
     console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
 
-    if (this.hasTVA) {
+    // Try FAST mode using pre-built index first
+    if (indexService.isBuilt) {
+      console.log(`${MODULE_ID} | Using pre-built index (FAST mode)`);
+      if (progressCallback) {
+        progressCallback({ current: 0, total: 1, term: 'index lookup', resultsFound: 0 });
+      }
+
+      const indexResults = indexService.searchByCategory(categoryType);
+      for (const result of indexResults) {
+        if (!seenPaths.has(result.path)) {
+          seenPaths.add(result.path);
+          results.push({
+            ...result,
+            source: result.source || 'index'
+          });
+        }
+      }
+
+      if (progressCallback) {
+        progressCallback({ current: 1, total: 1, term: 'index lookup', resultsFound: results.length });
+      }
+
+      console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
+    }
+    // Fallback to SLOW mode - multiple TVA API calls
+    else if (this.hasTVA) {
       const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
       if (categoryTerms) {
-        console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode)`);
+        console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode - index not built)`);
         const totalTerms = categoryTerms.length;
         let searchCount = 0;
 
@@ -376,27 +402,47 @@ export class SearchService {
     // Case: Specific subtypes - search each term separately (OR logic)
     if (hasSpecificSubtypes) {
       console.log(`${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
-      console.log(`${MODULE_ID} | Searching TVA for each subtype separately, combining results`);
 
       const seenPaths = new Set();
 
-      // Search TVA for each subtype term separately
-      for (const term of subtypeTerms) {
-        console.log(`${MODULE_ID} | Searching TVA for subtype: "${term}"`);
+      // Try FAST mode using pre-built index
+      if (indexService.isBuilt) {
+        console.log(`${MODULE_ID} | Using index for subtype search (FAST mode)`);
+        const indexResults = indexService.searchMultiple(subtypeTerms);
+        console.log(`${MODULE_ID} | Index returned ${indexResults.length} results for subtypes`);
 
-        if (this.hasTVA) {
-          const tvaResults = await this.searchTVA(term);
-          console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
+        for (const result of indexResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push({
+              ...result,
+              score: result.score ?? 0.3,
+              fromSubtype: true
+            });
+          }
+        }
+      }
+      // Fallback to SLOW mode - TVA API calls
+      else {
+        console.log(`${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode)`);
 
-          for (const result of tvaResults) {
-            if (!seenPaths.has(result.path)) {
-              seenPaths.add(result.path);
-              results.push({
-                ...result,
-                score: result.score ?? 0.3,
-                fromSubtype: true,
-                matchedTerm: term
-              });
+        for (const term of subtypeTerms) {
+          console.log(`${MODULE_ID} | Searching TVA for subtype: "${term}"`);
+
+          if (this.hasTVA) {
+            const tvaResults = await this.searchTVA(term);
+            console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
+
+            for (const result of tvaResults) {
+              if (!seenPaths.has(result.path)) {
+                seenPaths.add(result.path);
+                results.push({
+                  ...result,
+                  score: result.score ?? 0.3,
+                  fromSubtype: true,
+                  matchedTerm: term
+                });
+              }
             }
           }
         }

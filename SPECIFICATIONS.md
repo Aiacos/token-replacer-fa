@@ -332,6 +332,7 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.4.0 | 2026-01-10 | **PERFORMANCE**: Pre-built keyword index for O(1) searches (FAST mode) |
 | 2.3.1 | 2026-01-10 | **FIX**: Critical bug in TVA Map result parsing - now extracts ALL results |
 | 2.2.0 | 2026-01-10 | **PERFORMANCE**: Pre-built keyword index for O(1) searches |
 | 2.1.0 | 2026-01-10 | Changed subtype search to OR logic, removed quick search buttons |

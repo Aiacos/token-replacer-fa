@@ -9,6 +9,7 @@ import { loadFuse, yieldToMain } from './core/Utils.js';
 import { TokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { scanService } from './services/ScanService.js';
+import { indexService } from './services/IndexService.js';
 import { uiManager } from './ui/UIManager.js';
 
 /**
@@ -422,7 +423,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.3.1`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.4.0`);
   registerSettings();
 });
 
@@ -431,6 +432,21 @@ Hooks.once('ready', async () => {
   await loadFuse();
   console.log(`${MODULE_ID} | Token Variant Art available: ${TokenReplacerFA.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${TokenReplacerFA.hasFANexus}`);
+
+  // Build image index for fast searches (runs in background)
+  if (TokenReplacerFA.hasTVA) {
+    console.log(`${MODULE_ID} | Building image index in background...`);
+    indexService.build().then(success => {
+      if (success) {
+        const stats = indexService.getStats();
+        console.log(`${MODULE_ID} | Image index ready: ${stats.imageCount} images, ${stats.keywordCount} keywords`);
+      } else {
+        console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
+      }
+    }).catch(err => {
+      console.warn(`${MODULE_ID} | Index build error:`, err);
+    });
+  }
 });
 
 /**
