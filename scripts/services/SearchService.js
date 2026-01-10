@@ -84,15 +84,10 @@ export class SearchService {
 
       if (!searchResults) return [];
 
-      const items = Array.isArray(searchResults)
-        ? searchResults
-        : (searchResults instanceof Map ? Array.from(searchResults.values()) : [searchResults]);
-
-      if (items.length === 0) return [];
-
-      for (const item of items) {
+      // Helper function to process a single item
+      const processItem = (item) => {
         const imagePath = extractPathFromTVAResult(item);
-        if (!imagePath || seenPaths.has(imagePath)) continue;
+        if (!imagePath || seenPaths.has(imagePath)) return;
 
         seenPaths.add(imagePath);
         const name = extractNameFromTVAResult(item, imagePath);
@@ -102,6 +97,49 @@ export class SearchService {
           source: 'tva',
           score: item?.score ?? 0.5
         });
+      };
+
+      // Handle different TVA result formats
+      if (Array.isArray(searchResults)) {
+        // Direct array of results
+        for (const item of searchResults) {
+          processItem(item);
+        }
+      } else if (searchResults instanceof Map || (searchResults && typeof searchResults.entries === 'function')) {
+        // Map format: key is search term, value is array of results
+        for (const [key, data] of searchResults.entries()) {
+          if (Array.isArray(data)) {
+            // Value is array - iterate over each item
+            for (const item of data) {
+              processItem(item);
+            }
+          } else if (data && typeof data === 'object') {
+            // Value is single object
+            processItem(data);
+          } else if (typeof key === 'string' && (key.includes('/') || key.includes('.'))) {
+            // Key itself is a path (older TVA format)
+            if (!seenPaths.has(key)) {
+              seenPaths.add(key);
+              results.push({
+                path: key,
+                name: extractNameFromTVAResult(data, key),
+                source: 'tva',
+                score: 0.5
+              });
+            }
+          }
+        }
+      } else if (searchResults && typeof searchResults === 'object') {
+        // Object with nested paths/images/results property
+        const pathsArray = searchResults.paths || searchResults.images || searchResults.results || searchResults.data;
+        if (Array.isArray(pathsArray)) {
+          for (const item of pathsArray) {
+            processItem(item);
+          }
+        } else {
+          // Single object result
+          processItem(searchResults);
+        }
       }
 
       return results;
