@@ -4,7 +4,7 @@
  * @module services/ScanService
  */
 
-import { MODULE_ID } from '../core/Constants.js';
+import { MODULE_ID, EXCLUDED_FOLDERS } from '../core/Constants.js';
 import { yieldToMain } from '../core/Utils.js';
 
 /**
@@ -13,6 +13,17 @@ import { yieldToMain } from '../core/Utils.js';
 export class ScanService {
   constructor() {
     this.imageExtensions = ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.svg'];
+  }
+
+  /**
+   * Check if a path is from an excluded folder (assets, props, etc.)
+   * @param {string} path - Path to check
+   * @returns {boolean} True if path should be excluded
+   */
+  isExcludedPath(path) {
+    if (!path) return true;
+    const pathLower = path.toLowerCase();
+    return EXCLUDED_FOLDERS.some(folder => pathLower.includes(folder));
   }
 
   /**
@@ -91,6 +102,9 @@ export class ScanService {
       // Process files
       if (result.files) {
         for (const file of result.files) {
+          // Skip files from excluded folders
+          if (this.isExcludedPath(file)) continue;
+
           const ext = '.' + file.split('.').pop().toLowerCase();
           if (this.imageExtensions.includes(ext)) {
             const fileName = file.split('/').pop();
@@ -114,6 +128,9 @@ export class ScanService {
       // Recursively scan subdirectories
       if (result.dirs) {
         for (const dir of result.dirs) {
+          // Skip excluded folders (assets, props, textures, etc.)
+          if (this.isExcludedPath(dir)) continue;
+
           // Use folder name as category for subdirectories
           const subCategory = dir.split('/').pop();
           const subImages = await this.scanDirectoryForImages(

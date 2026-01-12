@@ -37,9 +37,17 @@ export class TokenService {
     if (actor.system?.details?.type) {
       const typeData = actor.system.details.type;
       if (typeof typeData === 'string') {
-        info.type = typeData || null;
+        // Parse "Type (Subtype)" format, e.g., "Humanoid (Tiefling)", "Humanoid (Elf)"
+        const parenMatch = typeData.match(/^([^(]+)\s*\(([^)]+)\)$/);
+        if (parenMatch) {
+          info.type = parenMatch[1].trim().toLowerCase() || null;
+          info.subtype = parenMatch[2].trim() || null;
+        } else {
+          info.type = typeData.trim().toLowerCase() || null;
+        }
       } else if (typeof typeData === 'object') {
-        info.type = typeData.value || typeData.label || null;
+        const typeValue = typeData.value || typeData.label || null;
+        info.type = typeValue ? typeValue.toLowerCase() : null;
         info.subtype = typeData.subtype || null;
         info.custom = typeData.custom || null;
       }
@@ -47,7 +55,8 @@ export class TokenService {
 
     // Fallback: check for creatureType field (some systems use this)
     if (!info.type && actor.system?.details?.creatureType) {
-      info.type = actor.system.details.creatureType;
+      const fallbackType = actor.system.details.creatureType;
+      info.type = typeof fallbackType === 'string' ? fallbackType.toLowerCase() : fallbackType;
     }
 
     // Debug log to help troubleshoot type extraction issues

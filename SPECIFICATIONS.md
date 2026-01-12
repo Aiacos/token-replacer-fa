@@ -3,8 +3,8 @@
 ## Specifications & Requirements Document
 
 **Module ID:** `token-replacer-fa`
-**Version:** 2.2.0
-**Last Updated:** 2026-01-09
+**Version:** 2.5.1
+**Last Updated:** 2026-01-10
 
 ---
 
@@ -332,6 +332,7 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.5.1 | 2026-01-10 | **FIX**: Parse subtype from string format "Humanoid (Tiefling)", "Humanoid (Elf)" etc. |
 | 2.5.0 | 2026-01-10 | **PERFORMANCE**: Persistent localStorage cache, improved TVA access, batch size 25 |
 | 2.4.1 | 2026-01-10 | Exclude asset folders from index |
 | 2.4.0 | 2026-01-10 | **PERFORMANCE**: Pre-built keyword index for O(1) searches (FAST mode) |

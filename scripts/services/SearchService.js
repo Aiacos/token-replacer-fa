@@ -4,7 +4,7 @@
  * @module services/SearchService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS, EXCLUDED_FOLDERS } from '../core/Constants.js';
 import {
   loadFuse,
   parseSubtypeTerms,
@@ -41,6 +41,17 @@ export class SearchService {
    */
   clearCache() {
     this.searchCache.clear();
+  }
+
+  /**
+   * Check if a path is from an excluded folder (assets, props, etc.)
+   * @param {string} path - Image path to check
+   * @returns {boolean} True if path should be excluded
+   */
+  isExcludedPath(path) {
+    if (!path) return true;
+    const pathLower = path.toLowerCase();
+    return EXCLUDED_FOLDERS.some(folder => pathLower.includes(folder));
   }
 
   /**
@@ -88,7 +99,8 @@ export class SearchService {
       // Helper function to process a single item
       const processItem = (item) => {
         const imagePath = extractPathFromTVAResult(item);
-        if (!imagePath || seenPaths.has(imagePath)) return;
+        // Skip if no path, already seen, or from excluded folder
+        if (!imagePath || seenPaths.has(imagePath) || this.isExcludedPath(imagePath)) return;
 
         seenPaths.add(imagePath);
         const name = extractNameFromTVAResult(item, imagePath);
@@ -180,20 +192,21 @@ export class SearchService {
       const searchResults = fuse.search(term);
       for (const result of searchResults) {
         const item = result.item;
-        if (!seenPaths.has(item.path)) {
-          // Optionally filter by creature type
-          if (creatureType && item.category) {
-            if (!this.folderMatchesCreatureType(item.category, creatureType)) {
-              continue;
-            }
+        // Skip if already seen or from excluded folder
+        if (seenPaths.has(item.path) || this.isExcludedPath(item.path)) continue;
+
+        // Optionally filter by creature type
+        if (creatureType && item.category) {
+          if (!this.folderMatchesCreatureType(item.category, creatureType)) {
+            continue;
           }
-          seenPaths.add(item.path);
-          results.push({
-            ...item,
-            score: result.score,
-            source: 'local'
-          });
         }
+        seenPaths.add(item.path);
+        results.push({
+          ...item,
+          score: result.score,
+          source: 'local'
+        });
       }
     }
 
@@ -235,10 +248,12 @@ export class SearchService {
       if (localIndex?.length > 0) {
         const termLower = directSearchTerm.toLowerCase();
         const localMatches = localIndex.filter(img =>
-          img.name?.toLowerCase().includes(termLower) ||
-          img.fileName?.toLowerCase().includes(termLower) ||
-          img.category?.toLowerCase().includes(termLower) ||
-          img.path?.toLowerCase().includes(termLower)
+          !this.isExcludedPath(img.path) && (
+            img.name?.toLowerCase().includes(termLower) ||
+            img.fileName?.toLowerCase().includes(termLower) ||
+            img.category?.toLowerCase().includes(termLower) ||
+            img.path?.toLowerCase().includes(termLower)
+          )
         );
         for (const match of localMatches) {
           if (!seenPaths.has(match.path)) {
@@ -359,6 +374,7 @@ export class SearchService {
       }
 
       const categoryMatches = localIndex.filter(img =>
+        !this.isExcludedPath(img.path) &&
         img.category && this.folderMatchesCreatureType(img.category, categoryType)
       );
       for (const match of categoryMatches) {
@@ -453,6 +469,8 @@ export class SearchService {
         for (const term of subtypeTerms) {
           const termLower = term.toLowerCase();
           const localMatches = localIndex.filter(img => {
+            // Skip excluded paths
+            if (this.isExcludedPath(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
             const categoryLower = (img.category || '').toLowerCase();
@@ -527,6 +545,7 @@ export class SearchService {
 
       if (localIndex?.length > 0) {
         const categoryMatches = localIndex.filter(img =>
+          !this.isExcludedPath(img.path) &&
           img.category && this.folderMatchesCreatureType(img.category, creatureInfo.type)
         );
         for (const match of categoryMatches) {
