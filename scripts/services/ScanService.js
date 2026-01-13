@@ -17,13 +17,18 @@ export class ScanService {
 
   /**
    * Check if a path is from an excluded folder (assets, props, etc.)
+   * Only excludes if an exact folder name matches, not substrings in filenames
    * @param {string} path - Path to check
    * @returns {boolean} True if path should be excluded
    */
   isExcludedPath(path) {
     if (!path) return true;
     const pathLower = path.toLowerCase();
-    return EXCLUDED_FOLDERS.some(folder => pathLower.includes(folder));
+    // Split path into segments and check each folder name exactly
+    const segments = pathLower.split('/');
+    return EXCLUDED_FOLDERS.some(folder =>
+      segments.some(segment => segment === folder)
+    );
   }
 
   /**
@@ -231,7 +236,8 @@ export class ScanService {
                 name = item.name || item.label || item.title || 'Unknown';
               }
 
-              if (imagePath && !seenPaths.has(imagePath)) {
+              // Skip if no path, already seen, or from excluded folder
+              if (imagePath && !seenPaths.has(imagePath) && !this.isExcludedPath(imagePath)) {
                 seenPaths.add(imagePath);
                 if (name === 'Unknown' && imagePath) {
                   name = imagePath.split('/').pop()?.replace(/\.[^/.]+$/, '')
@@ -270,6 +276,9 @@ export class ScanService {
 
     const categoryLower = categoryType.toLowerCase();
     return images.filter(img => {
+      // Skip excluded paths first
+      if (this.isExcludedPath(img.path)) return false;
+
       const path = img.path?.toLowerCase() || '';
       const name = img.name?.toLowerCase() || '';
 

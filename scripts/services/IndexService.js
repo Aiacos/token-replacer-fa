@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-cache';
-const CACHE_VERSION = 2; // Increment when index structure changes
+const CACHE_VERSION = 3; // Increment when index structure changes (v3: fixed isExcludedPath bug)
 const BATCH_SIZE = 25; // Parallel API calls per batch
 
 /**
@@ -165,13 +165,18 @@ class IndexService {
 
   /**
    * Check if a path is from an excluded folder (assets, props, etc.)
+   * Only excludes if an exact folder name matches, not substrings in filenames
    * @param {string} path - Image path to check
    * @returns {boolean} True if path should be excluded
    */
   isExcludedPath(path) {
     if (!path) return true;
     const pathLower = path.toLowerCase();
-    return EXCLUDED_FOLDERS.some(folder => pathLower.includes(folder));
+    // Split path into segments and check each folder name exactly
+    const segments = pathLower.split('/');
+    return EXCLUDED_FOLDERS.some(folder =>
+      segments.some(segment => segment === folder)
+    );
   }
 
   /**
