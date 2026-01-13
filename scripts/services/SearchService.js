@@ -430,6 +430,24 @@ export class SearchService {
       // Try FAST mode using pre-built index
       if (indexService.isBuilt) {
         console.log(`${MODULE_ID} | Using index for subtype search (FAST mode)`);
+
+        // First search for actor name (highest priority - exact matches)
+        if (creatureInfo.actorName) {
+          const nameResults = indexService.search(creatureInfo.actorName.toLowerCase());
+          console.log(`${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`);
+          for (const result of nameResults) {
+            if (!seenPaths.has(result.path)) {
+              seenPaths.add(result.path);
+              results.push({
+                ...result,
+                score: result.score ?? 0.1, // Higher priority (lower score = better)
+                fromName: true
+              });
+            }
+          }
+        }
+
+        // Then search for subtypes
         const indexResults = indexService.searchMultiple(subtypeTerms);
         console.log(`${MODULE_ID} | Index returned ${indexResults.length} results for subtypes`);
 
@@ -448,6 +466,25 @@ export class SearchService {
       else {
         console.log(`${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode)`);
 
+        // First search for actor name (highest priority)
+        if (this.hasTVA && creatureInfo.actorName) {
+          console.log(`${MODULE_ID} | Searching TVA for actor name: "${creatureInfo.actorName}"`);
+          const nameResults = await this.searchTVA(creatureInfo.actorName);
+          console.log(`${MODULE_ID} | TVA returned ${nameResults.length} results for actor name`);
+
+          for (const result of nameResults) {
+            if (!seenPaths.has(result.path)) {
+              seenPaths.add(result.path);
+              results.push({
+                ...result,
+                score: result.score ?? 0.1,
+                fromName: true
+              });
+            }
+          }
+        }
+
+        // Then search for subtypes
         for (const term of subtypeTerms) {
           console.log(`${MODULE_ID} | Searching TVA for subtype: "${term}"`);
 
@@ -470,8 +507,32 @@ export class SearchService {
         }
       }
 
-      // Also search local index for each subtype (contains matching)
+      // Also search local index for actor name and subtypes
       if (localIndex?.length > 0) {
+        // First search for actor name
+        if (creatureInfo.actorName) {
+          const actorNameLower = creatureInfo.actorName.toLowerCase();
+          const nameMatches = localIndex.filter(img => {
+            if (this.isExcludedPath(img.path)) return false;
+            const nameLower = (img.name || '').toLowerCase();
+            const pathLower = (img.path || '').toLowerCase();
+            return nameLower.includes(actorNameLower) || pathLower.includes(actorNameLower);
+          });
+
+          for (const match of nameMatches) {
+            if (!seenPaths.has(match.path)) {
+              seenPaths.add(match.path);
+              results.push({
+                ...match,
+                source: 'local',
+                score: match.score ?? 0.15,
+                fromName: true
+              });
+            }
+          }
+        }
+
+        // Then search for subtypes
         for (const term of subtypeTerms) {
           const termLower = term.toLowerCase();
           const localMatches = localIndex.filter(img => {
@@ -534,6 +595,7 @@ export class SearchService {
     }
 
     // Case: Generic subtype - show all category results
+    // searchByCategory already handles both index and local index searches
     if (isGenericSubtype && creatureInfo.type) {
       console.log(`${MODULE_ID} | Generic subtype mode for ${creatureInfo.type}`);
       const categoryResults = await this.searchByCategory(creatureInfo.type, localIndex);
@@ -548,24 +610,6 @@ export class SearchService {
           });
         }
       }
-
-      if (localIndex?.length > 0) {
-        const categoryMatches = localIndex.filter(img =>
-          !this.isExcludedPath(img.path) &&
-          img.category && this.folderMatchesCreatureType(img.category, creatureInfo.type)
-        );
-        for (const match of categoryMatches) {
-          if (!seenPaths.has(match.path)) {
-            seenPaths.add(match.path);
-            results.push({
-              ...match,
-              source: 'local',
-              score: match.score ?? 0.6,
-              fromCategory: true
-            });
-          }
-        }
-      }
     }
 
     // Filter and sort results
@@ -575,18 +619,28 @@ export class SearchService {
     });
 
     validResults.sort((a, b) => {
+      // Priority order: fromName > fromSubtype > fromCategory > other
+      const aIsName = a.fromName === true;
+      const bIsName = b.fromName === true;
       const aIsSubtype = a.fromSubtype === true;
       const bIsSubtype = b.fromSubtype === true;
       const aIsCategory = a.fromCategory === true;
       const bIsCategory = b.fromCategory === true;
-      const aIsName = !aIsSubtype && !aIsCategory;
-      const bIsName = !bIsSubtype && !bIsCategory;
 
+      // Name matches have highest priority
       if (aIsName && !bIsName) return -1;
       if (!aIsName && bIsName) return 1;
-      if (aIsSubtype && bIsCategory) return -1;
-      if (aIsCategory && bIsSubtype) return 1;
 
+      // Subtype matches next
+      if (aIsSubtype && !bIsSubtype && !bIsName) return -1;
+      if (!aIsSubtype && bIsSubtype && !aIsName) return 1;
+
+      // Category matches last
+      if (aIsCategory && bIsCategory) { /* same priority */ }
+      else if (!aIsCategory && bIsCategory) return -1;
+      else if (aIsCategory && !bIsCategory) return 1;
+
+      // Within same priority, respect source preference
       if (priority === 'faNexus') {
         if (a.source === 'local' && b.source !== 'local') return -1;
         if (a.source !== 'local' && b.source === 'local') return 1;
@@ -595,6 +649,7 @@ export class SearchService {
         if (a.source !== 'tva' && b.source === 'tva') return 1;
       }
 
+      // Finally sort by score (lower is better)
       return (a.score || 0.5) - (b.score || 0.5);
     });
 

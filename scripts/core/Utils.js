@@ -121,11 +121,12 @@ export function hasGenericSubtype(subtype) {
 
 /**
  * Generate a unique cache key from creature info
+ * All components are lowercased for consistent matching
  * @param {Object} creatureInfo - Creature information object
  * @returns {string} Cache key
  */
 export function getCreatureCacheKey(creatureInfo) {
-  return `${creatureInfo.actorName?.toLowerCase() || ''}_${creatureInfo.type || ''}_${creatureInfo.subtype || ''}`;
+  return `${creatureInfo.actorName?.toLowerCase() || ''}_${creatureInfo.type || ''}_${(creatureInfo.subtype || '').toLowerCase()}`;
 }
 
 /**

@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-cache';
-const CACHE_VERSION = 3; // Increment when index structure changes (v3: fixed isExcludedPath bug)
+const CACHE_VERSION = 4; // Increment when index structure changes (v4: improved search matching logic)
 const BATCH_SIZE = 25; // Parallel API calls per batch
 
 /**
@@ -439,7 +439,7 @@ class IndexService {
 
   /**
    * Search the index for images matching a term
-   * Uses contains-matching for flexible results
+   * Uses contains-matching for flexible results, with safeguards against overly broad matches
    * @param {string} searchTerm - Term to search for
    * @returns {Array} Matching images
    */
@@ -451,18 +451,25 @@ class IndexService {
 
     const matchingIndices = new Set();
 
-    // Exact keyword match (O(1))
+    // Exact keyword match (O(1)) - always include
     if (this.keywordIndex.has(termLower)) {
       for (const idx of this.keywordIndex.get(termLower)) {
         matchingIndices.add(idx);
       }
     }
 
-    // Partial/contains match
-    for (const [keyword, indices] of this.keywordIndex) {
-      if (keyword.includes(termLower) || termLower.includes(keyword)) {
-        for (const idx of indices) {
-          matchingIndices.add(idx);
+    // Partial/contains match - only for terms with 3+ characters to avoid overly broad matches
+    // e.g., "orc" matching "sorcerer" or "elf" matching "shelf"
+    if (termLower.length >= 3) {
+      for (const [keyword, indices] of this.keywordIndex) {
+        // Only match if both term and keyword are substantial (3+ chars)
+        // and one contains the other
+        if (keyword.length >= 3) {
+          if (keyword.includes(termLower) || termLower.includes(keyword)) {
+            for (const idx of indices) {
+              matchingIndices.add(idx);
+            }
+          }
         }
       }
     }
