@@ -136,7 +136,8 @@ export class SearchService {
             processItem(data);
           } else if (typeof key === 'string' && (key.includes('/') || key.includes('.'))) {
             // Key itself is a path (older TVA format)
-            if (!seenPaths.has(key)) {
+            // Skip if already seen or from excluded folder
+            if (!seenPaths.has(key) && !this.isExcludedPath(key)) {
               seenPaths.add(key);
               results.push({
                 path: key,
