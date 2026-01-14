@@ -140,6 +140,21 @@ function registerSettings() {
     type: Boolean,
     default: false
   });
+
+  game.settings.register(MODULE_ID, 'indexUpdateFrequency', {
+    name: 'TOKEN_REPLACER_FA.settings.indexUpdateFrequency.name',
+    hint: 'TOKEN_REPLACER_FA.settings.indexUpdateFrequency.hint',
+    scope: 'world',
+    config: true,
+    type: String,
+    choices: {
+      daily: 'TOKEN_REPLACER_FA.frequency.daily',
+      weekly: 'TOKEN_REPLACER_FA.frequency.weekly',
+      monthly: 'TOKEN_REPLACER_FA.frequency.monthly',
+      quarterly: 'TOKEN_REPLACER_FA.frequency.quarterly'
+    },
+    default: 'weekly'
+  });
 }
 
 /**
@@ -423,7 +438,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.5.8`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.6.0`);
   registerSettings();
 });
 

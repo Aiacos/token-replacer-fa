@@ -1,49 +1,120 @@
 /**
  * Token Replacer FA - Index Service
- * Pre-builds keyword index from TVA cache for O(1) searches
- * Features: Persistent localStorage cache, direct TVA cache access, parallel fetching
+ * Hierarchical JSON index organized by creature category
+ * Features: Automatic updates based on configurable frequency
  * @module services/IndexService
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
-const CACHE_KEY = 'token-replacer-fa-index-cache';
-const CACHE_VERSION = 5; // v5: Extended EXCLUDED_FOLDERS list (props, assets, items, etc.)
-const BATCH_SIZE = 25; // Parallel API calls per batch
+const CACHE_KEY = 'token-replacer-fa-index-v2';
+const INDEX_VERSION = 6;
+
+// Update frequency in milliseconds
+const UPDATE_FREQUENCIES = {
+  daily: 24 * 60 * 60 * 1000,           // 1 day
+  weekly: 7 * 24 * 60 * 60 * 1000,      // 7 days
+  monthly: 30 * 24 * 60 * 60 * 1000,    // 30 days
+  quarterly: 90 * 24 * 60 * 60 * 1000   // 90 days
+};
 
 /**
- * Yield to main thread using requestIdleCallback when available
- * This allows the UI to remain responsive during long operations
- * @param {number} timeout - Maximum wait time in ms
- * @returns {Promise<void>}
- */
-function yieldToMainThread(timeout = 50) {
-  return new Promise(resolve => {
-    if (typeof requestIdleCallback === 'function') {
-      requestIdleCallback(() => resolve(), { timeout });
-    } else {
-      setTimeout(resolve, Math.min(timeout, 10));
-    }
-  });
-}
-
-/**
- * IndexService - Builds and maintains a keyword index from TVA's cached images
- * Provides O(1) lookups instead of multiple API calls
+ * IndexService - Hierarchical JSON index for fast creature-based lookups
+ * Structure:
+ * {
+ *   version: 6,
+ *   timestamp: Date.now(),
+ *   lastUpdate: Date.now(),
+ *   categories: {
+ *     humanoid: { human: [{path, name}], elf: [...] },
+ *     beast: { wolf: [...], bear: [...] },
+ *     ...
+ *   },
+ *   allPaths: { "path": { name, category, subcategories: [] } }
+ * }
  */
 class IndexService {
   constructor() {
-    this.images = [];               // Flat array of all images {path, name, keywords}
-    this.keywordIndex = new Map();  // keyword (lowercase) → Set of image indices
-    this.pathIndex = new Map();     // path → image index (for deduplication)
+    this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
   }
 
   /**
-   * Try to load index from localStorage cache
-   * @returns {boolean} True if cache was loaded successfully
+   * Get the configured update frequency in milliseconds
+   * @returns {number} Frequency in ms
+   */
+  getUpdateFrequency() {
+    try {
+      const setting = game.settings.get(MODULE_ID, 'indexUpdateFrequency');
+      return UPDATE_FREQUENCIES[setting] || UPDATE_FREQUENCIES.weekly;
+    } catch (e) {
+      return UPDATE_FREQUENCIES.weekly;
+    }
+  }
+
+  /**
+   * Check if the index needs updating based on frequency setting
+   * @returns {boolean} True if update is needed
+   */
+  needsUpdate() {
+    if (!this.index?.lastUpdate) return true;
+    const frequency = this.getUpdateFrequency();
+    const elapsed = Date.now() - this.index.lastUpdate;
+    return elapsed > frequency;
+  }
+
+  /**
+   * Check if a path should be excluded
+   * @param {string} path - Image path
+   * @returns {boolean} True if excluded
+   */
+  isExcludedPath(path) {
+    if (!path) return true;
+    const pathLower = path.toLowerCase();
+    const segments = pathLower.split('/');
+    return EXCLUDED_FOLDERS.some(folder =>
+      segments.some(segment => segment === folder)
+    );
+  }
+
+  /**
+   * Determine which category and subcategories an image belongs to
+   * @param {string} path - Image path
+   * @param {string} name - Image name
+   * @returns {Object} { category, subcategories }
+   */
+  categorizeImage(path, name) {
+    const searchText = `${path} ${name}`.toLowerCase();
+    let bestCategory = null;
+    let subcategories = [];
+    let maxMatches = 0;
+
+    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
+      let matches = 0;
+      const matchedTerms = [];
+
+      for (const term of terms) {
+        if (searchText.includes(term.toLowerCase())) {
+          matches++;
+          matchedTerms.push(term);
+        }
+      }
+
+      if (matches > maxMatches) {
+        maxMatches = matches;
+        bestCategory = category;
+        subcategories = matchedTerms;
+      }
+    }
+
+    return { category: bestCategory, subcategories };
+  }
+
+  /**
+   * Load index from localStorage
+   * @returns {boolean} True if loaded successfully
    */
   loadFromCache() {
     try {
@@ -52,38 +123,15 @@ class IndexService {
 
       const data = JSON.parse(cached);
 
-      // Check cache version
-      if (data.version !== CACHE_VERSION) {
-        console.log(`${MODULE_ID} | Cache version mismatch, rebuilding`);
+      // Version check
+      if (data.version !== INDEX_VERSION) {
+        console.log(`${MODULE_ID} | Index version mismatch, rebuilding`);
         localStorage.removeItem(CACHE_KEY);
         return false;
       }
 
-      // Check cache age (max 24 hours)
-      const age = Date.now() - (data.timestamp || 0);
-      if (age > 24 * 60 * 60 * 1000) {
-        console.log(`${MODULE_ID} | Cache expired, rebuilding`);
-        localStorage.removeItem(CACHE_KEY);
-        return false;
-      }
-
-      // Restore data
-      this.images = data.images || [];
-
-      // Rebuild indexes from images
-      for (let i = 0; i < this.images.length; i++) {
-        const img = this.images[i];
-        this.pathIndex.set(img.path, i);
-
-        for (const keyword of (img.keywords || [])) {
-          if (!this.keywordIndex.has(keyword)) {
-            this.keywordIndex.set(keyword, new Set());
-          }
-          this.keywordIndex.get(keyword).add(i);
-        }
-      }
-
-      console.log(`${MODULE_ID} | Loaded ${this.images.length} images from cache`);
+      this.index = data;
+      console.log(`${MODULE_ID} | Loaded index from cache: ${Object.keys(data.allPaths || {}).length} images`);
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to load cache:`, error);
@@ -93,26 +141,21 @@ class IndexService {
   }
 
   /**
-   * Save index to localStorage cache
+   * Save index to localStorage
+   * @returns {boolean} True if saved successfully
    */
   saveToCache() {
     try {
-      const data = {
-        version: CACHE_VERSION,
-        timestamp: Date.now(),
-        images: this.images
-      };
+      const json = JSON.stringify(this.index);
 
-      const json = JSON.stringify(data);
-
-      // Check size (localStorage limit is ~5MB)
-      if (json.length > 4 * 1024 * 1024) {
+      // Check size limit (~5MB for localStorage)
+      if (json.length > 4.5 * 1024 * 1024) {
         console.warn(`${MODULE_ID} | Index too large for cache (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
         return false;
       }
 
       localStorage.setItem(CACHE_KEY, json);
-      console.log(`${MODULE_ID} | Saved ${this.images.length} images to cache (${(json.length / 1024).toFixed(0)}KB)`);
+      console.log(`${MODULE_ID} | Saved index to cache (${(json.length / 1024).toFixed(0)}KB)`);
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to save cache:`, error);
@@ -121,231 +164,104 @@ class IndexService {
   }
 
   /**
-   * Get TVA's internal cached images using multiple access methods
-   * @returns {Array|Map|null} Cached images or null
+   * Create empty index structure
+   * @returns {Object} Empty index
    */
-  getTVACachedImages() {
-    try {
-      const tvaModule = game.modules.get('token-variants');
-      if (!tvaModule?.active) return null;
-
-      // Method 1: TVA API direct cache access
-      const tvaAPI = tvaModule.api;
-      if (tvaAPI) {
-        // Try various cache access patterns
-        const cacheLocations = [
-          () => tvaAPI.cache,
-          () => tvaAPI.getCache?.(),
-          () => tvaAPI.cachedImages,
-          () => tvaAPI.CACHED_IMAGES,
-          () => tvaAPI.imageCache,
-          () => tvaAPI.getAllCachedImages?.(),
-        ];
-
-        for (const getCacheFn of cacheLocations) {
-          try {
-            const cache = getCacheFn();
-            if (cache && (Array.isArray(cache) || cache instanceof Map || (typeof cache === 'object' && Object.keys(cache).length > 0))) {
-              console.log(`${MODULE_ID} | Found TVA cache via API`);
-              return cache;
-            }
-          } catch (e) { /* continue */ }
-        }
-      }
-
-      // Method 2: Check window/globalThis for TVA internals
-      const globalLocations = [
-        () => window.TVA_CACHED_IMAGES,
-        () => globalThis.TokenVariants?.cachedImages,
-        () => globalThis.TokenVariants?.cache,
-        () => window.TokenVariants?.cachedImages,
-      ];
-
-      for (const getGlobalFn of globalLocations) {
-        try {
-          const cache = getGlobalFn();
-          if (cache && (Array.isArray(cache) || cache instanceof Map || (typeof cache === 'object' && Object.keys(cache).length > 0))) {
-            console.log(`${MODULE_ID} | Found TVA cache via global`);
-            return cache;
-          }
-        } catch (e) { /* continue */ }
-      }
-
-      console.log(`${MODULE_ID} | Could not access TVA internal cache`);
-      return null;
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Error accessing TVA cache:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Check if a path is from an excluded folder (assets, props, etc.)
-   * Only excludes if an exact folder name matches, not substrings in filenames
-   * @param {string} path - Image path to check
-   * @returns {boolean} True if path should be excluded
-   */
-  isExcludedPath(path) {
-    if (!path) return true;
-    const pathLower = path.toLowerCase();
-    // Split path into segments and check each folder name exactly
-    const segments = pathLower.split('/');
-    return EXCLUDED_FOLDERS.some(folder =>
-      segments.some(segment => segment === folder)
-    );
-  }
-
-  /**
-   * Extract keywords from a path/name for indexing
-   * @param {string} path - Image path
-   * @param {string} name - Image name
-   * @returns {Set<string>} Set of lowercase keywords
-   */
-  extractKeywords(path, name) {
-    const keywords = new Set();
-
-    // Extract from name
-    if (name) {
-      const nameParts = name.toLowerCase()
-        .replace(/[-_\.]/g, ' ')
-        .split(/\s+/)
-        .filter(p => p.length >= 2);
-      nameParts.forEach(p => keywords.add(p));
+  createEmptyIndex() {
+    const categories = {};
+    for (const category of Object.keys(CREATURE_TYPE_MAPPINGS)) {
+      categories[category] = {};
     }
 
-    // Extract from path (folder names and filename)
-    if (path) {
-      const pathParts = path.toLowerCase()
-        .replace(/\.[^/.]+$/, '')  // Remove extension
-        .split(/[\/\\]/)
-        .flatMap(segment => segment.replace(/[-_\.]/g, ' ').split(/\s+/))
-        .filter(p => p.length >= 2);
-      pathParts.forEach(p => keywords.add(p));
-    }
-
-    return keywords;
+    return {
+      version: INDEX_VERSION,
+      timestamp: Date.now(),
+      lastUpdate: Date.now(),
+      categories,
+      allPaths: {}
+    };
   }
 
   /**
    * Add an image to the index
    * @param {string} path - Image path
    * @param {string} name - Image name
-   * @param {number} score - Optional relevance score
    */
-  addImage(path, name, score = 0.5) {
-    // Skip if no path, already indexed, or from excluded folder
-    if (!path || this.pathIndex.has(path) || this.isExcludedPath(path)) return;
+  addImageToIndex(path, name) {
+    if (!path || this.index.allPaths[path] || this.isExcludedPath(path)) return;
 
-    const index = this.images.length;
-    const keywords = this.extractKeywords(path, name);
+    const { category, subcategories } = this.categorizeImage(path, name);
+    if (!category) return; // Skip images that don't match any category
 
-    this.images.push({
-      path,
+    // Add to allPaths
+    this.index.allPaths[path] = {
       name: name || path.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'Unknown',
-      keywords: Array.from(keywords),
-      score
-    });
-
-    this.pathIndex.set(path, index);
-
-    // Add to keyword index
-    for (const keyword of keywords) {
-      if (!this.keywordIndex.has(keyword)) {
-        this.keywordIndex.set(keyword, new Set());
-      }
-      this.keywordIndex.get(keyword).add(index);
-    }
-  }
-
-  /**
-   * Process TVA cache data in various formats
-   * @param {*} cacheData - TVA cache in various formats
-   * @returns {number} Number of items processed
-   */
-  processTVACache(cacheData) {
-    if (!cacheData) return 0;
-
-    let processedCount = 0;
-
-    const processItem = (item) => {
-      const path = extractPathFromTVAResult(item);
-      if (path) {
-        const name = extractNameFromTVAResult(item, path);
-        this.addImage(path, name);
-        processedCount++;
-      }
+      category,
+      subcategories
     };
 
-    // Handle Map format
-    if (cacheData instanceof Map || (cacheData && typeof cacheData.entries === 'function')) {
-      for (const [key, value] of cacheData.entries()) {
-        if (Array.isArray(value)) {
-          value.forEach(processItem);
-        } else if (value && typeof value === 'object') {
-          processItem(value);
-        }
-        // Key might be a path itself
-        if (typeof key === 'string' && (key.includes('/') || key.startsWith('http') || key.startsWith('forge://'))) {
-          this.addImage(key, null);
-          processedCount++;
-        }
-      }
-    }
-    // Handle Array format
-    else if (Array.isArray(cacheData)) {
-      cacheData.forEach(processItem);
-    }
-    // Handle Object format
-    else if (typeof cacheData === 'object') {
-      for (const key of Object.keys(cacheData)) {
-        const value = cacheData[key];
-        if (Array.isArray(value)) {
-          value.forEach(processItem);
-        } else if (typeof value === 'string' && (value.includes('/') || value.startsWith('http'))) {
-          this.addImage(value, key);
-          processedCount++;
-        }
-      }
+    // Add to category structure
+    if (!this.index.categories[category]) {
+      this.index.categories[category] = {};
     }
 
-    return processedCount;
+    // Add to each matching subcategory
+    for (const subcat of subcategories) {
+      if (!this.index.categories[category][subcat]) {
+        this.index.categories[category][subcat] = [];
+      }
+      this.index.categories[category][subcat].push({ path, name: this.index.allPaths[path].name });
+    }
+
+    // Also add to a "_all" subcategory for the category
+    if (!this.index.categories[category]._all) {
+      this.index.categories[category]._all = [];
+    }
+    this.index.categories[category]._all.push({ path, name: this.index.allPaths[path].name });
   }
 
   /**
-   * Build index by fetching images via TVA API for common search terms
-   * Uses parallel fetching with increased batch size
-   * @param {Object} tvaAPI - TVA API object
-   * @param {Function} onProgress - Optional progress callback (current, total, images)
+   * Build index from TVA API
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<number>} Number of images indexed
    */
-  async buildFromAPI(tvaAPI, onProgress = null) {
-    if (!tvaAPI?.doImageSearch) return;
+  async buildFromTVA(onProgress = null) {
+    const tvaAPI = game.modules.get('token-variants')?.api;
+    if (!tvaAPI?.doImageSearch) {
+      console.warn(`${MODULE_ID} | TVA API not available`);
+      return 0;
+    }
 
-    console.log(`${MODULE_ID} | Building index from TVA API (parallel fetch, batch size: ${BATCH_SIZE})`);
+    console.log(`${MODULE_ID} | Building index from TVA API...`);
 
-    // Get unique terms from all creature type mappings
+    // Collect all unique search terms
     const allTerms = new Set();
-    for (const terms of Object.values(CREATURE_TYPE_MAPPINGS)) {
+    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
+      allTerms.add(category);
       terms.forEach(t => allTerms.add(t));
     }
-    Object.keys(CREATURE_TYPE_MAPPINGS).forEach(cat => allTerms.add(cat));
 
     const termsArray = Array.from(allTerms);
     const totalTerms = termsArray.length;
-    console.log(`${MODULE_ID} | Fetching ${totalTerms} unique terms from TVA`);
+    let processed = 0;
+    let imagesFound = 0;
 
-    const startTime = performance.now();
-    let lastNotifyTime = startTime;
+    console.log(`${MODULE_ID} | Searching ${totalTerms} terms...`);
 
+    // Process in batches
+    const BATCH_SIZE = 20;
     for (let i = 0; i < termsArray.length; i += BATCH_SIZE) {
       const batch = termsArray.slice(i, i + BATCH_SIZE);
 
-      // Fetch batch in parallel
       const batchPromises = batch.map(async (term) => {
         try {
-          const results = await tvaAPI.doImageSearch(term, {
-            searchType: 'Portrait',
-            simpleResults: false
-          });
+          // Try multiple search methods for compatibility
+          let results = await tvaAPI.doImageSearch(term, { searchType: 'Portrait' });
+
+          if (!results || (Array.isArray(results) && results.length === 0)) {
+            results = await tvaAPI.doImageSearch(term);
+          }
+
           return { term, results };
         } catch (e) {
           return { term, results: null };
@@ -354,198 +270,232 @@ class IndexService {
 
       const batchResults = await Promise.allSettled(batchPromises);
 
-      // Debug: Log first batch results
-      if (i === 0) {
-        console.log(`${MODULE_ID} | DEBUG First batch results:`, batchResults.map(r => ({
-          status: r.status,
-          term: r.value?.term,
-          resultsType: typeof r.value?.results,
-          resultsConstructor: r.value?.results?.constructor?.name,
-          isArray: Array.isArray(r.value?.results),
-          isMap: r.value?.results instanceof Map,
-          length: Array.isArray(r.value?.results) ? r.value?.results.length : (r.value?.results?.size ?? 'N/A')
-        })));
-      }
-
       for (const result of batchResults) {
-        if (result.status !== 'fulfilled' || !result.value.results) continue;
-        const { results } = result.value;
+        if (result.status !== 'fulfilled' || !result.value?.results) continue;
 
-        // Process results
-        if (Array.isArray(results)) {
-          for (const item of results) {
-            const path = extractPathFromTVAResult(item);
-            if (path) {
-              this.addImage(path, extractNameFromTVAResult(item, path));
-            }
-          }
-        } else if (results instanceof Map || (results && typeof results.entries === 'function')) {
-          for (const [, data] of results.entries()) {
-            const items = Array.isArray(data) ? data : [data];
-            for (const item of items) {
-              const path = extractPathFromTVAResult(item);
-              if (path) {
-                this.addImage(path, extractNameFromTVAResult(item, path));
-              }
-            }
-          }
-        } else if (results && typeof results === 'object') {
-          const arr = results.paths || results.images || results.results || results.data;
-          const items = Array.isArray(arr) ? arr : [results];
-          for (const item of items) {
-            const path = extractPathFromTVAResult(item);
-            if (path) {
-              this.addImage(path, extractNameFromTVAResult(item, path));
-            }
+        const { results } = result.value;
+        const items = this.extractItemsFromResults(results);
+
+        for (const item of items) {
+          const path = extractPathFromTVAResult(item);
+          if (path && !this.index.allPaths[path]) {
+            const name = extractNameFromTVAResult(item, path);
+            this.addImageToIndex(path, name);
+            imagesFound++;
           }
         }
       }
 
-      // Progress update
-      const progress = Math.min(i + BATCH_SIZE, totalTerms);
-      const now = performance.now();
-      const elapsed = ((now - startTime) / 1000).toFixed(1);
+      processed += batch.length;
 
-      // Console log every 50 terms
-      if (progress % 50 === 0 || progress === totalTerms) {
-        console.log(`${MODULE_ID} | Index build: ${progress}/${totalTerms} terms, ${this.images.length} images (${elapsed}s)`);
+      // Progress callback
+      if (onProgress && (processed % 50 === 0 || processed === totalTerms)) {
+        onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
       }
 
-      // Progress callback every 30 seconds for UI notification
-      if (onProgress && (now - lastNotifyTime > 30000 || progress === totalTerms)) {
-        lastNotifyTime = now;
-        try {
-          onProgress(progress, totalTerms, this.images.length);
-        } catch (e) { /* ignore callback errors */ }
-      }
-
-      // Yield to main thread using requestIdleCallback for better UI responsiveness
-      await yieldToMainThread(50);
+      // Yield to main thread
+      await new Promise(r => setTimeout(r, 10));
     }
 
-    const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
-    console.log(`${MODULE_ID} | API fetch complete: ${this.images.length} images in ${totalTime}s`);
+    return imagesFound;
   }
 
   /**
-   * Build the index from localStorage cache, TVA cache, or API
-   * @param {Function} onProgress - Optional progress callback (current, total, images)
-   * @returns {Promise<boolean>} True if index was built successfully
+   * Extract items from various TVA result formats
+   * @param {*} results - TVA results
+   * @returns {Array} Array of items
    */
-  async build(onProgress = null) {
-    if (this.isBuilt) return true;
+  extractItemsFromResults(results) {
+    const items = [];
+
+    if (Array.isArray(results)) {
+      items.push(...results);
+    } else if (results instanceof Map) {
+      for (const [key, value] of results.entries()) {
+        if (Array.isArray(value)) {
+          items.push(...value);
+        } else if (value) {
+          items.push(value);
+        }
+        // Key might be a path
+        if (typeof key === 'string' && (key.includes('/') || key.startsWith('http'))) {
+          items.push({ path: key });
+        }
+      }
+    } else if (results && typeof results === 'object') {
+      const arr = results.paths || results.images || results.results || results.data;
+      if (Array.isArray(arr)) {
+        items.push(...arr);
+      } else {
+        items.push(results);
+      }
+    }
+
+    return items;
+  }
+
+  /**
+   * Build or update the index
+   * @param {boolean} forceRebuild - Force full rebuild
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<boolean>} True if successful
+   */
+  async build(forceRebuild = false, onProgress = null) {
     if (this.buildPromise) return this.buildPromise;
 
     this.buildPromise = (async () => {
       const startTime = performance.now();
       console.log(`${MODULE_ID} | Starting index build...`);
 
-      // Step 1: Try localStorage cache first (fastest)
-      if (this.loadFromCache()) {
+      // Try to load from cache first
+      if (!forceRebuild && this.loadFromCache()) {
+        // Check if update is needed
+        if (!this.needsUpdate()) {
+          this.isBuilt = true;
+          console.log(`${MODULE_ID} | Index loaded from cache, no update needed`);
+          return true;
+        }
+        console.log(`${MODULE_ID} | Index needs update based on frequency setting`);
+      }
+
+      // Create new index
+      this.index = this.createEmptyIndex();
+
+      // Build from TVA
+      const imageCount = await this.buildFromTVA(onProgress);
+
+      if (imageCount > 0) {
+        this.index.lastUpdate = Date.now();
+        this.saveToCache();
         this.isBuilt = true;
-        const elapsed = (performance.now() - startTime).toFixed(0);
-        console.log(`${MODULE_ID} | Index loaded from cache in ${elapsed}ms`);
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+        console.log(`${MODULE_ID} | Index built: ${imageCount} images in ${elapsed}s`);
         return true;
       }
 
-      // Step 2: Try direct TVA cache access
-      const tvaCache = this.getTVACachedImages();
-      if (tvaCache) {
-        const processed = this.processTVACache(tvaCache);
-        if (processed > 100) {
-          console.log(`${MODULE_ID} | Processed ${processed} items from TVA cache`);
-        }
-      }
-
-      // Step 3: If not enough images, fetch via API
-      if (this.images.length < 500) {
-        const tvaAPI = game.modules.get('token-variants')?.api;
-        if (tvaAPI) {
-          await this.buildFromAPI(tvaAPI, onProgress);
-        }
-      }
-
-      // Step 4: Save to localStorage for next session
-      if (this.images.length > 0) {
-        this.saveToCache();
-      }
-
-      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-      console.log(`${MODULE_ID} | Index built: ${this.images.length} images, ${this.keywordIndex.size} keywords in ${elapsed}s`);
-
-      this.isBuilt = this.images.length > 0;
-      return this.isBuilt;
+      console.warn(`${MODULE_ID} | Index build returned 0 images`);
+      this.isBuilt = false;
+      return false;
     })();
 
-    return this.buildPromise;
+    const result = await this.buildPromise;
+    this.buildPromise = null;
+    return result;
   }
 
   /**
-   * Search the index for images matching a term
-   * Uses contains-matching for flexible results, with safeguards against overly broad matches
-   * @param {string} searchTerm - Term to search for
+   * Search by creature category
+   * @param {string} category - Creature type (humanoid, beast, etc.)
+   * @returns {Array} All images in category
+   */
+  searchByCategory(category) {
+    if (!this.isBuilt || !this.index?.categories) return [];
+
+    const categoryLower = category.toLowerCase();
+    const categoryData = this.index.categories[categoryLower];
+
+    if (!categoryData?._all) return [];
+
+    // Return all images in this category
+    return categoryData._all.map(item => ({
+      path: item.path,
+      name: item.name,
+      source: 'index',
+      category: categoryLower
+    }));
+  }
+
+  /**
+   * Search by subcategory (e.g., "elf" within humanoid)
+   * @param {string} category - Main category
+   * @param {string} subcategory - Subcategory term
    * @returns {Array} Matching images
    */
-  search(searchTerm) {
-    if (!this.isBuilt || !searchTerm) return [];
+  searchBySubcategory(category, subcategory) {
+    if (!this.isBuilt || !this.index?.categories) return [];
 
-    const termLower = searchTerm.toLowerCase().trim();
-    if (termLower.length < 2) return [];
+    const categoryLower = category.toLowerCase();
+    const subcatLower = subcategory.toLowerCase();
+    const categoryData = this.index.categories[categoryLower];
 
-    const matchingIndices = new Set();
+    if (!categoryData) return [];
 
-    // Exact keyword match (O(1)) - always include
-    if (this.keywordIndex.has(termLower)) {
-      for (const idx of this.keywordIndex.get(termLower)) {
-        matchingIndices.add(idx);
-      }
+    // Direct subcategory match
+    if (categoryData[subcatLower]) {
+      return categoryData[subcatLower].map(item => ({
+        path: item.path,
+        name: item.name,
+        source: 'index',
+        category: categoryLower,
+        subcategory: subcatLower
+      }));
     }
 
-    // Partial/contains match - only for terms with 3+ characters to avoid overly broad matches
-    // e.g., "orc" matching "sorcerer" or "elf" matching "shelf"
-    if (termLower.length >= 3) {
-      for (const [keyword, indices] of this.keywordIndex) {
-        // Only match if both term and keyword are substantial (3+ chars)
-        // and one contains the other
-        if (keyword.length >= 3) {
-          if (keyword.includes(termLower) || termLower.includes(keyword)) {
-            for (const idx of indices) {
-              matchingIndices.add(idx);
-            }
+    // Partial match in subcategory names
+    const results = [];
+    const seenPaths = new Set();
+
+    for (const [subcat, items] of Object.entries(categoryData)) {
+      if (subcat === '_all') continue;
+      if (subcat.includes(subcatLower) || subcatLower.includes(subcat)) {
+        for (const item of items) {
+          if (!seenPaths.has(item.path)) {
+            seenPaths.add(item.path);
+            results.push({
+              path: item.path,
+              name: item.name,
+              source: 'index',
+              category: categoryLower,
+              subcategory: subcat
+            });
           }
         }
       }
-    }
-
-    // Convert to results
-    const results = [];
-    for (const idx of matchingIndices) {
-      const img = this.images[idx];
-      results.push({
-        path: img.path,
-        name: img.name,
-        score: img.score,
-        source: 'index'
-      });
     }
 
     return results;
   }
 
   /**
-   * Search for multiple terms (OR logic)
-   * @param {string[]} terms - Terms to search
-   * @returns {Array} Combined unique results
+   * Search by term across all categories
+   * @param {string} term - Search term
+   * @returns {Array} Matching images
+   */
+  search(term) {
+    if (!this.isBuilt || !this.index?.allPaths) return [];
+
+    const termLower = term.toLowerCase();
+    const results = [];
+
+    for (const [path, data] of Object.entries(this.index.allPaths)) {
+      const searchText = `${path} ${data.name} ${data.subcategories?.join(' ') || ''}`.toLowerCase();
+      if (searchText.includes(termLower)) {
+        results.push({
+          path,
+          name: data.name,
+          source: 'index',
+          category: data.category
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Search multiple terms (OR logic)
+   * @param {string[]} terms - Search terms
+   * @returns {Array} Combined results
    */
   searchMultiple(terms) {
-    if (!this.isBuilt || !terms?.length) return [];
+    if (!terms?.length) return [];
 
     const seenPaths = new Set();
     const results = [];
 
     for (const term of terms) {
-      const termResults = this.search(term);
-      for (const result of termResults) {
+      for (const result of this.search(term)) {
         if (!seenPaths.has(result.path)) {
           seenPaths.add(result.path);
           results.push(result);
@@ -557,47 +507,45 @@ class IndexService {
   }
 
   /**
-   * Search by creature category
-   * @param {string} category - Creature type category
-   * @returns {Array} All images matching the category
-   */
-  searchByCategory(category) {
-    if (!this.isBuilt || !category) return [];
-
-    const categoryLower = category.toLowerCase();
-    const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryLower];
-
-    if (!categoryTerms) {
-      return this.search(category);
-    }
-
-    return this.searchMultiple(categoryTerms);
-  }
-
-  /**
    * Get index statistics
-   * @returns {Object} Stats about the index
+   * @returns {Object} Stats
    */
   getStats() {
+    const categoryStats = {};
+    if (this.index?.categories) {
+      for (const [cat, data] of Object.entries(this.index.categories)) {
+        categoryStats[cat] = data._all?.length || 0;
+      }
+    }
+
     return {
       isBuilt: this.isBuilt,
-      imageCount: this.images.length,
-      keywordCount: this.keywordIndex.size,
-      uniquePaths: this.pathIndex.size
+      version: this.index?.version || 0,
+      totalImages: Object.keys(this.index?.allPaths || {}).length,
+      lastUpdate: this.index?.lastUpdate ? new Date(this.index.lastUpdate).toLocaleString() : 'Never',
+      categories: categoryStats
     };
   }
 
   /**
-   * Clear the index and cache
+   * Clear the index
    */
   clear() {
-    this.images = [];
-    this.keywordIndex.clear();
-    this.pathIndex.clear();
+    this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
     localStorage.removeItem(CACHE_KEY);
     console.log(`${MODULE_ID} | Index cleared`);
+  }
+
+  /**
+   * Force rebuild the index
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<boolean>}
+   */
+  async forceRebuild(onProgress = null) {
+    this.clear();
+    return this.build(true, onProgress);
   }
 }
 

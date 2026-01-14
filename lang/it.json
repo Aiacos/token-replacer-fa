@@ -41,7 +41,17 @@
       "refreshTVACache": {
         "name": "Aggiorna Cache TVA Prima della Ricerca",
         "hint": "Forza l'aggiornamento della cache di Token Variant Art prima di cercare. Attiva se hai aggiunto nuove immagini. Default: Spento"
+      },
+      "indexUpdateFrequency": {
+        "name": "Frequenza Aggiornamento Indice",
+        "hint": "Ogni quanto aggiornare automaticamente l'indice delle immagini token da TVA/FA Nexus. Default: Settimanale"
       }
+    },
+    "frequency": {
+      "daily": "Giornaliero",
+      "weekly": "Settimanale",
+      "monthly": "Mensile",
+      "quarterly": "Ogni 3 Mesi"
     },
     "priority": {
       "faNexus": "Prima FA Nexus",
