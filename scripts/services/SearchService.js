@@ -94,10 +94,25 @@ export class SearchService {
     try {
       const results = [];
       const seenPaths = new Set();
-      const searchResults = await this.tvaAPI.doImageSearch(searchTerm, {
+
+      // Try different search configurations for TVA compatibility
+      let searchResults = await this.tvaAPI.doImageSearch(searchTerm, {
         searchType: 'Portrait',
         simpleResults: false
       });
+
+      // If no results, try without options (TVA 6.x compatibility)
+      if (!searchResults || (Array.isArray(searchResults) && searchResults.length === 0) ||
+          (searchResults instanceof Map && searchResults.size === 0)) {
+        searchResults = await this.tvaAPI.doImageSearch(searchTerm);
+      }
+
+      // Debug: Log raw results for first few searches
+      if (!this._debugLogged) {
+        this._debugLogged = true;
+        console.log(`${MODULE_ID} | DEBUG TVA raw results for "${searchTerm}":`, searchResults);
+        console.log(`${MODULE_ID} | DEBUG TVA result type:`, typeof searchResults, searchResults?.constructor?.name);
+      }
 
       if (!searchResults) return [];
 

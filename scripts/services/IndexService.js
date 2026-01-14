@@ -354,6 +354,19 @@ class IndexService {
 
       const batchResults = await Promise.allSettled(batchPromises);
 
+      // Debug: Log first batch results
+      if (i === 0) {
+        console.log(`${MODULE_ID} | DEBUG First batch results:`, batchResults.map(r => ({
+          status: r.status,
+          term: r.value?.term,
+          resultsType: typeof r.value?.results,
+          resultsConstructor: r.value?.results?.constructor?.name,
+          isArray: Array.isArray(r.value?.results),
+          isMap: r.value?.results instanceof Map,
+          length: Array.isArray(r.value?.results) ? r.value?.results.length : (r.value?.results?.size ?? 'N/A')
+        })));
+      }
+
       for (const result of batchResults) {
         if (result.status !== 'fulfilled' || !result.value.results) continue;
         const { results } = result.value;
