@@ -289,7 +289,8 @@ export class SearchService {
 
       const indexResults = indexService.searchByCategory(categoryType);
       for (const result of indexResults) {
-        if (!seenPaths.has(result.path)) {
+        // Double-check exclusion filter for safety
+        if (!seenPaths.has(result.path) && !this.isExcludedPath(result.path)) {
           seenPaths.add(result.path);
           results.push({
             ...result,
@@ -436,7 +437,8 @@ export class SearchService {
           const nameResults = indexService.search(creatureInfo.actorName.toLowerCase());
           console.log(`${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`);
           for (const result of nameResults) {
-            if (!seenPaths.has(result.path)) {
+            // Double-check exclusion filter for safety
+            if (!seenPaths.has(result.path) && !this.isExcludedPath(result.path)) {
               seenPaths.add(result.path);
               results.push({
                 ...result,
@@ -452,7 +454,8 @@ export class SearchService {
         console.log(`${MODULE_ID} | Index returned ${indexResults.length} results for subtypes`);
 
         for (const result of indexResults) {
-          if (!seenPaths.has(result.path)) {
+          // Double-check exclusion filter for safety
+          if (!seenPaths.has(result.path) && !this.isExcludedPath(result.path)) {
             seenPaths.add(result.path);
             results.push({
               ...result,

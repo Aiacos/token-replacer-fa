@@ -423,7 +423,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.5.4`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.5.6`);
   registerSettings();
 });
 
@@ -436,10 +436,44 @@ Hooks.once('ready', async () => {
   // Build image index for fast searches (runs in background)
   if (TokenReplacerFA.hasTVA) {
     console.log(`${MODULE_ID} | Building image index in background...`);
-    indexService.build().then(success => {
+
+    // Check if this will be a first-time build (no cache)
+    const hasCache = localStorage.getItem('token-replacer-fa-index-cache');
+    let notificationShown = false;
+
+    // Progress callback for UI notifications during first-time build
+    const onProgress = (current, total, images) => {
+      const percent = Math.round((current / total) * 100);
+      ui.notifications.info(
+        TokenReplacerFA.i18n('notifications.indexing', { percent, images }) ||
+        `Token Replacer FA: Building index... ${percent}% (${images} images)`,
+        { permanent: false }
+      );
+    };
+
+    // Show initial notification for first-time build
+    if (!hasCache) {
+      notificationShown = true;
+      ui.notifications.info(
+        TokenReplacerFA.i18n('notifications.indexingStart') ||
+        'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
+        { permanent: false }
+      );
+    }
+
+    indexService.build(hasCache ? null : onProgress).then(success => {
       if (success) {
         const stats = indexService.getStats();
         console.log(`${MODULE_ID} | Image index ready: ${stats.imageCount} images, ${stats.keywordCount} keywords`);
+
+        // Show completion notification if we showed the start notification
+        if (notificationShown) {
+          ui.notifications.info(
+            TokenReplacerFA.i18n('notifications.indexingComplete', { count: stats.imageCount }) ||
+            `Token Replacer FA: Index ready! ${stats.imageCount} images indexed.`,
+            { permanent: false }
+          );
+        }
       } else {
         console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
       }

@@ -82,7 +82,10 @@
       "error": "Error replacing token: {error}",
       "inProgress": "Token replacement already in progress",
       "buildingIndex": "Building token search index...",
-      "indexReady": "Token index ready! {count} images indexed for fast search."
+      "indexReady": "Token index ready! {count} images indexed for fast search.",
+      "indexingStart": "First-time setup: Building image index in background. This may take several minutes but only happens once.",
+      "indexing": "Building index... {percent}% ({images} images)",
+      "indexingComplete": "Index ready! {count} images indexed for fast search."
     }
   }
 }

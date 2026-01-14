@@ -9,8 +9,24 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-cache';
-const CACHE_VERSION = 4; // Increment when index structure changes (v4: improved search matching logic)
+const CACHE_VERSION = 5; // v5: Extended EXCLUDED_FOLDERS list (props, assets, items, etc.)
 const BATCH_SIZE = 25; // Parallel API calls per batch
+
+/**
+ * Yield to main thread using requestIdleCallback when available
+ * This allows the UI to remain responsive during long operations
+ * @param {number} timeout - Maximum wait time in ms
+ * @returns {Promise<void>}
+ */
+function yieldToMainThread(timeout = 50) {
+  return new Promise(resolve => {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => resolve(), { timeout });
+    } else {
+      setTimeout(resolve, Math.min(timeout, 10));
+    }
+  });
+}
 
 /**
  * IndexService - Builds and maintains a keyword index from TVA's cached images
@@ -299,8 +315,9 @@ class IndexService {
    * Build index by fetching images via TVA API for common search terms
    * Uses parallel fetching with increased batch size
    * @param {Object} tvaAPI - TVA API object
+   * @param {Function} onProgress - Optional progress callback (current, total, images)
    */
-  async buildFromAPI(tvaAPI) {
+  async buildFromAPI(tvaAPI, onProgress = null) {
     if (!tvaAPI?.doImageSearch) return;
 
     console.log(`${MODULE_ID} | Building index from TVA API (parallel fetch, batch size: ${BATCH_SIZE})`);
@@ -317,6 +334,7 @@ class IndexService {
     console.log(`${MODULE_ID} | Fetching ${totalTerms} unique terms from TVA`);
 
     const startTime = performance.now();
+    let lastNotifyTime = startTime;
 
     for (let i = 0; i < termsArray.length; i += BATCH_SIZE) {
       const batch = termsArray.slice(i, i + BATCH_SIZE);
@@ -372,13 +390,24 @@ class IndexService {
 
       // Progress update
       const progress = Math.min(i + BATCH_SIZE, totalTerms);
+      const now = performance.now();
+      const elapsed = ((now - startTime) / 1000).toFixed(1);
+
+      // Console log every 50 terms
       if (progress % 50 === 0 || progress === totalTerms) {
-        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
         console.log(`${MODULE_ID} | Index build: ${progress}/${totalTerms} terms, ${this.images.length} images (${elapsed}s)`);
       }
 
-      // Yield to main thread
-      await new Promise(r => setTimeout(r, 5));
+      // Progress callback every 30 seconds for UI notification
+      if (onProgress && (now - lastNotifyTime > 30000 || progress === totalTerms)) {
+        lastNotifyTime = now;
+        try {
+          onProgress(progress, totalTerms, this.images.length);
+        } catch (e) { /* ignore callback errors */ }
+      }
+
+      // Yield to main thread using requestIdleCallback for better UI responsiveness
+      await yieldToMainThread(50);
     }
 
     const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
@@ -387,9 +416,10 @@ class IndexService {
 
   /**
    * Build the index from localStorage cache, TVA cache, or API
+   * @param {Function} onProgress - Optional progress callback (current, total, images)
    * @returns {Promise<boolean>} True if index was built successfully
    */
-  async build() {
+  async build(onProgress = null) {
     if (this.isBuilt) return true;
     if (this.buildPromise) return this.buildPromise;
 
@@ -418,7 +448,7 @@ class IndexService {
       if (this.images.length < 500) {
         const tvaAPI = game.modules.get('token-variants')?.api;
         if (tvaAPI) {
-          await this.buildFromAPI(tvaAPI);
+          await this.buildFromAPI(tvaAPI, onProgress);
         }
       }
 
