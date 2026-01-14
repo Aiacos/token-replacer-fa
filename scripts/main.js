@@ -1,7 +1,7 @@
 /**
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
- * @version 2.0.0
+ * @version 2.6.1
  */
 
 import { MODULE_ID } from './core/Constants.js';
