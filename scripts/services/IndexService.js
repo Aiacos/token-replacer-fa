@@ -293,8 +293,8 @@ class IndexService {
         onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
       }
 
-      // Yield to main thread
-      await new Promise(r => setTimeout(r, 10));
+      // Yield to main thread for UI responsiveness
+      await new Promise(r => setTimeout(r, 50));
     }
 
     return imagesFound;

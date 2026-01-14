@@ -327,62 +327,84 @@ export class SearchService {
       if (categoryTerms) {
         console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode - index not built)`);
         const totalTerms = categoryTerms.length;
+        const SLOW_MODE_BATCH_SIZE = 6; // Parallel batch size for SLOW mode
         let searchCount = 0;
 
-        for (const term of categoryTerms) {
-          searchCount++;
+        // Process in parallel batches for better performance
+        for (let i = 0; i < categoryTerms.length; i += SLOW_MODE_BATCH_SIZE) {
+          const batch = categoryTerms.slice(i, i + SLOW_MODE_BATCH_SIZE);
 
           if (progressCallback) {
             progressCallback({
               current: searchCount,
               total: totalTerms,
-              term: term,
+              term: batch.join(', '),
               resultsFound: results.length
             });
           }
 
-          if (searchCount % 10 === 0 || searchCount === totalTerms) {
-            console.log(`${MODULE_ID} | Search progress: ${searchCount}/${totalTerms} terms, ${results.length} results`);
-          }
+          // Execute batch in parallel
+          const batchPromises = batch.map(term => this.searchTVA(term));
+          const batchResults = await Promise.allSettled(batchPromises);
 
-          const tvaResults = await this.searchTVA(term);
-          for (const result of tvaResults) {
-            if (!seenPaths.has(result.path)) {
-              seenPaths.add(result.path);
-              results.push(result);
+          // Process results
+          for (const result of batchResults) {
+            if (result.status === 'fulfilled' && result.value) {
+              for (const item of result.value) {
+                if (!seenPaths.has(item.path)) {
+                  seenPaths.add(item.path);
+                  results.push(item);
+                }
+              }
             }
           }
 
-          if (searchCount % 3 === 0) {
-            await yieldToMain(5);
+          searchCount += batch.length;
+
+          if (searchCount % 12 === 0 || searchCount === totalTerms) {
+            console.log(`${MODULE_ID} | Search progress: ${searchCount}/${totalTerms} terms, ${results.length} results`);
           }
+
+          // Yield to main thread after each batch for UI responsiveness
+          await yieldToMain(50);
         }
       } else {
-        // Fallback to primary terms
+        // Fallback to primary terms - also parallelized
         const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
         if (primaryTerms) {
           console.log(`${MODULE_ID} | No full mapping, using ${primaryTerms.length} primary terms`);
           const totalTerms = primaryTerms.length;
+          const SLOW_MODE_BATCH_SIZE = 6;
           let searchCount = 0;
 
-          for (const term of primaryTerms) {
-            searchCount++;
+          for (let i = 0; i < primaryTerms.length; i += SLOW_MODE_BATCH_SIZE) {
+            const batch = primaryTerms.slice(i, i + SLOW_MODE_BATCH_SIZE);
+
             if (progressCallback) {
               progressCallback({
                 current: searchCount,
                 total: totalTerms,
-                term: term,
+                term: batch.join(', '),
                 resultsFound: results.length
               });
             }
 
-            const tvaResults = await this.searchTVA(term);
-            for (const result of tvaResults) {
-              if (!seenPaths.has(result.path)) {
-                seenPaths.add(result.path);
-                results.push(result);
+            const batchPromises = batch.map(term => this.searchTVA(term));
+            const batchResults = await Promise.allSettled(batchPromises);
+
+            for (const result of batchResults) {
+              if (result.status === 'fulfilled' && result.value) {
+                for (const item of result.value) {
+                  if (!seenPaths.has(item.path)) {
+                    seenPaths.add(item.path);
+                    results.push(item);
+                  }
+                }
               }
             }
+
+            searchCount += batch.length;
+            await yieldToMain(50);
           }
         }
       }

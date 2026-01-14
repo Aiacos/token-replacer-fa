@@ -125,9 +125,9 @@ export class ScanService {
         }
       }
 
-      // Yield to main thread periodically
-      if (depth > 0 && images.length % 50 === 0) {
-        await yieldToMain(10);
+      // Yield to main thread periodically for UI responsiveness
+      if (images.length > 0 && images.length % 30 === 0) {
+        await yieldToMain(50);
       }
 
       // Recursively scan subdirectories
