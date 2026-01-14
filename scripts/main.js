@@ -438,7 +438,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.6.0`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.6.1`);
   registerSettings();
 });
 
@@ -453,7 +453,7 @@ Hooks.once('ready', async () => {
     console.log(`${MODULE_ID} | Building image index in background...`);
 
     // Check if this will be a first-time build (no cache)
-    const hasCache = localStorage.getItem('token-replacer-fa-index-cache');
+    const hasCache = localStorage.getItem('token-replacer-fa-index-v2');
     let notificationShown = false;
 
     // Progress callback for UI notifications during first-time build
@@ -476,16 +476,16 @@ Hooks.once('ready', async () => {
       );
     }
 
-    indexService.build(hasCache ? null : onProgress).then(success => {
+    indexService.build(false, hasCache ? null : onProgress).then(success => {
       if (success) {
         const stats = indexService.getStats();
-        console.log(`${MODULE_ID} | Image index ready: ${stats.imageCount} images, ${stats.keywordCount} keywords`);
+        console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
 
         // Show completion notification if we showed the start notification
         if (notificationShown) {
           ui.notifications.info(
-            TokenReplacerFA.i18n('notifications.indexingComplete', { count: stats.imageCount }) ||
-            `Token Replacer FA: Index ready! ${stats.imageCount} images indexed.`,
+            TokenReplacerFA.i18n('notifications.indexingComplete', { count: stats.totalImages }) ||
+            `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
             { permanent: false }
           );
         }
