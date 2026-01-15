@@ -26,8 +26,20 @@ export class ScanService {
     const pathLower = path.toLowerCase();
     // Split path into segments and check each folder name exactly
     const segments = pathLower.split('/');
+
+    // Skip CDN/URL structure segments - only check actual folder names
+    // These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+    const cdnSegments = new Set([
+      'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
+      'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
+      'www', 'cdn', 'static', 'public', 'uploads', 'files'
+    ]);
+
+    // Filter out CDN segments and check remaining folder names
+    const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
+
     return EXCLUDED_FOLDERS.some(folder =>
-      segments.some(segment => segment === folder)
+      folderSegments.some(segment => segment === folder)
     );
   }
 

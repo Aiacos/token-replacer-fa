@@ -74,8 +74,20 @@ class IndexService {
     if (!path) return true;
     const pathLower = path.toLowerCase();
     const segments = pathLower.split('/');
+
+    // Skip CDN/URL structure segments - only check actual folder names
+    // These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+    const cdnSegments = new Set([
+      'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
+      'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
+      'www', 'cdn', 'static', 'public', 'uploads', 'files'
+    ]);
+
+    // Filter out CDN segments and check remaining folder names
+    const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
+
     return EXCLUDED_FOLDERS.some(folder =>
-      segments.some(segment => segment === folder)
+      folderSegments.some(segment => segment === folder)
     );
   }
 
@@ -522,17 +534,8 @@ class IndexService {
   async indexPathsDirectly(paths, onProgress = null) {
     const totalPaths = paths.length;
     let imagesFound = 0;
-    let debugCount = 0;
-    let skippedNoPath = 0;
-    let skippedAlreadyIndexed = 0;
-    let skippedExcluded = 0;
 
     console.log(`${MODULE_ID} | Indexing ${totalPaths} paths directly...`);
-
-    // DEBUG: Log first few items
-    if (paths.length > 0) {
-      console.log(`${MODULE_ID} | DEBUG - First 3 items:`, paths.slice(0, 3));
-    }
 
     const BATCH_SIZE = 1000;
     for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
@@ -542,27 +545,6 @@ class IndexService {
         // Handle both string paths and {path, name, category} objects
         const path = typeof item === 'string' ? item : item?.path;
         const name = typeof item === 'string' ? null : item?.name;
-
-        // DEBUG: Track why paths are skipped
-        if (debugCount < 10) {
-          if (!path) {
-            console.log(`${MODULE_ID} | DEBUG - No path for item:`, item);
-            skippedNoPath++;
-          } else if (this.index.allPaths[path]) {
-            console.log(`${MODULE_ID} | DEBUG - Already indexed: ${path}`);
-            skippedAlreadyIndexed++;
-          } else if (this.isExcludedPath(path)) {
-            console.log(`${MODULE_ID} | DEBUG - Excluded path: ${path}`);
-            skippedExcluded++;
-          }
-          debugCount++;
-        } else {
-          // Count silently after debug
-          if (!path) skippedNoPath++;
-          else if (this.index.allPaths[path]) skippedAlreadyIndexed++;
-          else if (this.isExcludedPath(path)) skippedExcluded++;
-        }
-
         if (this.addImageToIndex(path, name)) {
           imagesFound++;
         }
@@ -579,7 +561,6 @@ class IndexService {
     }
 
     console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
-    console.log(`${MODULE_ID} | DEBUG - Skip reasons: noPath=${skippedNoPath}, alreadyIndexed=${skippedAlreadyIndexed}, excluded=${skippedExcluded}`);
     return imagesFound;
   }
 
