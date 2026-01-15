@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 9;  // Direct cache reading
+const INDEX_VERSION = 10;  // Debug TVA format
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -265,7 +265,51 @@ class IndexService {
       }
     }
 
-    // Method 3: Access TVA's internal cache structure directly
+    // Method 3: Check TVA_CONFIG for cache info
+    if (allPaths.length === 0 && tvaAPI.TVA_CONFIG) {
+      console.log(`${MODULE_ID} | Checking TVA_CONFIG...`);
+      const config = tvaAPI.TVA_CONFIG;
+      console.log(`${MODULE_ID} | TVA_CONFIG keys:`, Object.keys(config));
+
+      // Check for staticCache in config
+      if (config.staticCache) {
+        console.log(`${MODULE_ID} | Found staticCache in TVA_CONFIG`);
+        allPaths = this.extractPathsFromTVACache(config.staticCache);
+      }
+    }
+
+    // Method 4: Try Foundry game settings for TVA static cache
+    if (allPaths.length === 0) {
+      console.log(`${MODULE_ID} | Trying TVA game settings...`);
+      try {
+        // TVA stores static cache in game settings
+        const staticCache = game.settings.get('token-variants', 'staticCache');
+        if (staticCache) {
+          console.log(`${MODULE_ID} | Found staticCache in game settings, type:`, typeof staticCache,
+            Array.isArray(staticCache) ? `length: ${staticCache.length}` : '');
+          allPaths = this.extractPathsFromTVACache(staticCache);
+        }
+      } catch (e) {
+        console.log(`${MODULE_ID} | No staticCache in settings:`, e.message);
+      }
+
+      // Also try other possible setting names
+      const settingNames = ['staticCachePaths', 'cachedImages', 'imageCache', 'cacheData'];
+      for (const name of settingNames) {
+        if (allPaths.length > 0) break;
+        try {
+          const data = game.settings.get('token-variants', name);
+          if (data) {
+            console.log(`${MODULE_ID} | Found ${name} in settings`);
+            allPaths = this.extractPathsFromTVACache(data);
+          }
+        } catch (e) {
+          // Setting doesn't exist
+        }
+      }
+    }
+
+    // Method 5: Access TVA's internal cache structure directly
     if (allPaths.length === 0) {
       console.log(`${MODULE_ID} | Trying to access TVA internal cache...`);
       const tvaModule = game.modules.get('token-variants');
@@ -279,6 +323,7 @@ class IndexService {
         tvaModule?.cache,
         tvaModule?.api?.cache,
         window.TVA?.cache,
+        window.TVA?.staticCache,
         globalThis.TVA_CACHE
       ];
 
@@ -483,6 +528,7 @@ class IndexService {
     const totalTerms = termsArray.length;
     let processed = 0;
     let imagesFound = 0;
+    let debugLogged = false;
 
     console.log(`${MODULE_ID} | Searching ${totalTerms} terms via doImageSearch...`);
 
@@ -498,7 +544,7 @@ class IndexService {
           }
           return { term, results };
         } catch (e) {
-          return { term, results: null };
+          return { term, results: null, error: e.message };
         }
       });
 
@@ -506,11 +552,36 @@ class IndexService {
 
       for (const result of batchResults) {
         if (result.status !== 'fulfilled' || !result.value?.results) continue;
-        const { results } = result.value;
+        const { term, results } = result.value;
+
+        // DEBUG: Log first few results to understand format
+        if (!debugLogged && results) {
+          console.log(`${MODULE_ID} | DEBUG doImageSearch for "${term}":`, {
+            type: typeof results,
+            isArray: Array.isArray(results),
+            isMap: results instanceof Map,
+            constructor: results?.constructor?.name,
+            length: Array.isArray(results) ? results.length : (results instanceof Map ? results.size : 'N/A'),
+            sample: Array.isArray(results) ? results.slice(0, 3) : (results instanceof Map ? [...results.entries()].slice(0, 3) : results)
+          });
+          debugLogged = true;
+        }
+
         const items = this.extractItemsFromResults(results);
+
+        // DEBUG: Log extraction results
+        if (processed < BATCH_SIZE && items.length > 0) {
+          console.log(`${MODULE_ID} | DEBUG extracted ${items.length} items from "${term}", first:`, items[0]);
+        }
 
         for (const item of items) {
           const path = extractPathFromTVAResult(item);
+
+          // DEBUG: Log path extraction for first few
+          if (processed < BATCH_SIZE && !path && items.length > 0) {
+            console.log(`${MODULE_ID} | DEBUG path extraction FAILED for:`, item);
+          }
+
           if (path) {
             const name = extractNameFromTVAResult(item, path);
             if (this.addImageToIndex(path, name)) {
