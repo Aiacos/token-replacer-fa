@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 8;  // Force rebuild for debugging
+const INDEX_VERSION = 9;  // Direct cache reading
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -232,18 +232,245 @@ class IndexService {
   }
 
   /**
-   * Build index from TVA API
+   * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
    * @returns {Promise<number>} Number of images indexed
    */
   async buildFromTVA(onProgress = null) {
     const tvaAPI = game.modules.get('token-variants')?.api;
-    if (!tvaAPI?.doImageSearch) {
+    if (!tvaAPI) {
       console.warn(`${MODULE_ID} | TVA API not available`);
       return 0;
     }
 
-    console.log(`${MODULE_ID} | Building index from TVA API...`);
+    console.log(`${MODULE_ID} | Building index from TVA cache...`);
+
+    // Try to read TVA cache directly (much faster than doImageSearch)
+    let allPaths = [];
+
+    // Method 1: Try TVA's cacheImagePaths (direct cache access)
+    if (tvaAPI.cacheImagePaths && typeof tvaAPI.cacheImagePaths === 'object') {
+      console.log(`${MODULE_ID} | Reading from TVA cacheImagePaths...`);
+      allPaths = this.extractPathsFromTVACache(tvaAPI.cacheImagePaths);
+    }
+
+    // Method 2: Try TVA's internal cache via getSearchCache
+    if (allPaths.length === 0 && typeof tvaAPI.getSearchCache === 'function') {
+      console.log(`${MODULE_ID} | Reading from TVA getSearchCache...`);
+      try {
+        const cache = await tvaAPI.getSearchCache();
+        allPaths = this.extractPathsFromTVACache(cache);
+      } catch (e) {
+        console.warn(`${MODULE_ID} | getSearchCache failed:`, e);
+      }
+    }
+
+    // Method 3: Access TVA's internal cache structure directly
+    if (allPaths.length === 0) {
+      console.log(`${MODULE_ID} | Trying to access TVA internal cache...`);
+      const tvaModule = game.modules.get('token-variants');
+
+      // Try various internal cache locations
+      const possibleCaches = [
+        tvaAPI.cache,
+        tvaAPI._cache,
+        tvaAPI.imageCache,
+        tvaAPI.staticCache,
+        tvaModule?.cache,
+        tvaModule?.api?.cache,
+        window.TVA?.cache,
+        globalThis.TVA_CACHE
+      ];
+
+      for (const cache of possibleCaches) {
+        if (cache) {
+          console.log(`${MODULE_ID} | Found potential cache:`, typeof cache, cache?.constructor?.name);
+          allPaths = this.extractPathsFromTVACache(cache);
+          if (allPaths.length > 0) break;
+        }
+      }
+    }
+
+    // Method 4: Try to get paths via TVA's caching mechanism
+    if (allPaths.length === 0 && tvaAPI.cacheImages) {
+      console.log(`${MODULE_ID} | Trying TVA cacheImages inspection...`);
+      // Check if there's a way to list all cached paths
+      if (typeof tvaAPI.getAllImagePaths === 'function') {
+        try {
+          allPaths = await tvaAPI.getAllImagePaths();
+        } catch (e) {
+          console.warn(`${MODULE_ID} | getAllImagePaths failed:`, e);
+        }
+      }
+    }
+
+    // If we found paths in cache, index them directly
+    if (allPaths.length > 0) {
+      console.log(`${MODULE_ID} | Found ${allPaths.length} paths in TVA cache, indexing...`);
+      return this.indexPathsDirectly(allPaths, onProgress);
+    }
+
+    // Fallback: Log available TVA API methods to find the cache
+    console.log(`${MODULE_ID} | Could not find TVA cache directly. Available API methods:`);
+    const apiMethods = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] === 'function');
+    const apiProps = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] !== 'function');
+    console.log(`${MODULE_ID} | Methods:`, apiMethods);
+    console.log(`${MODULE_ID} | Properties:`, apiProps);
+
+    // Ultimate fallback: use doImageSearch with a broad search
+    console.log(`${MODULE_ID} | Falling back to broad search...`);
+    return this.buildFromTVASearch(onProgress);
+  }
+
+  /**
+   * Extract paths from TVA cache structure (handles various formats)
+   * @param {*} cache - TVA cache object
+   * @returns {Array} Array of path strings
+   */
+  extractPathsFromTVACache(cache) {
+    const paths = [];
+
+    if (!cache) return paths;
+
+    // If it's a Map
+    if (cache instanceof Map) {
+      for (const [key, value] of cache.entries()) {
+        if (typeof key === 'string' && this.isValidImagePath(key)) {
+          paths.push(key);
+        }
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const path = this.extractSinglePath(item);
+            if (path) paths.push(path);
+          }
+        }
+      }
+    }
+    // If it's an array
+    else if (Array.isArray(cache)) {
+      for (const item of cache) {
+        const path = this.extractSinglePath(item);
+        if (path) paths.push(path);
+      }
+    }
+    // If it's an object with path arrays
+    else if (typeof cache === 'object') {
+      // Check for common property names
+      const arrayProps = ['paths', 'images', 'data', 'items', 'results', 'files'];
+      for (const prop of arrayProps) {
+        if (Array.isArray(cache[prop])) {
+          for (const item of cache[prop]) {
+            const path = this.extractSinglePath(item);
+            if (path) paths.push(path);
+          }
+        }
+      }
+
+      // Iterate all properties
+      for (const [key, value] of Object.entries(cache)) {
+        if (typeof key === 'string' && this.isValidImagePath(key)) {
+          paths.push(key);
+        }
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const path = this.extractSinglePath(item);
+            if (path) paths.push(path);
+          }
+        }
+      }
+    }
+
+    return [...new Set(paths)]; // Deduplicate
+  }
+
+  /**
+   * Extract a single path from various item formats
+   * @param {*} item - Item from TVA cache
+   * @returns {string|null} Path or null
+   */
+  extractSinglePath(item) {
+    if (!item) return null;
+
+    // String path
+    if (typeof item === 'string' && this.isValidImagePath(item)) {
+      return item;
+    }
+
+    // Tuple [path, config]
+    if (Array.isArray(item) && item.length > 0) {
+      if (typeof item[0] === 'string' && this.isValidImagePath(item[0])) {
+        return item[0];
+      }
+    }
+
+    // Object with path property
+    if (typeof item === 'object') {
+      const pathProps = ['path', 'route', 'img', 'src', 'image', 'url', 'uri'];
+      for (const prop of pathProps) {
+        if (item[prop] && typeof item[prop] === 'string' && this.isValidImagePath(item[prop])) {
+          return item[prop];
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if a string looks like a valid image path
+   * @param {string} str - String to check
+   * @returns {boolean} True if valid path
+   */
+  isValidImagePath(str) {
+    if (!str || typeof str !== 'string') return false;
+    return str.includes('/') || str.startsWith('http') || str.startsWith('forge://') ||
+           str.endsWith('.webp') || str.endsWith('.png') || str.endsWith('.jpg') ||
+           str.endsWith('.jpeg') || str.endsWith('.gif') || str.endsWith('.svg');
+  }
+
+  /**
+   * Index paths directly without search
+   * @param {Array} paths - Array of path strings
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<number>} Number of images indexed
+   */
+  async indexPathsDirectly(paths, onProgress = null) {
+    const totalPaths = paths.length;
+    let imagesFound = 0;
+
+    console.log(`${MODULE_ID} | Indexing ${totalPaths} paths directly...`);
+
+    const BATCH_SIZE = 1000;
+    for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
+      const batch = paths.slice(i, i + BATCH_SIZE);
+
+      for (const path of batch) {
+        if (this.addImageToIndex(path, null)) {
+          imagesFound++;
+        }
+      }
+
+      // Progress callback
+      if (onProgress) {
+        const processed = Math.min(i + BATCH_SIZE, totalPaths);
+        onProgress(processed, totalPaths, imagesFound);
+      }
+
+      // Yield to main thread
+      await new Promise(r => setTimeout(r, 10));
+    }
+
+    console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
+    return imagesFound;
+  }
+
+  /**
+   * Fallback: Build index using TVA doImageSearch
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<number>} Number of images indexed
+   */
+  async buildFromTVASearch(onProgress = null) {
+    const tvaAPI = game.modules.get('token-variants')?.api;
 
     // Collect all unique search terms
     const allTerms = new Set();
@@ -257,22 +484,18 @@ class IndexService {
     let processed = 0;
     let imagesFound = 0;
 
-    console.log(`${MODULE_ID} | Searching ${totalTerms} terms...`);
+    console.log(`${MODULE_ID} | Searching ${totalTerms} terms via doImageSearch...`);
 
-    // Process in batches
     const BATCH_SIZE = 20;
     for (let i = 0; i < termsArray.length; i += BATCH_SIZE) {
       const batch = termsArray.slice(i, i + BATCH_SIZE);
 
       const batchPromises = batch.map(async (term) => {
         try {
-          // Try multiple search methods for compatibility
           let results = await tvaAPI.doImageSearch(term, { searchType: 'Portrait' });
-
           if (!results || (Array.isArray(results) && results.length === 0)) {
             results = await tvaAPI.doImageSearch(term);
           }
-
           return { term, results };
         } catch (e) {
           return { term, results: null };
@@ -283,38 +506,13 @@ class IndexService {
 
       for (const result of batchResults) {
         if (result.status !== 'fulfilled' || !result.value?.results) continue;
-
-        const { term, results } = result.value;
-
-        // DEBUG: Log first batch to understand TVA format
-        if (processed < BATCH_SIZE && term) {
-          console.log(`${MODULE_ID} | DEBUG: TVA result for "${term}":`, {
-            type: typeof results,
-            isArray: Array.isArray(results),
-            isMap: results instanceof Map,
-            constructor: results?.constructor?.name,
-            sample: Array.isArray(results) ? results.slice(0, 2) : (results instanceof Map ? Array.from(results.entries()).slice(0, 2) : results)
-          });
-        }
-
+        const { results } = result.value;
         const items = this.extractItemsFromResults(results);
-
-        // DEBUG: Log extracted items
-        if (processed < BATCH_SIZE && items.length > 0) {
-          console.log(`${MODULE_ID} | DEBUG: Extracted ${items.length} items, first item:`, items[0]);
-        }
 
         for (const item of items) {
           const path = extractPathFromTVAResult(item);
-
-          // DEBUG: Log path extraction for first few items
-          if (processed < BATCH_SIZE && imagesFound < 3) {
-            console.log(`${MODULE_ID} | DEBUG: Path extraction:`, { item: typeof item === 'object' ? JSON.stringify(item).slice(0, 200) : item, extractedPath: path });
-          }
-
           if (path) {
             const name = extractNameFromTVAResult(item, path);
-            // Only count if actually added (returns true)
             if (this.addImageToIndex(path, name)) {
               imagesFound++;
             }
@@ -323,13 +521,9 @@ class IndexService {
       }
 
       processed += batch.length;
-
-      // Progress callback
       if (onProgress && (processed % 50 === 0 || processed === totalTerms)) {
         onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
       }
-
-      // Yield to main thread for UI responsiveness
       await new Promise(r => setTimeout(r, 50));
     }
 
