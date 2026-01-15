@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 7;
+const INDEX_VERSION = 8;  // Force rebuild for debugging
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -284,11 +284,34 @@ class IndexService {
       for (const result of batchResults) {
         if (result.status !== 'fulfilled' || !result.value?.results) continue;
 
-        const { results } = result.value;
+        const { term, results } = result.value;
+
+        // DEBUG: Log first batch to understand TVA format
+        if (processed < BATCH_SIZE && term) {
+          console.log(`${MODULE_ID} | DEBUG: TVA result for "${term}":`, {
+            type: typeof results,
+            isArray: Array.isArray(results),
+            isMap: results instanceof Map,
+            constructor: results?.constructor?.name,
+            sample: Array.isArray(results) ? results.slice(0, 2) : (results instanceof Map ? Array.from(results.entries()).slice(0, 2) : results)
+          });
+        }
+
         const items = this.extractItemsFromResults(results);
+
+        // DEBUG: Log extracted items
+        if (processed < BATCH_SIZE && items.length > 0) {
+          console.log(`${MODULE_ID} | DEBUG: Extracted ${items.length} items, first item:`, items[0]);
+        }
 
         for (const item of items) {
           const path = extractPathFromTVAResult(item);
+
+          // DEBUG: Log path extraction for first few items
+          if (processed < BATCH_SIZE && imagesFound < 3) {
+            console.log(`${MODULE_ID} | DEBUG: Path extraction:`, { item: typeof item === 'object' ? JSON.stringify(item).slice(0, 200) : item, extractedPath: path });
+          }
+
           if (path) {
             const name = extractNameFromTVAResult(item, path);
             // Only count if actually added (returns true)
