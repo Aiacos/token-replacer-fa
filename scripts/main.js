@@ -221,7 +221,7 @@ async function processTokenReplacement() {
   dialog.render(true);
   await yieldToMain(100);
 
-  // Initialize search service
+  // Initialize search service (basic setup)
   searchService.init();
 
   // PHASE 1: Build token index
@@ -234,6 +234,7 @@ async function processTokenReplacement() {
     uiManager.updateDialogContent(uiManager.createTVACacheHTML(false));
     await yieldToMain(100);
 
+    // If refresh requested, do it FIRST before loading our cache
     if (refreshTVACache && TokenReplacerFA.tvaAPI?.cacheImages) {
       uiManager.updateDialogContent(uiManager.createTVACacheHTML(true));
       await yieldToMain(50);
@@ -245,6 +246,17 @@ async function processTokenReplacement() {
       }
       await yieldToMain(100);
     }
+
+    // NOW load TVA cache directly (after any refresh is complete)
+    uiManager.updateDialogContent(uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+    const cacheLoaded = await searchService.loadTVACache();
+    if (cacheLoaded) {
+      const stats = searchService.getTVACacheStats();
+      console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images`);
+    } else {
+      console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
+    }
+    await yieldToMain(100);
   } else {
     console.log(`${MODULE_ID} | Building local token index`);
     localIndex = await scanService.buildLocalTokenIndex();

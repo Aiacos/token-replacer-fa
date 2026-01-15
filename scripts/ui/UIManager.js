@@ -424,9 +424,10 @@ export class UIManager {
   /**
    * Create TVA cache loading HTML
    * @param {boolean} refreshing - Whether refreshing cache
+   * @param {string} customMessage - Optional custom status message
    * @returns {string} HTML string
    */
-  createTVACacheHTML(refreshing = false) {
+  createTVACacheHTML(refreshing = false, customMessage = null) {
     if (refreshing) {
       return `
         <div class="token-replacer-fa-scan-progress">
@@ -440,11 +441,12 @@ export class UIManager {
         </div>
       `;
     }
+    const statusMessage = customMessage || 'Using Token Variant Art cache...';
     return `
       <div class="token-replacer-fa-scan-progress">
         <div class="scan-status">
           <i class="fas fa-bolt"></i>
-          <span>Using Token Variant Art cache...</span>
+          <span>${statusMessage}</span>
         </div>
         <div class="optimization-info">
           <i class="fas fa-info-circle"></i>
