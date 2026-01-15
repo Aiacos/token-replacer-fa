@@ -140,6 +140,17 @@ export class SearchService {
 
       this.tvaCacheLoaded = true;
       console.log(`${MODULE_ID} | TVA cache loaded directly: ${this.tvaCacheImages.length} images in ${Object.keys(this.tvaCacheByCategory).length} categories`);
+
+      // DEBUG: Log category names and sample paths
+      const categoryNames = Object.keys(this.tvaCacheByCategory);
+      console.log(`${MODULE_ID} | DEBUG - Categories:`, categoryNames);
+      if (this.tvaCacheImages.length > 0) {
+        console.log(`${MODULE_ID} | DEBUG - First 5 images:`, this.tvaCacheImages.slice(0, 5));
+        // Check if paths look valid
+        const samplePath = this.tvaCacheImages[0]?.path;
+        console.log(`${MODULE_ID} | DEBUG - Sample path: "${samplePath}", typeof: ${typeof samplePath}`);
+      }
+
       return true;
 
     } catch (error) {
