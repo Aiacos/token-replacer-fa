@@ -1,7 +1,7 @@
 /**
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
- * @version 2.7.0
+ * @version 2.7.1
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -438,7 +438,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.7.0`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.7.1`);
   registerSettings();
 });
 

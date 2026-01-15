@@ -8,8 +8,8 @@
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
-const CACHE_KEY = 'token-replacer-fa-index-v2';
-const INDEX_VERSION = 6;
+const CACHE_KEY = 'token-replacer-fa-index-v3';
+const INDEX_VERSION = 7;
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -184,40 +184,51 @@ class IndexService {
 
   /**
    * Add an image to the index
+   * Stores ALL images in allPaths for general search, categorizes when possible
    * @param {string} path - Image path
    * @param {string} name - Image name
+   * @returns {boolean} True if image was added, false if skipped
    */
   addImageToIndex(path, name) {
-    if (!path || this.index.allPaths[path] || this.isExcludedPath(path)) return;
+    // Skip if no path, already indexed, or excluded folder
+    if (!path || this.index.allPaths[path] || this.isExcludedPath(path)) return false;
 
-    const { category, subcategories } = this.categorizeImage(path, name);
-    if (!category) return; // Skip images that don't match any category
+    // Extract name from path if not provided
+    const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
 
-    // Add to allPaths
+    // Try to categorize the image
+    const { category, subcategories } = this.categorizeImage(path, imageName);
+
+    // ALWAYS add to allPaths (even if uncategorized) for general search
     this.index.allPaths[path] = {
-      name: name || path.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'Unknown',
-      category,
-      subcategories
+      name: imageName,
+      category: category || null,
+      subcategories: subcategories || []
     };
 
-    // Add to category structure
-    if (!this.index.categories[category]) {
-      this.index.categories[category] = {};
-    }
-
-    // Add to each matching subcategory
-    for (const subcat of subcategories) {
-      if (!this.index.categories[category][subcat]) {
-        this.index.categories[category][subcat] = [];
+    // If categorized, also add to category structure for fast category lookups
+    if (category) {
+      // Ensure category exists
+      if (!this.index.categories[category]) {
+        this.index.categories[category] = {};
       }
-      this.index.categories[category][subcat].push({ path, name: this.index.allPaths[path].name });
+
+      // Add to each matching subcategory
+      for (const subcat of subcategories) {
+        if (!this.index.categories[category][subcat]) {
+          this.index.categories[category][subcat] = [];
+        }
+        this.index.categories[category][subcat].push({ path, name: imageName });
+      }
+
+      // Also add to a "_all" subcategory for the category
+      if (!this.index.categories[category]._all) {
+        this.index.categories[category]._all = [];
+      }
+      this.index.categories[category]._all.push({ path, name: imageName });
     }
 
-    // Also add to a "_all" subcategory for the category
-    if (!this.index.categories[category]._all) {
-      this.index.categories[category]._all = [];
-    }
-    this.index.categories[category]._all.push({ path, name: this.index.allPaths[path].name });
+    return true;
   }
 
   /**
@@ -278,10 +289,12 @@ class IndexService {
 
         for (const item of items) {
           const path = extractPathFromTVAResult(item);
-          if (path && !this.index.allPaths[path]) {
+          if (path) {
             const name = extractNameFromTVAResult(item, path);
-            this.addImageToIndex(path, name);
-            imagesFound++;
+            // Only count if actually added (returns true)
+            if (this.addImageToIndex(path, name)) {
+              imagesFound++;
+            }
           }
         }
       }
@@ -362,15 +375,19 @@ class IndexService {
       this.index = this.createEmptyIndex();
 
       // Build from TVA
-      const imageCount = await this.buildFromTVA(onProgress);
+      await this.buildFromTVA(onProgress);
 
-      if (imageCount > 0) {
+      // Use actual count from allPaths
+      const totalImages = Object.keys(this.index.allPaths).length;
+
+      if (totalImages > 0) {
         this.index.lastUpdate = Date.now();
         this.saveToCache();
         this.isBuilt = true;
 
+        const stats = this.getStats();
         const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-        console.log(`${MODULE_ID} | Index built: ${imageCount} images in ${elapsed}s`);
+        console.log(`${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
         return true;
       }
 
@@ -512,16 +529,24 @@ class IndexService {
    */
   getStats() {
     const categoryStats = {};
+    let categorizedCount = 0;
+
     if (this.index?.categories) {
       for (const [cat, data] of Object.entries(this.index.categories)) {
-        categoryStats[cat] = data._all?.length || 0;
+        const count = data._all?.length || 0;
+        categoryStats[cat] = count;
+        categorizedCount += count;
       }
     }
+
+    const totalImages = Object.keys(this.index?.allPaths || {}).length;
 
     return {
       isBuilt: this.isBuilt,
       version: this.index?.version || 0,
-      totalImages: Object.keys(this.index?.allPaths || {}).length,
+      totalImages: totalImages,
+      categorizedImages: categorizedCount,
+      uncategorizedImages: totalImages - categorizedCount,
       lastUpdate: this.index?.lastUpdate ? new Date(this.index.lastUpdate).toLocaleString() : 'Never',
       categories: categoryStats
     };
