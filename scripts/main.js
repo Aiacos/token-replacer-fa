@@ -450,7 +450,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.7.7-debug`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.8.1`);
   registerSettings();
 });
 
@@ -459,6 +459,19 @@ Hooks.once('ready', async () => {
   await loadFuse();
   console.log(`${MODULE_ID} | Token Variant Art available: ${TokenReplacerFA.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${TokenReplacerFA.hasFANexus}`);
+
+  // Initialize search service and load TVA cache FIRST
+  if (TokenReplacerFA.hasTVA) {
+    searchService.init();
+    console.log(`${MODULE_ID} | Loading TVA cache directly...`);
+    const cacheLoaded = await searchService.loadTVACache();
+    if (cacheLoaded) {
+      const stats = searchService.getTVACacheStats();
+      console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`);
+    } else {
+      console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`);
+    }
+  }
 
   // Build image index for fast searches (runs in background)
   if (TokenReplacerFA.hasTVA) {
@@ -488,7 +501,9 @@ Hooks.once('ready', async () => {
       );
     }
 
-    indexService.build(false, hasCache ? null : onProgress).then(success => {
+    // Pass pre-loaded TVA cache to indexService for fast indexing
+    const tvaCacheImages = searchService.isTVACacheLoaded ? searchService.tvaCacheImages : null;
+    indexService.build(false, hasCache ? null : onProgress, tvaCacheImages).then(success => {
       if (success) {
         const stats = indexService.getStats();
         console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);

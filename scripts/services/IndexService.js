@@ -234,9 +234,10 @@ class IndexService {
   /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
+   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from SearchService
    * @returns {Promise<number>} Number of images indexed
    */
-  async buildFromTVA(onProgress = null) {
+  async buildFromTVA(onProgress = null, tvaCacheImages = null) {
     const tvaAPI = game.modules.get('token-variants')?.api;
     if (!tvaAPI) {
       console.warn(`${MODULE_ID} | TVA API not available`);
@@ -248,8 +249,18 @@ class IndexService {
     // Try to read TVA cache directly (much faster than doImageSearch)
     let allPaths = [];
 
+    // Method 0 (FASTEST): Use pre-loaded cache passed from SearchService
+    if (tvaCacheImages && tvaCacheImages.length > 0) {
+      console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
+      allPaths = tvaCacheImages.map(img => ({
+        path: img.path,
+        name: img.name,
+        category: img.category
+      }));
+    }
+
     // Method 1: Try TVA's cacheImagePaths (direct cache access)
-    if (tvaAPI.cacheImagePaths && typeof tvaAPI.cacheImagePaths === 'object') {
+    if (allPaths.length === 0 && tvaAPI.cacheImagePaths && typeof tvaAPI.cacheImagePaths === 'object') {
       console.log(`${MODULE_ID} | Reading from TVA cacheImagePaths...`);
       allPaths = this.extractPathsFromTVACache(tvaAPI.cacheImagePaths);
     }
@@ -680,9 +691,10 @@ class IndexService {
    * Build or update the index
    * @param {boolean} forceRebuild - Force full rebuild
    * @param {Function} onProgress - Progress callback
+   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from SearchService
    * @returns {Promise<boolean>} True if successful
    */
-  async build(forceRebuild = false, onProgress = null) {
+  async build(forceRebuild = false, onProgress = null, tvaCacheImages = null) {
     if (this.buildPromise) return this.buildPromise;
 
     this.buildPromise = (async () => {
@@ -703,8 +715,8 @@ class IndexService {
       // Create new index
       this.index = this.createEmptyIndex();
 
-      // Build from TVA
-      await this.buildFromTVA(onProgress);
+      // Build from TVA (pass pre-loaded cache if available)
+      await this.buildFromTVA(onProgress, tvaCacheImages);
 
       // Use actual count from allPaths
       const totalImages = Object.keys(this.index.allPaths).length;
