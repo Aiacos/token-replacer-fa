@@ -529,8 +529,11 @@ class IndexService {
     for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
       const batch = paths.slice(i, i + BATCH_SIZE);
 
-      for (const path of batch) {
-        if (this.addImageToIndex(path, null)) {
+      for (const item of batch) {
+        // Handle both string paths and {path, name, category} objects
+        const path = typeof item === 'string' ? item : item?.path;
+        const name = typeof item === 'string' ? null : item?.name;
+        if (this.addImageToIndex(path, name)) {
           imagesFound++;
         }
       }
