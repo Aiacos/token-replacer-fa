@@ -1,7 +1,7 @@
 /**
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
- * @version 2.7.1
+ * @version 2.7.2
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -438,7 +438,7 @@ async function processTokenReplacement() {
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.7.1`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.7.2`);
   registerSettings();
 });
 
@@ -453,7 +453,7 @@ Hooks.once('ready', async () => {
     console.log(`${MODULE_ID} | Building image index in background...`);
 
     // Check if this will be a first-time build (no cache)
-    const hasCache = localStorage.getItem('token-replacer-fa-index-v2');
+    const hasCache = localStorage.getItem('token-replacer-fa-index-v3');
     let notificationShown = false;
 
     // Progress callback for UI notifications during first-time build
