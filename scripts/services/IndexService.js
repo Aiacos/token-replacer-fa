@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 11;  // Debug staticCache structure
+const INDEX_VERSION = 12;  // Debug Map extraction from doImageSearch
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -269,22 +269,41 @@ class IndexService {
     if (allPaths.length === 0 && tvaAPI.TVA_CONFIG) {
       console.log(`${MODULE_ID} | Checking TVA_CONFIG...`);
       const config = tvaAPI.TVA_CONFIG;
-      console.log(`${MODULE_ID} | TVA_CONFIG keys:`, Object.keys(config));
+      const configKeys = Object.keys(config);
+      console.log(`${MODULE_ID} | TVA_CONFIG keys (${configKeys.length}):`, configKeys);
 
-      // Check for staticCache in config
-      if (config.staticCache) {
-        const sc = config.staticCache;
-        console.log(`${MODULE_ID} | Found staticCache in TVA_CONFIG:`, {
-          type: typeof sc,
-          isArray: Array.isArray(sc),
-          isMap: sc instanceof Map,
-          constructor: sc?.constructor?.name,
-          length: Array.isArray(sc) ? sc.length : (sc instanceof Map ? sc.size : (typeof sc === 'object' ? Object.keys(sc).length : 'N/A')),
-          keys: typeof sc === 'object' && !Array.isArray(sc) && !(sc instanceof Map) ? Object.keys(sc).slice(0, 10) : 'N/A',
-          sample: Array.isArray(sc) ? sc.slice(0, 3) : (sc instanceof Map ? [...sc.entries()].slice(0, 3) : (typeof sc === 'object' ? Object.entries(sc).slice(0, 3) : sc))
-        });
-        allPaths = this.extractPathsFromTVACache(config.staticCache);
-        console.log(`${MODULE_ID} | Extracted ${allPaths.length} paths from TVA_CONFIG.staticCache`);
+      // Look for any property that might contain cache data (arrays, Maps, large objects)
+      for (const key of configKeys) {
+        const val = config[key];
+        if (val && (Array.isArray(val) || val instanceof Map || (typeof val === 'object' && Object.keys(val).length > 100))) {
+          console.log(`${MODULE_ID} | TVA_CONFIG.${key} is potential cache:`, {
+            type: typeof val,
+            isArray: Array.isArray(val),
+            isMap: val instanceof Map,
+            constructor: val?.constructor?.name,
+            size: Array.isArray(val) ? val.length : (val instanceof Map ? val.size : Object.keys(val).length)
+          });
+        }
+      }
+
+      // staticCache is just a boolean flag, not the cache itself
+      console.log(`${MODULE_ID} | staticCache is:`, config.staticCache, '(this is just a flag, not the cache)');
+    }
+
+    // Method 3b: Look for TVA's searchPaths - this might contain configured paths
+    if (allPaths.length === 0 && tvaAPI.TVA_CONFIG?.searchPaths) {
+      console.log(`${MODULE_ID} | Found searchPaths:`, tvaAPI.TVA_CONFIG.searchPaths);
+    }
+
+    // Method 3c: Check for globalThis variables that TVA might use
+    if (allPaths.length === 0) {
+      const tvaGlobals = ['TVA_IMAGES', 'TVA_CACHE', 'TVA_STATIC_CACHE', 'tvaImageCache'];
+      for (const name of tvaGlobals) {
+        if (globalThis[name]) {
+          console.log(`${MODULE_ID} | Found global ${name}:`, typeof globalThis[name]);
+          allPaths = this.extractPathsFromTVACache(globalThis[name]);
+          if (allPaths.length > 0) break;
+        }
       }
     }
 
@@ -571,9 +590,21 @@ class IndexService {
             isArray: Array.isArray(results),
             isMap: results instanceof Map,
             constructor: results?.constructor?.name,
-            length: Array.isArray(results) ? results.length : (results instanceof Map ? results.size : 'N/A'),
-            sample: Array.isArray(results) ? results.slice(0, 3) : (results instanceof Map ? [...results.entries()].slice(0, 3) : results)
+            size: results instanceof Map ? results.size : 'N/A'
           });
+
+          // If it's a Map, log detailed structure of entries
+          if (results instanceof Map) {
+            console.log(`${MODULE_ID} | DEBUG Map keys:`, [...results.keys()]);
+            for (const [mapKey, mapValue] of results.entries()) {
+              console.log(`${MODULE_ID} | DEBUG Map entry "${mapKey}":`, {
+                valueType: typeof mapValue,
+                isArray: Array.isArray(mapValue),
+                length: Array.isArray(mapValue) ? mapValue.length : 'N/A',
+                sample: Array.isArray(mapValue) ? mapValue.slice(0, 2) : mapValue
+              });
+            }
+          }
           debugLogged = true;
         }
 
