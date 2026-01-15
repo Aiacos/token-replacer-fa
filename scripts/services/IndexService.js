@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Con
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 10;  // Debug TVA format
+const INDEX_VERSION = 11;  // Debug staticCache structure
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -273,8 +273,18 @@ class IndexService {
 
       // Check for staticCache in config
       if (config.staticCache) {
-        console.log(`${MODULE_ID} | Found staticCache in TVA_CONFIG`);
+        const sc = config.staticCache;
+        console.log(`${MODULE_ID} | Found staticCache in TVA_CONFIG:`, {
+          type: typeof sc,
+          isArray: Array.isArray(sc),
+          isMap: sc instanceof Map,
+          constructor: sc?.constructor?.name,
+          length: Array.isArray(sc) ? sc.length : (sc instanceof Map ? sc.size : (typeof sc === 'object' ? Object.keys(sc).length : 'N/A')),
+          keys: typeof sc === 'object' && !Array.isArray(sc) && !(sc instanceof Map) ? Object.keys(sc).slice(0, 10) : 'N/A',
+          sample: Array.isArray(sc) ? sc.slice(0, 3) : (sc instanceof Map ? [...sc.entries()].slice(0, 3) : (typeof sc === 'object' ? Object.entries(sc).slice(0, 3) : sc))
+        });
         allPaths = this.extractPathsFromTVACache(config.staticCache);
+        console.log(`${MODULE_ID} | Extracted ${allPaths.length} paths from TVA_CONFIG.staticCache`);
       }
     }
 
