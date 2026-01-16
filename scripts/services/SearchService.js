@@ -4,7 +4,7 @@
  * @module services/SearchService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS, EXCLUDED_FOLDERS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
 import {
   loadFuse,
   parseSubtypeTerms,
@@ -198,6 +198,7 @@ export class SearchService {
 
   /**
    * Search TVA cache by category (FAST)
+   * Only matches on image name and meaningful path segments, not TVA folder category
    * @param {string} categoryType - Creature type category
    * @returns {Array} Matching images
    */
@@ -213,15 +214,15 @@ export class SearchService {
       if (this.isExcludedPath(img.path)) continue;
 
       const nameLower = (img.name || '').toLowerCase();
-      const pathLower = (img.path || '').toLowerCase();
-      const catLower = (img.category || '').toLowerCase();
+      // Extract meaningful path parts (last 2-3 folder names, excluding CDN structure)
+      const pathParts = (img.path || '').toLowerCase().split('/');
+      const meaningfulPath = pathParts.slice(-4).join('/'); // Last 4 segments
 
       // Check if matches any category term
+      // Note: We intentionally DON'T check img.category (TVA folder name) as it's unreliable
       const matches = categoryTerms.some(term => {
         const termLower = term.toLowerCase();
-        return nameLower.includes(termLower) ||
-               pathLower.includes(termLower) ||
-               catLower.includes(termLower);
+        return nameLower.includes(termLower) || meaningfulPath.includes(termLower);
       });
 
       if (matches) {
@@ -312,15 +313,14 @@ export class SearchService {
   }
 
   /**
-   * Check if a path is from an excluded folder (assets, props, etc.)
-   * Only excludes if an exact folder name matches, not substrings in filenames
+   * Check if a path is from an excluded folder or has environmental/prop filename
+   * Checks both folder names and filename for exclusion terms
    * @param {string} path - Image path to check
    * @returns {boolean} True if path should be excluded
    */
   isExcludedPath(path) {
     if (!path) return true;
     const pathLower = path.toLowerCase();
-    // Split path into segments and check each folder name exactly
     const segments = pathLower.split('/');
 
     // Skip CDN/URL structure segments - only check actual folder names
@@ -334,9 +334,23 @@ export class SearchService {
     // Filter out CDN segments and check remaining folder names
     const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
 
-    return EXCLUDED_FOLDERS.some(folder =>
+    // Check folder names against exclusion list
+    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
       folderSegments.some(segment => segment === folder)
     );
+    if (folderExcluded) return true;
+
+    // Also check filename for environmental/prop terms
+    const filename = segments[segments.length - 1] || '';
+    // Remove extension and convert separators to spaces for word matching
+    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+
+    // Check if filename contains excluded terms (as whole words or prefixes)
+    return EXCLUDED_FILENAME_TERMS.some(term => {
+      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
+      const regex = new RegExp(`\\b${term}`, 'i');
+      return regex.test(filenameClean);
+    });
   }
 
   /**

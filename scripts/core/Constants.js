@@ -85,7 +85,77 @@ export const EXCLUDED_FOLDERS = [
   'battlemap',
   'battlemaps',
   'battle_map',
-  'battle_maps'
+  'battle_maps',
+  // Environmental structures (not creatures)
+  'cliff', 'cliffs',
+  'cave', 'caves', 'cavern', 'caverns',
+  'entrance', 'entrances',
+  'portal', 'portals',
+  'gateway', 'gateways',
+  'tunnel', 'tunnels',
+  'path', 'paths',
+  'road', 'roads',
+  'bridge', 'bridges',
+  'camp', 'camps', 'campsite', 'campsites',
+  'building', 'buildings',
+  'structure', 'structures',
+  'ruin', 'ruins',
+  'tower', 'towers',
+  'wall', 'fence', 'fences',
+  'stairs', 'staircase',
+  'pit', 'pits',
+  'trap', 'traps',
+  'chest', 'chests',
+  'barrel', 'barrels', 'crate', 'crates',
+  'table', 'tables', 'chair', 'chairs',
+  'bed', 'beds', 'throne', 'thrones',
+  'altar', 'altars', 'shrine', 'shrines',
+  'statue', 'statues', 'pillar', 'pillars',
+  'torch', 'torches', 'lantern', 'lanterns',
+  'sign', 'signs', 'banner', 'banners',
+  'cart', 'carts', 'wagon', 'wagons',
+  'boat', 'boats', 'ship', 'ships',
+  'tree', 'trees', 'bush', 'bushes',
+  'grass', 'flower', 'flowers',
+  'mountain', 'mountains', 'hill', 'hills',
+  'river', 'rivers', 'lake', 'lakes', 'pond', 'ponds',
+  'swamp', 'swamps', 'marsh', 'marshes',
+  'desert', 'beach', 'beaches',
+  'forest', 'forests', 'jungle', 'jungles',
+  'village', 'town', 'city', 'castle', 'fortress',
+  'dungeon', 'dungeons', 'crypt', 'crypts', 'tomb', 'tombs',
+  'temple', 'temples', 'church', 'churches',
+  'tavern', 'inn', 'shop', 'shops', 'market',
+  'arena', 'colosseum', 'stadium',
+  'laboratory', 'library', 'study',
+  'prison', 'jail', 'cell', 'cells'
+];
+
+/**
+ * Terms that indicate environmental/prop assets when found in filenames
+ * Used as additional filter beyond folder exclusion
+ * These terms strongly suggest non-creature assets
+ */
+export const EXCLUDED_FILENAME_TERMS = [
+  // Terrain/landscape
+  'cliff', 'cave', 'cavern', 'entrance', 'portal', 'gateway',
+  'tunnel', 'bridge', 'road', 'path', 'terrain', 'landscape',
+  'mountain', 'hill', 'valley', 'canyon', 'ravine',
+  // Structures
+  'ruin', 'tower', 'wall', 'fence', 'gate', 'door',
+  'building', 'structure', 'camp', 'campsite', 'campfire',
+  'house', 'hut', 'tent', 'cabin',
+  // Water features
+  'river', 'lake', 'pond', 'waterfall', 'stream', 'shore',
+  // Vegetation
+  'tree', 'bush', 'grass', 'flower', 'forest', 'jungle',
+  // Props/objects (common in FA packs)
+  'barrel', 'crate', 'chest', 'table', 'chair', 'bed',
+  'torch', 'lantern', 'sign', 'banner', 'cart', 'wagon',
+  'statue', 'pillar', 'altar', 'shrine', 'throne',
+  // Map elements
+  'tile', 'overlay', 'border', 'frame', 'grid',
+  'background', 'foreground', 'scenic', 'scene'
 ];
 
 /**

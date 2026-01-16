@@ -4,7 +4,7 @@
  * @module services/ScanService
  */
 
-import { MODULE_ID, EXCLUDED_FOLDERS } from '../core/Constants.js';
+import { MODULE_ID, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
 import { yieldToMain } from '../core/Utils.js';
 
 /**
@@ -16,15 +16,14 @@ export class ScanService {
   }
 
   /**
-   * Check if a path is from an excluded folder (assets, props, etc.)
-   * Only excludes if an exact folder name matches, not substrings in filenames
+   * Check if a path is from an excluded folder or has environmental/prop filename
+   * Checks both folder names and filename for exclusion terms
    * @param {string} path - Path to check
    * @returns {boolean} True if path should be excluded
    */
   isExcludedPath(path) {
     if (!path) return true;
     const pathLower = path.toLowerCase();
-    // Split path into segments and check each folder name exactly
     const segments = pathLower.split('/');
 
     // Skip CDN/URL structure segments - only check actual folder names
@@ -38,9 +37,23 @@ export class ScanService {
     // Filter out CDN segments and check remaining folder names
     const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
 
-    return EXCLUDED_FOLDERS.some(folder =>
+    // Check folder names against exclusion list
+    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
       folderSegments.some(segment => segment === folder)
     );
+    if (folderExcluded) return true;
+
+    // Also check filename for environmental/prop terms
+    const filename = segments[segments.length - 1] || '';
+    // Remove extension and convert separators to spaces for word matching
+    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+
+    // Check if filename contains excluded terms (as whole words or prefixes)
+    return EXCLUDED_FILENAME_TERMS.some(term => {
+      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
+      const regex = new RegExp(`\\b${term}`, 'i');
+      return regex.test(filenameClean);
+    });
   }
 
   /**

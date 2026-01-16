@@ -5,11 +5,11 @@
  * @module services/IndexService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 12;  // Debug Map extraction from doImageSearch
+const INDEX_VERSION = 13;  // v2.9.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -67,6 +67,7 @@ class IndexService {
 
   /**
    * Check if a path should be excluded
+   * Checks both folder names and filename for environmental/prop terms
    * @param {string} path - Image path
    * @returns {boolean} True if excluded
    */
@@ -86,9 +87,23 @@ class IndexService {
     // Filter out CDN segments and check remaining folder names
     const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
 
-    return EXCLUDED_FOLDERS.some(folder =>
+    // Check folder names against exclusion list
+    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
       folderSegments.some(segment => segment === folder)
     );
+    if (folderExcluded) return true;
+
+    // Also check filename for environmental/prop terms
+    const filename = segments[segments.length - 1] || '';
+    // Remove extension and convert separators to spaces for word matching
+    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+
+    // Check if filename contains excluded terms (as whole words or prefixes)
+    return EXCLUDED_FILENAME_TERMS.some(term => {
+      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
+      const regex = new RegExp(`\\b${term}`, 'i');
+      return regex.test(filenameClean);
+    });
   }
 
   /**
