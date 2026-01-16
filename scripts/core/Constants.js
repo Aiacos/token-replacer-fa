@@ -10,152 +10,335 @@ export const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mj
 /**
  * Folders to exclude from token search (assets, props, textures, etc.)
  * These contain environment assets, not character tokens
+ * Based on Forgotten Adventures library structure
  * All values should be lowercase for case-insensitive matching
  */
 export const EXCLUDED_FOLDERS = [
-  // Generic asset folders
-  'props',
-  'prop',
-  'assets',
-  'asset',
-  'items',
-  'item',
-  'objects',
-  'object',
-  'furniture',
-  'decor',
-  'decoration',
-  'decorations',
-  'scenery',
-  'overlay',
-  'overlays',
-  'effects',
-  'effect',
-  'map_assets',
-  'map-assets',
-  'mapassets',
-  'tiles',
-  'tile',
-  'walls',
-  'floors',
-  'doors',
-  'windows',
-  'lights',
-  'lighting',
-  'ambient',
-  'environment',
-  'environmental',
-  'terrain',
-  'nature',
-  'plants',
-  'vegetation',
-  'rocks',
-  'stones',
-  'water',
-  'lava',
-  'fire',
-  'ice',
-  'snow',
-  'fog',
-  'clouds',
-  'weather',
-  'particles',
-  'vfx',
-  'sfx',
-  'ui',
-  'icons',
-  'icon',
-  'portraits_items',
-  'item_portraits',
-  // Forgotten Adventures specific
-  'dungeon_decor',
-  'dungeon_of_torment',
-  'interior_props',
-  'magic_&_effects',
-  'magic_and_effects',
-  'modular_caves',
-  'organic_lairs',
-  'prefabs',
-  'table_clutter',
-  'textures',
-  'wilderness',
-  'wonders_of_underdark',
-  'map_making',
-  'mapmaking',
-  'battlemap',
-  'battlemaps',
-  'battle_map',
-  'battle_maps',
-  // Environmental structures (not creatures)
-  'cliff', 'cliffs',
-  'cave', 'caves', 'cavern', 'caverns',
-  'entrance', 'entrances',
-  'portal', 'portals',
-  'gateway', 'gateways',
-  'tunnel', 'tunnels',
-  'path', 'paths',
-  'road', 'roads',
-  'bridge', 'bridges',
-  'camp', 'camps', 'campsite', 'campsites',
-  'building', 'buildings',
-  'structure', 'structures',
-  'ruin', 'ruins',
-  'tower', 'towers',
-  'wall', 'fence', 'fences',
-  'stairs', 'staircase',
-  'pit', 'pits',
-  'trap', 'traps',
-  'chest', 'chests',
-  'barrel', 'barrels', 'crate', 'crates',
-  'table', 'tables', 'chair', 'chairs',
-  'bed', 'beds', 'throne', 'thrones',
-  'altar', 'altars', 'shrine', 'shrines',
-  'statue', 'statues', 'pillar', 'pillars',
-  'torch', 'torches', 'lantern', 'lanterns',
-  'sign', 'signs', 'banner', 'banners',
-  'cart', 'carts', 'wagon', 'wagons',
-  'boat', 'boats', 'ship', 'ships',
-  'tree', 'trees', 'bush', 'bushes',
-  'grass', 'flower', 'flowers',
-  'mountain', 'mountains', 'hill', 'hills',
-  'river', 'rivers', 'lake', 'lakes', 'pond', 'ponds',
-  'swamp', 'swamps', 'marsh', 'marshes',
-  'desert', 'beach', 'beaches',
-  'forest', 'forests', 'jungle', 'jungles',
-  'village', 'town', 'city', 'castle', 'fortress',
-  'dungeon', 'dungeons', 'crypt', 'crypts', 'tomb', 'tombs',
-  'temple', 'temples', 'church', 'churches',
-  'tavern', 'inn', 'shop', 'shops', 'market',
-  'arena', 'colosseum', 'stadium',
-  'laboratory', 'library', 'study',
-  'prison', 'jail', 'cell', 'cells'
+  // ===== GENERIC ASSET FOLDERS =====
+  'props', 'prop', 'assets', 'asset', 'items', 'item',
+  'objects', 'object', 'furniture', 'decor', 'decoration', 'decorations',
+  'scenery', 'overlay', 'overlays', 'effects', 'effect',
+  'map_assets', 'map-assets', 'mapassets',
+  'tiles', 'tile', 'tilesets', 'tileset',
+  'walls', 'floors', 'doors', 'windows',
+  'lights', 'lighting', 'ambient', 'lightsources',
+  'environment', 'environmental', 'terrain',
+  'nature', 'plants', 'vegetation', 'flora',
+  'rocks', 'stones', 'boulders', 'crystals',
+  'water', 'lava', 'fire', 'ice', 'snow', 'fog', 'clouds', 'weather',
+  'particles', 'vfx', 'sfx', 'ui', 'icons', 'icon',
+  'portraits_items', 'item_portraits',
+
+  // ===== FORGOTTEN ADVENTURES SPECIFIC =====
+  // Main FA asset packs
+  '_fa_assets', 'fa_assets', 'fa_objects', 'fa_textures',
+  '!core', 'core_assets', '!core_settlements', 'core_settlements',
+  'dungeon_decor', 'dungeon_of_torment', 'interior_props',
+  'magic_&_effects', 'magic_and_effects', 'magic_effects',
+  'modular_caves', 'organic_lairs', 'prefabs',
+  'table_clutter', 'textures', 'wilderness',
+  'wonders_of_underdark', 'underdark',
+  'map_making', 'mapmaking', 'battlemap', 'battlemaps', 'battle_map', 'battle_maps',
+  'death_&_decay', 'death_and_decay', 'death_decay',
+  // FA biome expansions
+  'arctic', 'desert', 'woodlands', 'mountains', 'swampland', 'tropical',
+  // FA themed packs
+  'ceremorph', 'mindflayer', 'dwarven', 'drow', 'flesh',
+  'winter', 'holiday', 'seasonal',
+  // FA legacy packs
+  'legacy', 'legacy_battlemaps', 'legacy_packs',
+
+  // ===== FA COMBAT/WEAPONS (not equipped on creatures) =====
+  'combat', 'weapons', 'weapon', 'armor', 'armors', 'armour', 'armours',
+  'axes', 'axe', 'blades', 'blade', 'swords', 'sword',
+  'bows', 'bow', 'arrows', 'arrow', 'firearms', 'firearm', 'guns', 'gun',
+  'shields', 'shield', 'staves', 'staff', 'wands', 'wand',
+  'siege', 'siege_weapons', 'catapult', 'ballista', 'cannon',
+  'training', 'target', 'targets', 'dummy', 'dummies', 'mannequin',
+
+  // ===== FA DECOR/CLUTTER =====
+  'clutter', 'junk', 'debris', 'rubble',
+  'books', 'book', 'bookshelf', 'bookshelves', 'bookcase', 'bookcases',
+  'cloth', 'clothing', 'clothes', 'fabric', 'textile',
+  'food', 'foods', 'drink', 'drinks', 'provisions', 'rations',
+  'games', 'game', 'toys', 'toy', 'instruments', 'instrument', 'musical',
+  'glassware', 'glass', 'porcelain', 'ceramic', 'pottery',
+  'grooming', 'hygiene', 'bathroom',
+  'kitchenware', 'kitchen', 'cooking', 'cookware',
+  'leather', 'leatherwork', 'leathergoods',
+  'locks', 'lock', 'keys', 'key',
+  'magic_items', 'magical_items', 'artifacts',
+  'paper', 'papers', 'scroll', 'scrolls', 'documents', 'letters',
+  'ropes', 'rope', 'chains', 'chain',
+  'spell_components', 'components', 'reagents',
+  'treasure', 'treasures', 'loot', 'hoard', 'gold', 'silver', 'coins', 'gems', 'jewels',
+  'writing', 'writing_implements', 'quill', 'ink',
+
+  // ===== FA FLORA =====
+  'tree', 'trees', 'bush', 'bushes', 'shrub', 'shrubs',
+  'plants', 'plant', 'vines', 'vine', 'ivy',
+  'mushrooms', 'mushroom', 'fungi', 'fungus',
+  'flowers', 'flower', 'grass', 'grasses',
+  'roots', 'root', 'cacti', 'cactus',
+  'palm', 'palms', 'palm_trees',
+  'water_plants', 'aquatic', 'seaweed', 'kelp', 'lily', 'lilies',
+
+  // ===== FA FURNITURE =====
+  'beds', 'bed', 'seating', 'chairs', 'chair', 'benches', 'bench',
+  'couches', 'couch', 'sofa', 'sofas', 'thrones', 'throne',
+  'tables', 'table', 'desk', 'desks',
+  'shelves', 'shelf', 'storage', 'cabinets', 'cabinet', 'wardrobe', 'wardrobes',
+  'altars', 'altar', 'shrines', 'shrine',
+  'cooking_appliances', 'stove', 'oven', 'fireplace', 'fireplaces', 'hearth',
+  'cupboards', 'cupboard', 'pantry',
+  'display', 'display_cases', 'showcase',
+  'toilets', 'toilet', 'washing', 'bath', 'bathtub', 'sink',
+
+  // ===== FA STRUCTURES =====
+  'walls', 'wall', 'brick', 'stone_wall', 'wood_wall', 'metal_wall', 'plaster',
+  'doors', 'door', 'doorway', 'doorways', 'gate', 'gates',
+  'windows', 'window', 'shutters', 'shutter',
+  'bridges', 'bridge', 'walkway', 'walkways',
+  'pillars', 'pillar', 'columns', 'column',
+  'railings', 'railing', 'balustrade', 'banister',
+  'stairs', 'stair', 'staircase', 'staircases', 'steps', 'ladder', 'ladders',
+  'fireplaces', 'fireplace', 'chimney', 'chimneys',
+  'wells', 'well', 'fountain', 'fountains',
+  'roofs', 'roof', 'roofing', 'shingles', 'thatch',
+  'tarps', 'tarp', 'awning', 'awnings', 'canopy', 'canopies',
+  'mechanical', 'gears', 'gear', 'pulleys', 'pulley', 'levers', 'lever',
+
+  // ===== FA TERRAIN =====
+  'cliff', 'cliffs', 'cave', 'caves', 'cavern', 'caverns',
+  'entrance', 'entrances', 'portal', 'portals', 'gateway', 'gateways',
+  'tunnel', 'tunnels', 'passage', 'passages',
+  'path', 'paths', 'road', 'roads', 'trail', 'trails',
+  'waterfall', 'waterfalls', 'cascade', 'cascades', 'ripples',
+  'mountain', 'mountains', 'hill', 'hills', 'valley', 'valleys',
+  'river', 'rivers', 'lake', 'lakes', 'pond', 'ponds', 'stream', 'streams',
+  'swamp', 'swamps', 'marsh', 'marshes', 'bog', 'bogs',
+  'desert', 'dunes', 'beach', 'beaches', 'shore', 'shores',
+  'forest', 'forests', 'jungle', 'jungles', 'woods',
+
+  // ===== FA NATURAL DECOR =====
+  'rocks', 'rock', 'boulders', 'boulder', 'pebbles', 'gravel',
+  'crystals', 'crystal', 'geodes', 'geode',
+  'logs', 'log', 'stumps', 'stump', 'branches', 'branch', 'twigs',
+  'hay', 'straw', 'thatch',
+  'webs', 'web', 'spider_webs', 'cobwebs', 'cobweb',
+
+  // ===== FA OVERLAYS/EFFECTS =====
+  'magic_circles', 'magic_circle', 'runes', 'rune', 'glyphs', 'glyph',
+  'lightning', 'electricity', 'sparks',
+  'fire_effects', 'flames', 'flame', 'smoke', 'embers',
+  'moss', 'lichen', 'mold', 'algae',
+  'blood', 'gore', 'bones', 'bone', 'corpses', 'corpse', 'remains',
+  'blast', 'blast_marks', 'scorch', 'burn_marks', 'impact',
+  'dirt', 'mud', 'grime', 'stains', 'splatter',
+
+  // ===== FA LIGHTSOURCES =====
+  'torches', 'torch', 'lanterns', 'lantern', 'lamps', 'lamp',
+  'candles', 'candle', 'candlestick', 'candelabra',
+  'braziers', 'brazier', 'sconces', 'sconce',
+  'chandeliers', 'chandelier',
+  'campfires', 'campfire', 'bonfire', 'bonfires',
+  'glowing', 'luminous', 'radiant',
+
+  // ===== FA VEHICLES =====
+  'boats', 'boat', 'ships', 'ship', 'vessel', 'vessels',
+  'carts', 'cart', 'wagons', 'wagon', 'carriages', 'carriage',
+  'rigging', 'sails', 'sail', 'mast', 'masts',
+  'wheels', 'wheel', 'axle', 'axles',
+
+  // ===== FA WORKPLACE/TOOLS =====
+  'mining', 'mine', 'mines', 'pickaxe', 'pickaxes',
+  'alchemy', 'alchemical', 'potions', 'potion', 'vials', 'vial',
+  'tailoring', 'sewing', 'loom', 'looms',
+  'farming', 'farm', 'crops', 'harvest', 'plow', 'plows',
+  'fishing', 'fish', 'nets', 'net', 'tackle',
+  'printing', 'press', 'printing_press',
+  'tools', 'tool', 'toolkit', 'toolbox',
+  'forge', 'forges', 'anvil', 'anvils', 'bellows', 'smelting', 'furnace',
+  'workshop', 'workbench', 'crafting',
+
+  // ===== FA CONTAINERS =====
+  'barrel', 'barrels', 'crate', 'crates', 'box', 'boxes',
+  'chest', 'chests', 'coffer', 'coffers',
+  'sack', 'sacks', 'bag', 'bags', 'pouch', 'pouches',
+  'basket', 'baskets', 'bucket', 'buckets', 'pail', 'pails',
+  'urn', 'urns', 'vase', 'vases', 'jar', 'jars', 'pot', 'pots',
+  'coffin', 'coffins', 'sarcophagus', 'sarcophagi', 'casket', 'caskets',
+
+  // ===== FA SIGNAGE/DECORATION =====
+  'signs', 'sign', 'signpost', 'signposts',
+  'banners', 'banner', 'flags', 'flag', 'pennant', 'pennants',
+  'statues', 'statue', 'sculpture', 'sculptures', 'bust', 'busts',
+  'paintings', 'painting', 'portrait', 'portraits', 'artwork',
+  'tapestry', 'tapestries', 'curtains', 'curtain', 'drapes', 'drape',
+  'rugs', 'rug', 'carpet', 'carpets', 'mat', 'mats',
+  'mirror', 'mirrors',
+
+  // ===== BUILDINGS/LOCATIONS (not creatures) =====
+  'building', 'buildings', 'structure', 'structures',
+  'ruin', 'ruins', 'tower', 'towers', 'keep', 'keeps',
+  'camp', 'camps', 'campsite', 'campsites', 'tent', 'tents',
+  'house', 'houses', 'hut', 'huts', 'cabin', 'cabins', 'cottage', 'cottages',
+  'village', 'town', 'city', 'settlement', 'settlements',
+  'castle', 'castles', 'fortress', 'fort', 'forts', 'citadel',
+  'dungeon', 'dungeons', 'crypt', 'crypts', 'tomb', 'tombs', 'mausoleum',
+  'temple', 'temples', 'church', 'churches', 'cathedral', 'chapel',
+  'tavern', 'taverns', 'inn', 'inns', 'pub', 'pubs',
+  'shop', 'shops', 'store', 'stores', 'market', 'markets', 'bazaar',
+  'arena', 'arenas', 'colosseum', 'stadium', 'amphitheater',
+  'laboratory', 'laboratories', 'lab', 'labs',
+  'library', 'libraries', 'study', 'archive', 'archives',
+  'prison', 'prisons', 'jail', 'jails', 'cell', 'cells', 'dungeon',
+  'throne_room', 'hall', 'halls', 'chamber', 'chambers',
+  'barracks', 'armory', 'armories', 'stables', 'stable',
+  'dock', 'docks', 'pier', 'piers', 'harbor', 'harbour', 'port',
+  'sewers', 'sewer', 'drain', 'drains', 'aqueduct',
+
+  // ===== TRAPS/HAZARDS =====
+  'trap', 'traps', 'hazard', 'hazards',
+  'pit', 'pits', 'spike', 'spikes',
+  'pressure_plate', 'tripwire', 'trigger'
 ];
 
 /**
  * Terms that indicate environmental/prop assets when found in filenames
  * Used as additional filter beyond folder exclusion
+ * Based on Forgotten Adventures naming conventions
  * These terms strongly suggest non-creature assets
  */
 export const EXCLUDED_FILENAME_TERMS = [
-  // Terrain/landscape
+  // ===== TERRAIN/LANDSCAPE =====
   'cliff', 'cave', 'cavern', 'entrance', 'portal', 'gateway',
   'tunnel', 'bridge', 'road', 'path', 'terrain', 'landscape',
-  'mountain', 'hill', 'valley', 'canyon', 'ravine',
-  // Structures
-  'ruin', 'tower', 'wall', 'fence', 'gate', 'door',
-  'building', 'structure', 'camp', 'campsite', 'campfire',
-  'house', 'hut', 'tent', 'cabin',
-  // Water features
-  'river', 'lake', 'pond', 'waterfall', 'stream', 'shore',
-  // Vegetation
-  'tree', 'bush', 'grass', 'flower', 'forest', 'jungle',
-  // Props/objects (common in FA packs)
-  'barrel', 'crate', 'chest', 'table', 'chair', 'bed',
-  'torch', 'lantern', 'sign', 'banner', 'cart', 'wagon',
-  'statue', 'pillar', 'altar', 'shrine', 'throne',
-  // Map elements
-  'tile', 'overlay', 'border', 'frame', 'grid',
-  'background', 'foreground', 'scenic', 'scene'
+  'mountain', 'hill', 'valley', 'canyon', 'ravine', 'gorge',
+  'waterfall', 'cascade', 'stream', 'river', 'lake', 'pond', 'shore',
+  'beach', 'dune', 'desert', 'oasis',
+  'swamp', 'marsh', 'bog', 'wetland',
+  'forest', 'jungle', 'woods', 'grove', 'thicket',
+
+  // ===== STRUCTURES =====
+  'ruin', 'tower', 'wall', 'fence', 'gate', 'door', 'doorway',
+  'building', 'structure', 'house', 'hut', 'tent', 'cabin', 'cottage',
+  'camp', 'campsite', 'campfire', 'bonfire',
+  'castle', 'fortress', 'keep', 'citadel', 'fort',
+  'temple', 'shrine', 'altar', 'church', 'chapel', 'cathedral',
+  'tavern', 'inn', 'pub', 'shop', 'market', 'bazaar',
+  'dungeon', 'crypt', 'tomb', 'mausoleum', 'catacomb',
+  'prison', 'jail', 'cell', 'cage',
+  'arena', 'colosseum', 'amphitheater', 'stadium',
+  'dock', 'pier', 'harbor', 'port', 'wharf',
+  'sewer', 'drain', 'aqueduct', 'canal',
+  'well', 'fountain', 'cistern',
+  'stairs', 'staircase', 'ladder', 'ramp', 'platform',
+  'pillar', 'column', 'arch', 'archway',
+  'roof', 'chimney', 'window', 'shutter',
+  'fireplace', 'hearth', 'brazier',
+
+  // ===== VEGETATION/FLORA =====
+  'tree', 'bush', 'shrub', 'hedge',
+  'grass', 'flower', 'plant', 'vine', 'ivy', 'fern',
+  'mushroom', 'fungi', 'fungus', 'toadstool',
+  'root', 'branch', 'twig', 'leaf', 'leaves',
+  'log', 'stump', 'trunk',
+  'cactus', 'cacti', 'palm',
+  'seaweed', 'kelp', 'algae', 'lily', 'lotus',
+  'moss', 'lichen', 'mold',
+
+  // ===== ROCKS/MINERALS =====
+  'rock', 'boulder', 'stone', 'pebble', 'gravel',
+  'crystal', 'geode', 'gem', 'mineral',
+  'stalactite', 'stalagmite',
+
+  // ===== FURNITURE =====
+  'bed', 'chair', 'table', 'desk', 'bench', 'stool',
+  'couch', 'sofa', 'throne', 'seat',
+  'bookshelf', 'bookcase', 'shelf', 'cabinet', 'wardrobe', 'dresser',
+  'cupboard', 'pantry', 'closet',
+  'rug', 'carpet', 'mat',
+  'curtain', 'drape', 'tapestry',
+  'mirror', 'painting', 'portrait', 'artwork',
+
+  // ===== LIGHTING =====
+  'torch', 'lantern', 'lamp', 'candle', 'candlestick', 'candelabra',
+  'chandelier', 'sconce', 'brazier',
+
+  // ===== CONTAINERS =====
+  'barrel', 'crate', 'box', 'chest', 'coffer',
+  'sack', 'bag', 'pouch', 'basket', 'bucket', 'pail',
+  'urn', 'vase', 'jar', 'pot', 'jug', 'pitcher',
+  'coffin', 'sarcophagus', 'casket',
+
+  // ===== KITCHEN/FOOD =====
+  'plate', 'bowl', 'cup', 'mug', 'goblet', 'tankard',
+  'bottle', 'flask', 'vial', 'cauldron', 'kettle',
+  'food', 'bread', 'meat', 'fruit', 'vegetable', 'cheese',
+  'wine', 'ale', 'beer', 'mead',
+  'stove', 'oven', 'cookware', 'kitchenware',
+
+  // ===== MATERIALS =====
+  'porcelain', 'ceramic', 'pottery', 'clay',
+  'glass', 'crystal', 'metal', 'wood', 'stone', 'brick',
+  'gold', 'silver', 'bronze', 'copper', 'iron', 'steel',
+  'leather', 'cloth', 'fabric', 'silk', 'wool', 'linen',
+
+  // ===== TOOLS/EQUIPMENT =====
+  'target', 'dummy', 'mannequin', 'scarecrow',
+  'tool', 'hammer', 'anvil', 'forge', 'bellows', 'furnace',
+  'pickaxe', 'shovel', 'hoe', 'rake', 'scythe', 'sickle',
+  'saw', 'axe', 'chisel', 'pliers', 'wrench',
+  'rope', 'chain', 'hook', 'pulley', 'lever', 'wheel', 'gear', 'cog',
+  'loom', 'spindle', 'needle', 'thread',
+  'fishing rod', 'net', 'tackle',
+
+  // ===== WEAPONS/ARMOR (as props) =====
+  'weapon rack', 'armor stand', 'shield display', 'trophy',
+  'sword display', 'axe display', 'spear rack',
+  'weapon', 'sword', 'axe', 'spear', 'bow', 'arrow', 'shield',
+
+  // ===== SIGNS/DECOR =====
+  'sign', 'signpost', 'banner', 'flag', 'pennant',
+  'statue', 'sculpture', 'bust', 'monument', 'obelisk',
+
+  // ===== DOCUMENTS/WRITING =====
+  'book', 'scroll', 'map', 'letter', 'document', 'note', 'paper',
+  'quill', 'ink', 'parchment',
+
+  // ===== VALUABLES =====
+  'coin', 'gem', 'jewel', 'treasure', 'gold pile', 'hoard',
+  'key', 'lock', 'padlock',
+
+  // ===== GORE/REMAINS =====
+  'skull', 'bone', 'skeleton prop', 'remains', 'corpse',
+  'blood', 'gore', 'splatter', 'stain',
+
+  // ===== NATURE EFFECTS =====
+  'web', 'cobweb', 'spiderweb',
+  'debris', 'rubble', 'wreckage',
+  'dirt', 'mud', 'dust', 'ash', 'soot',
+
+  // ===== VEHICLES =====
+  'cart', 'wagon', 'carriage', 'chariot',
+  'boat', 'ship', 'raft', 'canoe', 'rowboat',
+  'wheel', 'sail', 'mast', 'anchor',
+
+  // ===== TRAPS/HAZARDS =====
+  'trap', 'snare', 'pit', 'spike',
+  'pressure plate', 'tripwire', 'trigger',
+
+  // ===== MAP ELEMENTS =====
+  'tile', 'tileset', 'overlay', 'border', 'frame', 'grid',
+  'background', 'foreground', 'scenic', 'scene', 'decor',
+  'prop', 'asset', 'clutter', 'scatter',
+
+  // ===== FA SPECIFIC TERMS =====
+  'prefab', 'modular', 'variant', 'alternate',
+  'damaged', 'broken', 'ruined', 'destroyed',
+  'open', 'closed', 'empty', 'full',
+  'small', 'medium', 'large', 'huge', 'tiny'
 ];
 
 /**
