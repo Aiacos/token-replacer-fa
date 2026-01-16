@@ -970,18 +970,31 @@ export class SearchService {
         console.log(`${MODULE_ID} | No subtype results, falling back to category search for "${creatureInfo.type}"`);
         const categoryResults = await this.searchByCategory(creatureInfo.type, localIndex);
 
+        // Get category terms for filtering
+        const categoryTerms = CREATURE_TYPE_MAPPINGS[creatureInfo.type.toLowerCase()] || [];
+        console.log(`${MODULE_ID} | Filtering by ${categoryTerms.length} category terms for "${creatureInfo.type}"`);
+
+        let filteredCount = 0;
         for (const result of categoryResults) {
           if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push({
-              ...result,
-              score: result.score ?? 0.6,
-              fromCategory: true,
-              fallbackFromSubtype: true
-            });
+            // Filter: only include results that contain at least one category term
+            const searchText = `${result.path} ${result.name}`.toLowerCase();
+            const hasMatch = categoryTerms.some(term => searchText.includes(term.toLowerCase()));
+
+            if (hasMatch) {
+              seenPaths.add(result.path);
+              results.push({
+                ...result,
+                score: result.score ?? 0.6,
+                fromCategory: true,
+                fallbackFromSubtype: true
+              });
+            } else {
+              filteredCount++;
+            }
           }
         }
-        console.log(`${MODULE_ID} | Category fallback found ${results.length} results`);
+        console.log(`${MODULE_ID} | Category fallback found ${results.length} results (filtered out ${filteredCount} non-matching)`);
       }
 
       this.searchCache.set(cacheKey, results);
