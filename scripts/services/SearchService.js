@@ -963,6 +963,27 @@ export class SearchService {
 
       console.log(`${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`);
 
+      // FALLBACK: If no subtype results, try category search
+      // This handles cases like "Fiend (Devil)" where FA tokens are named "Pit Fiend", "Lemure", etc.
+      // and not "Devil", so subtype search fails but category search succeeds
+      if (results.length === 0 && creatureInfo.type) {
+        console.log(`${MODULE_ID} | No subtype results, falling back to category search for "${creatureInfo.type}"`);
+        const categoryResults = await this.searchByCategory(creatureInfo.type, localIndex);
+
+        for (const result of categoryResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push({
+              ...result,
+              score: result.score ?? 0.6,
+              fromCategory: true,
+              fallbackFromSubtype: true
+            });
+          }
+        }
+        console.log(`${MODULE_ID} | Category fallback found ${results.length} results`);
+      }
+
       this.searchCache.set(cacheKey, results);
       return results;
     }
