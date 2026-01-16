@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_
 import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 14;  // v2.9.1: Comprehensive FA library filtering
+const INDEX_VERSION = 15;  // v2.9.2: Fix creature conflicts + add missing FA terms
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {

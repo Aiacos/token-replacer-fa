@@ -25,7 +25,8 @@ export const EXCLUDED_FOLDERS = [
   'environment', 'environmental', 'terrain',
   'nature', 'plants', 'vegetation', 'flora',
   'rocks', 'stones', 'boulders', 'crystals',
-  'water', 'lava', 'fire', 'ice', 'snow', 'fog', 'clouds', 'weather',
+  'water', 'lava', 'snow', 'fog', 'clouds', 'weather',
+  // Note: 'fire', 'ice' removed - conflict with Fire/Ice creatures
   'particles', 'vfx', 'sfx', 'ui', 'icons', 'icon',
   'portraits_items', 'item_portraits',
 
@@ -69,7 +70,8 @@ export const EXCLUDED_FOLDERS = [
   'locks', 'lock', 'keys', 'key',
   'magic_items', 'magical_items', 'artifacts',
   'paper', 'papers', 'scroll', 'scrolls', 'documents', 'letters',
-  'ropes', 'rope', 'chains', 'chain',
+  'ropes', 'rope',
+  // Note: 'chain/chains' removed - conflict with Chain Devil
   'spell_components', 'components', 'reagents',
   'treasure', 'treasures', 'loot', 'hoard', 'gold', 'silver', 'coins', 'gems', 'jewels',
   'writing', 'writing_implements', 'quill', 'ink',
@@ -132,7 +134,8 @@ export const EXCLUDED_FOLDERS = [
   'lightning', 'electricity', 'sparks',
   'fire_effects', 'flames', 'flame', 'smoke', 'embers',
   'moss', 'lichen', 'mold', 'algae',
-  'blood', 'gore', 'bones', 'bone', 'corpses', 'corpse', 'remains',
+  'blood', 'gore', 'corpses', 'corpse', 'remains',
+  // Note: 'bone/bones' removed - conflict with Bone Devil
   'blast', 'blast_marks', 'scorch', 'burn_marks', 'impact',
   'dirt', 'mud', 'grime', 'stains', 'splatter',
 
@@ -200,8 +203,9 @@ export const EXCLUDED_FOLDERS = [
 
   // ===== TRAPS/HAZARDS =====
   'trap', 'traps', 'hazard', 'hazards',
-  'pit', 'pits', 'spike', 'spikes',
+  'spike', 'spikes',
   'pressure_plate', 'tripwire', 'trigger'
+  // Note: 'pit/pits' removed - conflict with Pit Fiend
 ];
 
 /**
@@ -273,11 +277,13 @@ export const EXCLUDED_FILENAME_TERMS = [
   'coffin', 'sarcophagus', 'casket',
 
   // ===== KITCHEN/FOOD =====
-  'plate', 'bowl', 'cup', 'mug', 'goblet', 'tankard',
-  'bottle', 'flask', 'vial', 'cauldron', 'kettle',
+  'plate', 'bowl', 'cup', 'mug', 'goblet', 'tankard', 'stein',
+  'bottle', 'flask', 'vial', 'cauldron', 'kettle', 'pitcher', 'jug',
   'food', 'bread', 'meat', 'fruit', 'vegetable', 'cheese',
-  'wine', 'ale', 'beer', 'mead',
+  'wine', 'ale', 'beer', 'mead', 'drinking horn',
   'stove', 'oven', 'cookware', 'kitchenware',
+  'cutting board', 'rolling pin', 'cutlery', 'fork', 'spoon', 'spatula',
+  'scissors', 'ladle', 'waterskin', 'platter', 'pan',
 
   // ===== MATERIALS =====
   'porcelain', 'ceramic', 'pottery', 'clay',
@@ -286,13 +292,16 @@ export const EXCLUDED_FILENAME_TERMS = [
   'leather', 'cloth', 'fabric', 'silk', 'wool', 'linen',
 
   // ===== TOOLS/EQUIPMENT =====
-  'target', 'dummy', 'mannequin', 'scarecrow',
+  'target', 'dummy', 'mannequin', 'scarecrow', 'training dummy',
   'tool', 'hammer', 'anvil', 'forge', 'bellows', 'furnace',
   'pickaxe', 'shovel', 'hoe', 'rake', 'scythe', 'sickle',
-  'saw', 'axe', 'chisel', 'pliers', 'wrench',
-  'rope', 'chain', 'hook', 'pulley', 'lever', 'wheel', 'gear', 'cog',
+  'saw', 'chisel', 'pliers', 'wrench', 'tongs', 'pincers',
+  'rope', 'hook', 'pulley', 'lever', 'wheel', 'gear', 'cog',
+  // Note: 'chain' removed - conflict with Chain Devil
+  // Note: 'axe' removed - conflict with creature weapons
   'loom', 'spindle', 'needle', 'thread',
   'fishing rod', 'net', 'tackle',
+  'broom', 'poker', 'mallet', 'pitchfork', 'spade',
 
   // ===== WEAPONS/ARMOR (as props) =====
   'weapon rack', 'armor stand', 'shield display', 'trophy',
@@ -306,13 +315,15 @@ export const EXCLUDED_FILENAME_TERMS = [
   // ===== DOCUMENTS/WRITING =====
   'book', 'scroll', 'map', 'letter', 'document', 'note', 'paper',
   'quill', 'ink', 'parchment',
+  'newspaper', 'poster', 'printing', 'journal', 'tome',
 
   // ===== VALUABLES =====
   'coin', 'gem', 'jewel', 'treasure', 'gold pile', 'hoard',
   'key', 'lock', 'padlock',
 
   // ===== GORE/REMAINS =====
-  'skull', 'bone', 'skeleton prop', 'remains', 'corpse',
+  'skull', 'skeleton prop', 'remains', 'corpse',
+  // Note: 'bone' removed - conflict with Bone Devil
   'blood', 'gore', 'splatter', 'stain',
 
   // ===== NATURE EFFECTS =====
@@ -326,13 +337,28 @@ export const EXCLUDED_FILENAME_TERMS = [
   'wheel', 'sail', 'mast', 'anchor',
 
   // ===== TRAPS/HAZARDS =====
-  'trap', 'snare', 'pit', 'spike',
+  'trap', 'snare', 'spike',
+  // Note: 'pit' removed - conflict with Pit Fiend
   'pressure plate', 'tripwire', 'trigger',
 
   // ===== MAP ELEMENTS =====
   'tile', 'tileset', 'overlay', 'border', 'frame', 'grid',
   'background', 'foreground', 'scenic', 'scene', 'decor',
   'prop', 'asset', 'clutter', 'scatter',
+
+  // ===== FA DUNGEON DECOR ITEMS =====
+  'manhole', 'cellar door', 'trap door', 'trapdoor', 'basin',
+  'wheelbarrow', 'billiard', 'pool table', 'bunting',
+  'clothesline', 'clothes line', 'vanity', 'archery target',
+  'art tool', 'sleeping bag', 'bedroll', 'restraint', 'restraints',
+  'magic circle', 'candelabra', 'room divider', 'trough',
+  'weapon rack', 'canon', 'cannon',
+
+  // ===== FA TABLE CLUTTER ITEMS =====
+  'spell component', 'reagent', 'alchemy', 'alchemical',
+  'tarot', 'wizard hat', 'witch hat', 'diadem', 'orb',
+  'pentacle', 'magic lamp', 'mage light', 'amulet',
+  'adventuring gear', 'napkin', 'cloth',
 
   // ===== FA SPECIFIC TERMS =====
   'prefab', 'modular', 'variant', 'alternate',
