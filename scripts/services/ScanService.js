@@ -4,8 +4,8 @@
  * @module services/ScanService
  */
 
-import { MODULE_ID, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
-import { yieldToMain } from '../core/Utils.js';
+import { MODULE_ID, MAX_SCAN_DEPTH } from '../core/Constants.js';
+import { yieldToMain, isExcludedPath } from '../core/Utils.js';
 
 /**
  * ScanService class for directory scanning operations
@@ -13,47 +13,6 @@ import { yieldToMain } from '../core/Utils.js';
 export class ScanService {
   constructor() {
     this.imageExtensions = ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.svg'];
-  }
-
-  /**
-   * Check if a path is from an excluded folder or has environmental/prop filename
-   * Checks both folder names and filename for exclusion terms
-   * @param {string} path - Path to check
-   * @returns {boolean} True if path should be excluded
-   */
-  isExcludedPath(path) {
-    if (!path) return true;
-    const pathLower = path.toLowerCase();
-    const segments = pathLower.split('/');
-
-    // Skip CDN/URL structure segments - only check actual folder names
-    // These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
-    const cdnSegments = new Set([
-      'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
-      'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
-      'www', 'cdn', 'static', 'public', 'uploads', 'files'
-    ]);
-
-    // Filter out CDN segments and check remaining folder names
-    const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
-
-    // Check folder names against exclusion list
-    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
-      folderSegments.some(segment => segment === folder)
-    );
-    if (folderExcluded) return true;
-
-    // Also check filename for environmental/prop terms
-    const filename = segments[segments.length - 1] || '';
-    // Remove extension and convert separators to spaces for word matching
-    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
-
-    // Check if filename contains excluded terms (as whole words or prefixes)
-    return EXCLUDED_FILENAME_TERMS.some(term => {
-      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-      const regex = new RegExp(`\\b${term}`, 'i');
-      return regex.test(filenameClean);
-    });
   }
 
   /**
@@ -105,7 +64,7 @@ export class ScanService {
    * @param {string} category - Category name from parent folder
    * @returns {Promise<Array>} Array of image objects
    */
-  async scanDirectoryForImages(path, depth = 0, maxDepth = 5, progressCallback = null, category = null) {
+  async scanDirectoryForImages(path, depth = 0, maxDepth = MAX_SCAN_DEPTH, progressCallback = null, category = null) {
     if (depth > maxDepth) return [];
 
     const images = [];
@@ -133,7 +92,7 @@ export class ScanService {
       if (result.files) {
         for (const file of result.files) {
           // Skip files from excluded folders
-          if (this.isExcludedPath(file)) continue;
+          if (isExcludedPath(file)) continue;
 
           const ext = '.' + file.split('.').pop().toLowerCase();
           if (this.imageExtensions.includes(ext)) {
@@ -159,7 +118,7 @@ export class ScanService {
       if (result.dirs) {
         for (const dir of result.dirs) {
           // Skip excluded folders (assets, props, textures, etc.)
-          if (this.isExcludedPath(dir)) continue;
+          if (isExcludedPath(dir)) continue;
 
           // Use folder name as category for subdirectories
           const subCategory = dir.split('/').pop();
@@ -208,7 +167,7 @@ export class ScanService {
 
     for (const basePath of paths) {
       console.log(`${MODULE_ID} | Scanning: ${basePath}`);
-      const images = await this.scanDirectoryForImages(basePath, 0, 5, progressCallback);
+      const images = await this.scanDirectoryForImages(basePath, 0, MAX_SCAN_DEPTH, progressCallback);
       allImages.push(...images);
     }
 
@@ -262,7 +221,7 @@ export class ScanService {
               }
 
               // Skip if no path, already seen, or from excluded folder
-              if (imagePath && !seenPaths.has(imagePath) && !this.isExcludedPath(imagePath)) {
+              if (imagePath && !seenPaths.has(imagePath) && !isExcludedPath(imagePath)) {
                 seenPaths.add(imagePath);
                 if (name === 'Unknown' && imagePath) {
                   name = imagePath.split('/').pop()?.replace(/\.[^/.]+$/, '')
@@ -302,7 +261,7 @@ export class ScanService {
     const categoryLower = categoryType.toLowerCase();
     return images.filter(img => {
       // Skip excluded paths first
-      if (this.isExcludedPath(img.path)) return false;
+      if (isExcludedPath(img.path)) return false;
 
       const path = img.path?.toLowerCase() || '';
       const name = img.name?.toLowerCase() || '';

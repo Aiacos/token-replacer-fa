@@ -1,7 +1,7 @@
 /**
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
- * @version 2.7.2
+ * @version 2.9.0
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -187,160 +187,226 @@ async function processTokenReplacement() {
   }
 
   TokenReplacerFA.isProcessing = true;
-  searchService.clearCache();
 
-  // Load Fuse.js
-  const Fuse = await loadFuse();
-  if (!Fuse) {
-    TokenReplacerFA.isProcessing = false;
-    return;
-  }
+  try {
+    searchService.clearCache();
 
-  // Check for active scene
-  if (!canvas?.scene) {
-    ui.notifications.warn(TokenReplacerFA.i18n('notifications.noScene'));
-    TokenReplacerFA.isProcessing = false;
-    return;
-  }
+    // Load Fuse.js (required for fuzzy search)
+    const Fuse = await loadFuse();
+    if (!Fuse) {
+      ui.notifications.error(TokenReplacerFA.i18n('notifications.fuseLoadFailed') || 'Token Replacer FA: Failed to load search library. Check console for details.');
+      return;
+    }
 
-  // Get NPC tokens
-  const npcTokens = TokenService.getSceneNPCTokens();
-  if (npcTokens.length === 0) {
-    ui.notifications.info(TokenReplacerFA.i18n('notifications.noTokens'));
-    TokenReplacerFA.isProcessing = false;
-    return;
-  }
+    // Check for active scene
+    if (!canvas?.scene) {
+      ui.notifications.warn(TokenReplacerFA.i18n('notifications.noScene'));
+      return;
+    }
 
-  ui.notifications.info(TokenReplacerFA.i18n('notifications.started'));
+    // Get NPC tokens
+    const npcTokens = TokenService.getSceneNPCTokens();
+    if (npcTokens.length === 0) {
+      ui.notifications.info(TokenReplacerFA.i18n('notifications.noTokens'));
+      return;
+    }
 
-  // Create main dialog
-  const dialog = uiManager.createMainDialog(
-    uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
-    () => { TokenReplacerFA.isProcessing = false; }
-  );
-  dialog.render(true);
-  await yieldToMain(100);
+    ui.notifications.info(TokenReplacerFA.i18n('notifications.started'));
 
-  // Initialize search service (basic setup)
-  searchService.init();
-
-  // PHASE 1: Build token index
-  const useTVACache = TokenReplacerFA.getSetting('useTVACache');
-  const refreshTVACache = TokenReplacerFA.getSetting('refreshTVACache');
-  let localIndex = [];
-
-  if (TokenReplacerFA.hasTVA && useTVACache) {
-    console.log(`${MODULE_ID} | Using TVA cache`);
-    uiManager.updateDialogContent(uiManager.createTVACacheHTML(false));
+    // Create main dialog
+    const dialog = uiManager.createMainDialog(
+      uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+      () => { TokenReplacerFA.isProcessing = false; }
+    );
+    dialog.render(true);
     await yieldToMain(100);
 
-    // If refresh requested, do it FIRST before loading our cache
-    if (refreshTVACache && TokenReplacerFA.tvaAPI?.cacheImages) {
-      uiManager.updateDialogContent(uiManager.createTVACacheHTML(true));
-      await yieldToMain(50);
-      try {
-        await TokenReplacerFA.tvaAPI.cacheImages();
-        console.log(`${MODULE_ID} | TVA cache refreshed`);
-      } catch (e) {
-        console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
+    // Initialize search service (basic setup)
+    searchService.init();
+
+    // PHASE 1: Build token index
+    const useTVACache = TokenReplacerFA.getSetting('useTVACache');
+    const refreshTVACache = TokenReplacerFA.getSetting('refreshTVACache');
+    let localIndex = [];
+
+    if (TokenReplacerFA.hasTVA && useTVACache) {
+      console.log(`${MODULE_ID} | Using TVA cache`);
+      uiManager.updateDialogContent(uiManager.createTVACacheHTML(false));
+      await yieldToMain(100);
+
+      // If refresh requested, do it FIRST before loading our cache
+      if (refreshTVACache && TokenReplacerFA.tvaAPI?.cacheImages) {
+        uiManager.updateDialogContent(uiManager.createTVACacheHTML(true));
+        await yieldToMain(50);
+        try {
+          await TokenReplacerFA.tvaAPI.cacheImages();
+          console.log(`${MODULE_ID} | TVA cache refreshed`);
+        } catch (e) {
+          console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
+        }
+        await yieldToMain(100);
+      }
+
+      // NOW load TVA cache directly (after any refresh is complete)
+      uiManager.updateDialogContent(uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+      const cacheLoaded = await searchService.loadTVACache();
+      if (cacheLoaded) {
+        const stats = searchService.getTVACacheStats();
+        console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images`);
+      } else {
+        console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
       }
       await yieldToMain(100);
-    }
-
-    // NOW load TVA cache directly (after any refresh is complete)
-    uiManager.updateDialogContent(uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
-    const cacheLoaded = await searchService.loadTVACache();
-    if (cacheLoaded) {
-      const stats = searchService.getTVACacheStats();
-      console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images`);
     } else {
-      console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
+      console.log(`${MODULE_ID} | Building local token index`);
+      localIndex = await scanService.buildLocalTokenIndex();
     }
-    await yieldToMain(100);
-  } else {
-    console.log(`${MODULE_ID} | Building local token index`);
-    localIndex = await scanService.buildLocalTokenIndex();
-  }
 
-  // Check for search sources
-  if (!TokenReplacerFA.hasTVA && localIndex.length === 0) {
-    uiManager.updateDialogContent(
-      uiManager.createErrorHTML(TokenReplacerFA.i18n('notifications.missingDeps'))
-    );
-    TokenReplacerFA.isProcessing = false;
-    return;
-  }
-
-  // Group tokens by creature type
-  const creatureGroups = TokenService.groupTokensByCreature(npcTokens);
-  const uniqueCreatures = creatureGroups.size;
-
-  console.log(`${MODULE_ID} | Found ${uniqueCreatures} unique creature types among ${npcTokens.length} tokens`);
-
-  // PHASE 2: Parallel search
-  uiManager.updateDialogContent(
-    uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
-  );
-  await yieldToMain(50);
-
-  const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, (info) => {
-    if (info.type === 'batch' && uiManager.isDialogOpen()) {
+    // Check for search sources
+    if (!TokenReplacerFA.hasTVA && localIndex.length === 0) {
       uiManager.updateDialogContent(
-        uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
+        uiManager.createErrorHTML(TokenReplacerFA.i18n('notifications.missingDeps'))
       );
+      return;
     }
-  });
 
-  // PHASE 3: Process tokens
-  const results = [];
-  const autoReplace = TokenReplacerFA.getSetting('autoReplace');
-  const confirmReplace = TokenReplacerFA.getSetting('confirmReplace');
-  const threshold = TokenReplacerFA.getSetting('fuzzyThreshold');
+    // Group tokens by creature type
+    const creatureGroups = TokenService.groupTokensByCreature(npcTokens);
+    const uniqueCreatures = creatureGroups.size;
 
-  const updateProgress = (current, total, status, result = null) => {
-    if (result) results.push(result);
-    uiManager.updateDialogContent(uiManager.createProgressHTML(current, total, status, results));
-  };
+    console.log(`${MODULE_ID} | Found ${uniqueCreatures} unique creature types among ${npcTokens.length} tokens`);
 
-  updateProgress(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
-  await yieldToMain(50);
+    // PHASE 2: Parallel search
+    uiManager.updateDialogContent(
+      uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
+    );
+    await yieldToMain(50);
 
-  let tokenIndex = 0;
-  let cancelled = false;
-
-  for (const [key, data] of searchResults) {
-    if (cancelled || !uiManager.isDialogOpen()) break;
-
-    const { matches, tokens, creatureInfo } = data;
-
-    // No matches - show category browser
-    if (matches.length === 0) {
-      uiManager.updateDialogContent(uiManager.createNoMatchHTML(creatureInfo, tokens.length));
-      await yieldToMain(50);
-
-      const dialogEl = uiManager.getDialogElement();
-      let selectionResult = null;
-
-      if (dialogEl) {
-        selectionResult = await uiManager.setupNoMatchHandlers(
-          dialogEl, creatureInfo, localIndex, tokens.length,
-          (type, idx, term, cb) => searchService.searchByCategory(type, idx, term, cb)
+    const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, (info) => {
+      if (info.type === 'batch' && uiManager.isDialogOpen()) {
+        uiManager.updateDialogContent(
+          uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
         );
       }
+    });
 
-      if (selectionResult?.paths?.length > 0) {
-        const selectedPaths = selectionResult.paths;
-        const assignmentMode = selectionResult.mode || 'sequential';
-        let pathIndex = 0;
+    // PHASE 3: Process tokens
+    const results = [];
+    const autoReplace = TokenReplacerFA.getSetting('autoReplace');
+    const confirmReplace = TokenReplacerFA.getSetting('confirmReplace');
+    const threshold = TokenReplacerFA.getSetting('fuzzyThreshold');
 
-        const shuffledPaths = assignmentMode === 'random'
-          ? [...selectedPaths].sort(() => Math.random() - 0.5)
-          : selectedPaths;
+    const updateProgress = (current, total, status, result = null) => {
+      if (result) results.push(result);
+      uiManager.updateDialogContent(uiManager.createProgressHTML(current, total, status, results));
+    };
 
-        for (const token of tokens) {
-          if (cancelled || !uiManager.isDialogOpen()) break;
-          tokenIndex++;
+    updateProgress(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+    await yieldToMain(50);
 
+    let tokenIndex = 0;
+
+    for (const [key, data] of searchResults) {
+      if (!uiManager.isDialogOpen()) break;
+
+      const { matches, tokens, creatureInfo } = data;
+
+      // No matches - show category browser
+      if (matches.length === 0) {
+        uiManager.updateDialogContent(uiManager.createNoMatchHTML(creatureInfo, tokens.length));
+        await yieldToMain(50);
+
+        const dialogEl = uiManager.getDialogElement();
+        let selectionResult = null;
+
+        if (dialogEl) {
+          selectionResult = await uiManager.setupNoMatchHandlers(
+            dialogEl, creatureInfo, localIndex, tokens.length,
+            (type, idx, term, cb) => searchService.searchByCategory(type, idx, term, cb)
+          );
+        }
+
+        if (selectionResult?.paths?.length > 0) {
+          const selectedPaths = selectionResult.paths;
+          const assignmentMode = selectionResult.mode || 'sequential';
+          let pathIndex = 0;
+
+          const shuffledPaths = assignmentMode === 'random'
+            ? [...selectedPaths].sort(() => Math.random() - 0.5)
+            : selectedPaths;
+
+          for (const token of tokens) {
+            if (!uiManager.isDialogOpen()) break;
+            tokenIndex++;
+
+            const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
+            const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
+
+            const success = await replaceTokenImage(token, pathForToken);
+            updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), {
+              name: `${creatureInfo.actorName} (${token.name})`,
+              status: success ? 'success' : 'failed',
+              match: matchName
+            });
+
+            pathIndex++;
+          }
+        } else {
+          for (const token of tokens) {
+            tokenIndex++;
+            updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {
+              name: `${creatureInfo.actorName} (${token.name})`,
+              status: 'skipped'
+            });
+          }
+        }
+
+        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+        await yieldToMain(50);
+        continue;
+      }
+
+      // Has matches
+      const bestMatch = matches[0];
+      const matchScore = bestMatch.score !== undefined ? (1 - bestMatch.score) : 0.8;
+
+      let selectedPaths = null;
+      let assignmentMode = 'sequential';
+
+      if (autoReplace && matchScore >= (1 - threshold)) {
+        selectedPaths = [bestMatch.path];
+      } else if (confirmReplace) {
+        uiManager.updateDialogContent(uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
+        await yieldToMain(50);
+
+        const dialogEl = uiManager.getDialogElement();
+        if (dialogEl) {
+          const selectionResult = await uiManager.setupMatchSelectionHandlers(dialogEl);
+
+          if (selectionResult?.paths) {
+            selectedPaths = selectionResult.paths;
+            assignmentMode = selectionResult.mode || 'sequential';
+          }
+        }
+
+        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+        await yieldToMain(50);
+      } else {
+        selectedPaths = [bestMatch.path];
+      }
+
+      // Apply selected paths
+      let pathIndex = 0;
+      const shuffledPaths = assignmentMode === 'random' && selectedPaths
+        ? [...selectedPaths].sort(() => Math.random() - 0.5)
+        : selectedPaths;
+
+      for (const token of tokens) {
+        if (!uiManager.isDialogOpen()) break;
+
+        tokenIndex++;
+
+        if (shuffledPaths?.length > 0) {
           const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
           const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
@@ -352,105 +418,46 @@ async function processTokenReplacement() {
           });
 
           pathIndex++;
-        }
-      } else {
-        for (const token of tokens) {
-          tokenIndex++;
+        } else {
           updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: 'skipped'
           });
         }
       }
-
-      updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
-      await yieldToMain(50);
-      continue;
     }
 
-    // Has matches
-    const bestMatch = matches[0];
-    const matchScore = bestMatch.score !== undefined ? (1 - bestMatch.score) : 0.8;
+    // Final update
+    if (uiManager.isDialogOpen()) {
+      const successCount = results.filter(r => r.status === 'success').length;
+      const failedCount = results.filter(r => r.status === 'failed').length;
 
-    let selectedPaths = null;
-    let assignmentMode = 'sequential';
+      updateProgress(npcTokens.length, npcTokens.length, TokenReplacerFA.i18n('dialog.complete'), null);
 
-    if (autoReplace && matchScore >= (1 - threshold)) {
-      selectedPaths = [bestMatch.path];
-    } else if (confirmReplace) {
-      uiManager.updateDialogContent(uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
-      await yieldToMain(50);
+      ui.notifications.info(TokenReplacerFA.i18n('notifications.complete', { count: successCount }));
 
-      const dialogEl = uiManager.getDialogElement();
-      if (dialogEl) {
-        const selectionResult = await uiManager.setupMatchSelectionHandlers(dialogEl);
-
-        if (selectionResult?.paths) {
-          selectedPaths = selectionResult.paths;
-          assignmentMode = selectionResult.mode || 'sequential';
-        }
-      }
-
-      updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
-      await yieldToMain(50);
-    } else {
-      selectedPaths = [bestMatch.path];
-    }
-
-    // Apply selected paths
-    let pathIndex = 0;
-    const shuffledPaths = assignmentMode === 'random' && selectedPaths
-      ? [...selectedPaths].sort(() => Math.random() - 0.5)
-      : selectedPaths;
-
-    for (const token of tokens) {
-      if (cancelled || !uiManager.isDialogOpen()) break;
-
-      tokenIndex++;
-
-      if (shuffledPaths?.length > 0) {
-        const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
-        const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
-
-        const success = await replaceTokenImage(token, pathForToken);
-        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), {
-          name: `${creatureInfo.actorName} (${token.name})`,
-          status: success ? 'success' : 'failed',
-          match: matchName
-        });
-
-        pathIndex++;
-      } else {
-        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {
-          name: `${creatureInfo.actorName} (${token.name})`,
-          status: 'skipped'
-        });
+      if (failedCount > 0) {
+        console.log(`${MODULE_ID} | ${failedCount} tokens had no matching art found`);
       }
     }
+
+  } catch (error) {
+    console.error(`${MODULE_ID} | Error in processTokenReplacement:`, error);
+    const errorMsg = error?.message || String(error);
+    ui.notifications.error(
+      TokenReplacerFA.i18n('notifications.processingError', { error: errorMsg }) ||
+      `Token Replacer FA encountered an error: ${errorMsg}. Check console for details.`
+    );
+  } finally {
+    TokenReplacerFA.isProcessing = false;
   }
-
-  // Final update
-  if (!cancelled && uiManager.isDialogOpen()) {
-    const successCount = results.filter(r => r.status === 'success').length;
-    const failedCount = results.filter(r => r.status === 'failed').length;
-
-    updateProgress(npcTokens.length, npcTokens.length, TokenReplacerFA.i18n('dialog.complete'), null);
-
-    ui.notifications.info(TokenReplacerFA.i18n('notifications.complete', { count: successCount }));
-
-    if (failedCount > 0) {
-      console.log(`${MODULE_ID} | ${failedCount} tokens had no matching art found`);
-    }
-  }
-
-  TokenReplacerFA.isProcessing = false;
 }
 
 /**
  * Module initialization
  */
 Hooks.once('init', () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.8.3`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.9.0`);
   registerSettings();
 });
 

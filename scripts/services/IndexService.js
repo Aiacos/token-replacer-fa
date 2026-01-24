@@ -5,11 +5,11 @@
  * @module services/IndexService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
-import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, INDEX_BATCH_SIZE } from '../core/Constants.js';
+import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 13;  // v2.9.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
+const INDEX_VERSION = 13;  // v2.9.0: Mutex fix for concurrent builds, shared isExcludedPath from Utils.js
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -39,6 +39,7 @@ class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
+    this._isBuilding = false; // Mutex flag to prevent concurrent builds
   }
 
   /**
@@ -63,47 +64,6 @@ class IndexService {
     const frequency = this.getUpdateFrequency();
     const elapsed = Date.now() - this.index.lastUpdate;
     return elapsed > frequency;
-  }
-
-  /**
-   * Check if a path should be excluded
-   * Checks both folder names and filename for environmental/prop terms
-   * @param {string} path - Image path
-   * @returns {boolean} True if excluded
-   */
-  isExcludedPath(path) {
-    if (!path) return true;
-    const pathLower = path.toLowerCase();
-    const segments = pathLower.split('/');
-
-    // Skip CDN/URL structure segments - only check actual folder names
-    // These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
-    const cdnSegments = new Set([
-      'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
-      'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
-      'www', 'cdn', 'static', 'public', 'uploads', 'files'
-    ]);
-
-    // Filter out CDN segments and check remaining folder names
-    const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
-
-    // Check folder names against exclusion list
-    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
-      folderSegments.some(segment => segment === folder)
-    );
-    if (folderExcluded) return true;
-
-    // Also check filename for environmental/prop terms
-    const filename = segments[segments.length - 1] || '';
-    // Remove extension and convert separators to spaces for word matching
-    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
-
-    // Check if filename contains excluded terms (as whole words or prefixes)
-    return EXCLUDED_FILENAME_TERMS.some(term => {
-      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-      const regex = new RegExp(`\\b${term}`, 'i');
-      return regex.test(filenameClean);
-    });
   }
 
   /**
@@ -218,7 +178,7 @@ class IndexService {
    */
   addImageToIndex(path, name) {
     // Skip if no path, already indexed, or excluded folder
-    if (!path || this.index.allPaths[path] || this.isExcludedPath(path)) return false;
+    if (!path || this.index.allPaths[path] || isExcludedPath(path)) return false;
 
     // Extract name from path if not provided
     const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
@@ -403,7 +363,7 @@ class IndexService {
       }
     }
 
-    // Method 4: Try to get paths via TVA's caching mechanism
+    // Method 6: Try to get paths via TVA's caching mechanism
     if (allPaths.length === 0 && tvaAPI.cacheImages) {
       console.log(`${MODULE_ID} | Trying TVA cacheImages inspection...`);
       // Check if there's a way to list all cached paths
@@ -552,9 +512,8 @@ class IndexService {
 
     console.log(`${MODULE_ID} | Indexing ${totalPaths} paths directly...`);
 
-    const BATCH_SIZE = 1000;
-    for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
-      const batch = paths.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < totalPaths; i += INDEX_BATCH_SIZE) {
+      const batch = paths.slice(i, i + INDEX_BATCH_SIZE);
 
       for (const item of batch) {
         // Handle both string paths and {path, name, category} objects
@@ -567,7 +526,7 @@ class IndexService {
 
       // Progress callback
       if (onProgress) {
-        const processed = Math.min(i + BATCH_SIZE, totalPaths);
+        const processed = Math.min(i + INDEX_BATCH_SIZE, totalPaths);
         onProgress(processed, totalPaths, imagesFound);
       }
 
@@ -725,51 +684,64 @@ class IndexService {
    * @returns {Promise<boolean>} True if successful
    */
   async build(forceRebuild = false, onProgress = null, tvaCacheImages = null) {
-    if (this.buildPromise) return this.buildPromise;
+    // If already building, return existing promise (proper mutex pattern)
+    if (this._isBuilding && this.buildPromise) {
+      console.log(`${MODULE_ID} | Build already in progress, waiting for existing build...`);
+      return this.buildPromise;
+    }
+
+    // Acquire the lock
+    this._isBuilding = true;
 
     this.buildPromise = (async () => {
-      const startTime = performance.now();
-      console.log(`${MODULE_ID} | Starting index build...`);
+      try {
+        const startTime = performance.now();
+        console.log(`${MODULE_ID} | Starting index build...`);
 
-      // Try to load from cache first
-      if (!forceRebuild && this.loadFromCache()) {
-        // Check if update is needed
-        if (!this.needsUpdate()) {
+        // Try to load from cache first
+        if (!forceRebuild && this.loadFromCache()) {
+          // Check if update is needed
+          if (!this.needsUpdate()) {
+            this.isBuilt = true;
+            console.log(`${MODULE_ID} | Index loaded from cache, no update needed`);
+            return true;
+          }
+          console.log(`${MODULE_ID} | Index needs update based on frequency setting`);
+        }
+
+        // Create new index
+        this.index = this.createEmptyIndex();
+
+        // Build from TVA (pass pre-loaded cache if available)
+        await this.buildFromTVA(onProgress, tvaCacheImages);
+
+        // Use actual count from allPaths
+        const totalImages = Object.keys(this.index.allPaths).length;
+
+        if (totalImages > 0) {
+          this.index.lastUpdate = Date.now();
+          this.saveToCache();
           this.isBuilt = true;
-          console.log(`${MODULE_ID} | Index loaded from cache, no update needed`);
+
+          const stats = this.getStats();
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+          console.log(`${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
           return true;
         }
-        console.log(`${MODULE_ID} | Index needs update based on frequency setting`);
+
+        console.warn(`${MODULE_ID} | Index build returned 0 images`);
+        this.isBuilt = false;
+        return false;
+      } finally {
+        // Release the lock after build completes (success or failure)
+        this._isBuilding = false;
+        // Clear buildPromise to allow fresh builds - do this in a microtask
+        // so that current awaiters get the result before we clear
+        queueMicrotask(() => { this.buildPromise = null; });
       }
-
-      // Create new index
-      this.index = this.createEmptyIndex();
-
-      // Build from TVA (pass pre-loaded cache if available)
-      await this.buildFromTVA(onProgress, tvaCacheImages);
-
-      // Use actual count from allPaths
-      const totalImages = Object.keys(this.index.allPaths).length;
-
-      if (totalImages > 0) {
-        this.index.lastUpdate = Date.now();
-        this.saveToCache();
-        this.isBuilt = true;
-
-        const stats = this.getStats();
-        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-        console.log(`${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
-        return true;
-      }
-
-      console.warn(`${MODULE_ID} | Index build returned 0 images`);
-      this.isBuilt = false;
-      return false;
     })();
 
-    const result = await this.buildPromise;
-    this.buildPromise = null;
-    return result;
+    return this.buildPromise;
   }
 
   /**
@@ -930,6 +902,7 @@ class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
+    this._isBuilding = false;
     localStorage.removeItem(CACHE_KEY);
     console.log(`${MODULE_ID} | Index cleared`);
   }

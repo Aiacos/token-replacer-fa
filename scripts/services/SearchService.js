@@ -4,7 +4,7 @@
  * @module services/SearchService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS, PARALLEL_BATCH_SIZE, SLOW_MODE_BATCH_SIZE } from '../core/Constants.js';
 import {
   loadFuse,
   parseSubtypeTerms,
@@ -12,7 +12,8 @@ import {
   getCreatureCacheKey,
   yieldToMain,
   extractPathFromTVAResult,
-  extractNameFromTVAResult
+  extractNameFromTVAResult,
+  isExcludedPath
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -172,7 +173,7 @@ export class SearchService {
 
     for (const img of this.tvaCacheImages) {
       // Skip excluded paths
-      if (this.isExcludedPath(img.path)) continue;
+      if (isExcludedPath(img.path)) continue;
 
       // Simple string matching on name and path
       const nameLower = (img.name || '').toLowerCase();
@@ -211,7 +212,7 @@ export class SearchService {
 
     for (const img of this.tvaCacheImages) {
       if (seenPaths.has(img.path)) continue;
-      if (this.isExcludedPath(img.path)) continue;
+      if (isExcludedPath(img.path)) continue;
 
       const nameLower = (img.name || '').toLowerCase();
       // Extract meaningful path parts (last 2-3 folder names, excluding CDN structure)
@@ -255,7 +256,7 @@ export class SearchService {
 
     for (const img of this.tvaCacheImages) {
       if (seenPaths.has(img.path)) continue;
-      if (this.isExcludedPath(img.path)) continue;
+      if (isExcludedPath(img.path)) continue;
 
       const nameLower = (img.name || '').toLowerCase();
       const pathLower = (img.path || '').toLowerCase();
@@ -310,47 +311,6 @@ export class SearchService {
    */
   clearCache() {
     this.searchCache.clear();
-  }
-
-  /**
-   * Check if a path is from an excluded folder or has environmental/prop filename
-   * Checks both folder names and filename for exclusion terms
-   * @param {string} path - Image path to check
-   * @returns {boolean} True if path should be excluded
-   */
-  isExcludedPath(path) {
-    if (!path) return true;
-    const pathLower = path.toLowerCase();
-    const segments = pathLower.split('/');
-
-    // Skip CDN/URL structure segments - only check actual folder names
-    // These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
-    const cdnSegments = new Set([
-      'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
-      'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
-      'www', 'cdn', 'static', 'public', 'uploads', 'files'
-    ]);
-
-    // Filter out CDN segments and check remaining folder names
-    const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
-
-    // Check folder names against exclusion list
-    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
-      folderSegments.some(segment => segment === folder)
-    );
-    if (folderExcluded) return true;
-
-    // Also check filename for environmental/prop terms
-    const filename = segments[segments.length - 1] || '';
-    // Remove extension and convert separators to spaces for word matching
-    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
-
-    // Check if filename contains excluded terms (as whole words or prefixes)
-    return EXCLUDED_FILENAME_TERMS.some(term => {
-      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-      const regex = new RegExp(`\\b${term}`, 'i');
-      return regex.test(filenameClean);
-    });
   }
 
   /**
@@ -425,7 +385,7 @@ export class SearchService {
       const processItem = (item) => {
         const imagePath = extractPathFromTVAResult(item);
         // Skip if no path, already seen, or from excluded folder
-        if (!imagePath || seenPaths.has(imagePath) || this.isExcludedPath(imagePath)) return;
+        if (!imagePath || seenPaths.has(imagePath) || isExcludedPath(imagePath)) return;
 
         seenPaths.add(imagePath);
         const name = extractNameFromTVAResult(item, imagePath);
@@ -457,7 +417,7 @@ export class SearchService {
           } else if (typeof key === 'string' && (key.includes('/') || key.includes('.'))) {
             // Key itself is a path (older TVA format)
             // Skip if already seen or from excluded folder
-            if (!seenPaths.has(key) && !this.isExcludedPath(key)) {
+            if (!seenPaths.has(key) && !isExcludedPath(key)) {
               seenPaths.add(key);
               results.push({
                 path: key,
@@ -519,7 +479,7 @@ export class SearchService {
       for (const result of searchResults) {
         const item = result.item;
         // Skip if already seen or from excluded folder
-        if (seenPaths.has(item.path) || this.isExcludedPath(item.path)) continue;
+        if (seenPaths.has(item.path) || isExcludedPath(item.path)) continue;
 
         // Optionally filter by creature type
         if (creatureType && item.category) {
@@ -574,7 +534,7 @@ export class SearchService {
       if (localIndex?.length > 0) {
         const termLower = directSearchTerm.toLowerCase();
         const localMatches = localIndex.filter(img =>
-          !this.isExcludedPath(img.path) && (
+          !isExcludedPath(img.path) && (
             img.name?.toLowerCase().includes(termLower) ||
             img.fileName?.toLowerCase().includes(termLower) ||
             img.category?.toLowerCase().includes(termLower) ||
@@ -610,7 +570,7 @@ export class SearchService {
       const indexResults = indexService.searchByCategory(categoryType);
       for (const result of indexResults) {
         // Double-check exclusion filter for safety
-        if (!seenPaths.has(result.path) && !this.isExcludedPath(result.path)) {
+        if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
           seenPaths.add(result.path);
           results.push({
             ...result,
@@ -653,7 +613,6 @@ export class SearchService {
       if (categoryTerms) {
         console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode - index not built)`);
         const totalTerms = categoryTerms.length;
-        const SLOW_MODE_BATCH_SIZE = 6; // Parallel batch size for SLOW mode
         let searchCount = 0;
 
         // Process in parallel batches for better performance
@@ -700,7 +659,6 @@ export class SearchService {
         if (primaryTerms) {
           console.log(`${MODULE_ID} | No full mapping, using ${primaryTerms.length} primary terms`);
           const totalTerms = primaryTerms.length;
-          const SLOW_MODE_BATCH_SIZE = 6;
           let searchCount = 0;
 
           for (let i = 0; i < primaryTerms.length; i += SLOW_MODE_BATCH_SIZE) {
@@ -744,7 +702,7 @@ export class SearchService {
       }
 
       const categoryMatches = localIndex.filter(img =>
-        !this.isExcludedPath(img.path) &&
+        !isExcludedPath(img.path) &&
         img.category && this.folderMatchesCreatureType(img.category, categoryType)
       );
       for (const match of categoryMatches) {
@@ -801,7 +759,7 @@ export class SearchService {
           console.log(`${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`);
           for (const result of nameResults) {
             // Double-check exclusion filter for safety
-            if (!seenPaths.has(result.path) && !this.isExcludedPath(result.path)) {
+            if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
               seenPaths.add(result.path);
               results.push({
                 ...result,
@@ -818,7 +776,7 @@ export class SearchService {
 
         for (const result of indexResults) {
           // Double-check exclusion filter for safety
-          if (!seenPaths.has(result.path) && !this.isExcludedPath(result.path)) {
+          if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
             seenPaths.add(result.path);
             results.push({
               ...result,
@@ -913,7 +871,7 @@ export class SearchService {
         if (creatureInfo.actorName) {
           const actorNameLower = creatureInfo.actorName.toLowerCase();
           const nameMatches = localIndex.filter(img => {
-            if (this.isExcludedPath(img.path)) return false;
+            if (isExcludedPath(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
             return nameLower.includes(actorNameLower) || pathLower.includes(actorNameLower);
@@ -937,7 +895,7 @@ export class SearchService {
           const termLower = term.toLowerCase();
           const localMatches = localIndex.filter(img => {
             // Skip excluded paths
-            if (this.isExcludedPath(img.path)) return false;
+            if (isExcludedPath(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
             const categoryLower = (img.category || '').toLowerCase();
@@ -1068,10 +1026,9 @@ export class SearchService {
     const groupArray = Array.from(groups.entries());
     const totalGroups = groupArray.length;
     const results = new Map();
-    const MAX_CONCURRENT = 4;
 
-    for (let i = 0; i < groupArray.length; i += MAX_CONCURRENT) {
-      const batch = groupArray.slice(i, i + MAX_CONCURRENT);
+    for (let i = 0; i < groupArray.length; i += PARALLEL_BATCH_SIZE) {
+      const batch = groupArray.slice(i, i + PARALLEL_BATCH_SIZE);
 
       if (progressCallback) {
         const completed = Math.min(i, groupArray.length);

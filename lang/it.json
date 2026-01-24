@@ -95,7 +95,9 @@
       "indexReady": "Indice token pronto! {count} immagini indicizzate per ricerca veloce.",
       "indexingStart": "Prima configurazione: Costruzione indice immagini in background. Potrebbe richiedere alcuni minuti ma avviene solo una volta.",
       "indexing": "Costruzione indice... {percent}% ({images} immagini)",
-      "indexingComplete": "Indice pronto! {count} immagini indicizzate per ricerca veloce."
+      "indexingComplete": "Indice pronto! {count} immagini indicizzate per ricerca veloce.",
+      "fuseLoadFailed": "Impossibile caricare la libreria di ricerca. Controlla la console per dettagli.",
+      "processingError": "Token Replacer FA ha riscontrato un errore: {error}. Controlla la console per dettagli."
     }
   }
 }

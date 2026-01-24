@@ -8,6 +8,14 @@ export const MODULE_TITLE = 'Token Replacer - Forgotten Adventures';
 export const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
 
 /**
+ * Performance tuning constants
+ */
+export const PARALLEL_BATCH_SIZE = 4;      // Max concurrent creature searches
+export const SLOW_MODE_BATCH_SIZE = 6;     // Parallel batch size for SLOW mode TVA API calls
+export const INDEX_BATCH_SIZE = 1000;      // Batch size for index building
+export const MAX_SCAN_DEPTH = 5;           // Maximum directory scan depth
+
+/**
  * Folders to exclude from token search (assets, props, textures, etc.)
  * These contain environment assets, not character tokens
  * All values should be lowercase for case-insensitive matching

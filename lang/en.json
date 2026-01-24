@@ -95,7 +95,9 @@
       "indexReady": "Token index ready! {count} images indexed for fast search.",
       "indexingStart": "First-time setup: Building image index in background. This may take several minutes but only happens once.",
       "indexing": "Building index... {percent}% ({images} images)",
-      "indexingComplete": "Index ready! {count} images indexed for fast search."
+      "indexingComplete": "Index ready! {count} images indexed for fast search.",
+      "fuseLoadFailed": "Failed to load search library. Check console for details.",
+      "processingError": "Token Replacer FA encountered an error: {error}. Check console for details."
     }
   }
 }

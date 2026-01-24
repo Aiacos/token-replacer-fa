@@ -3,7 +3,7 @@
  * @module core/Utils
  */
 
-import { FUSE_CDN, GENERIC_SUBTYPE_INDICATORS } from './Constants.js';
+import { FUSE_CDN, GENERIC_SUBTYPE_INDICATORS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from './Constants.js';
 
 // Fuse.js instance cache
 let FuseClass = null;
@@ -258,4 +258,47 @@ export function extractNameFromTVAResult(item, imagePath) {
   }
 
   return 'Unknown';
+}
+
+/**
+ * CDN URL segments to skip when checking folder exclusions
+ * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+ */
+const CDN_SEGMENTS = new Set([
+  'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
+  'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
+  'www', 'cdn', 'static', 'public', 'uploads', 'files'
+]);
+
+/**
+ * Check if a path should be excluded from token search
+ * Checks both folder names and filename for environmental/prop terms
+ * @param {string} path - Image path to check
+ * @returns {boolean} True if path should be excluded
+ */
+export function isExcludedPath(path) {
+  if (!path) return true;
+  const pathLower = path.toLowerCase();
+  const segments = pathLower.split('/');
+
+  // Filter out CDN segments and check remaining folder names
+  const folderSegments = segments.filter(s => !CDN_SEGMENTS.has(s) && s.length > 0);
+
+  // Check folder names against exclusion list
+  const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
+    folderSegments.some(segment => segment === folder)
+  );
+  if (folderExcluded) return true;
+
+  // Also check filename for environmental/prop terms
+  const filename = segments[segments.length - 1] || '';
+  // Remove extension and convert separators to spaces for word matching
+  const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+
+  // Check if filename contains excluded terms (as whole words or prefixes)
+  return EXCLUDED_FILENAME_TERMS.some(term => {
+    // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
+    const regex = new RegExp(`\\b${term}`, 'i');
+    return regex.test(filenameClean);
+  });
 }
