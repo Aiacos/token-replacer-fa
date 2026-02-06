@@ -14,6 +14,10 @@ node_modules/
 # Logs
 *.log
 
+# Build output
+releases/
+*.zip
+
 # Temporary files
 *.tmp
 *.bak
