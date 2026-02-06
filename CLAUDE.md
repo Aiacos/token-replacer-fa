@@ -13,17 +13,40 @@ Token Replacer FA is a Foundry VTT module that automatically replaces NPC token 
 
 ## Development Commands
 
-This is a Foundry VTT module with no build step. Development workflow:
+**Testing:** Load the module in Foundry VTT and test via browser console. No automated tests.
+
+## Build & Release
+
+### Build the package
 
 ```bash
-# Create release zip (excludes .git and logs)
-zip -r token-replacer-fa.zip . -x "*.git*" -x "*.log" -x "*.zip"
-
-# Create GitHub release with module.json as separate asset
-gh release create vX.Y.Z token-replacer-fa.zip module.json --title "vX.Y.Z - Description"
+bash build.sh      # Linux/macOS
+build.bat           # Windows
 ```
 
-**Testing:** Load the module in Foundry VTT and test via browser console. No automated tests.
+The build script auto-detects module ID, version, and GitHub URL from `module.json`. It creates a clean ZIP in `releases/{id}-v{version}.zip` with the download URL already set.
+
+### Publish a GitHub release
+
+```bash
+# 1. Update version in module.json
+# 2. Update the "download" URL in module.json to match the new version:
+#    https://github.com/Aiacos/token-replacer-fa/releases/download/vX.Y.Z/token-replacer-fa-vX.Y.Z.zip
+# 3. Build the package
+bash build.sh
+# 4. Commit and push
+git add module.json && git commit -m "Bump version to X.Y.Z" && git push
+# 5. Create the GitHub release (upload BOTH module.json and the ZIP)
+gh release create vX.Y.Z releases/token-replacer-fa-vX.Y.Z.zip module.json --title "vX.Y.Z - Description"
+```
+
+**Important:** The `module.json` must be uploaded as a **separate release asset** alongside the ZIP. Foundry VTT downloads it first (via the manifest URL) to discover the module and its download URL.
+
+### Foundry VTT Manifest URL (for installation)
+
+```
+https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
+```
 
 ## Architecture
 
