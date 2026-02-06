@@ -2,6 +2,15 @@
  * Token Replacer FA - Token Service
  * Handles token extraction, grouping, and image replacement
  * @module services/TokenService
+ *
+ * Design Note: This class uses static methods intentionally.
+ * Unlike SearchService/IndexService which maintain state (caches, indexes),
+ * TokenService performs stateless operations on Foundry token objects.
+ * Each method is a pure function that depends only on its input parameters,
+ * making static methods the appropriate pattern here.
+ *
+ * This follows the same utility pattern as Utils.js but groups related
+ * token operations together in a class for organizational clarity.
  */
 
 import { MODULE_ID } from '../core/Constants.js';
@@ -9,6 +18,15 @@ import { getCreatureCacheKey } from '../core/Utils.js';
 
 /**
  * TokenService class for handling token operations
+ *
+ * Static utility class - no instantiation required.
+ * All methods are pure functions operating on Foundry VTT tokens.
+ * @example
+ * // Usage: call static methods directly on the class
+ * const info = TokenService.extractCreatureInfo(token);
+ * const tokens = TokenService.getSceneNPCTokens();
+ * const groups = TokenService.groupTokensByCreature(tokens);
+ * await TokenService.replaceTokenImage(token, imagePath);
  */
 export class TokenService {
   /**

@@ -190,6 +190,61 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 
 ## Changelog
 
+### v2.9.0
+- **Enhanced Filtering**: Exclude environmental assets (maps, tiles, portraits) from token searches
+- **Comprehensive FA Library Filtering**: Better filtering of non-token assets
+- **Category Fallback**: When subtype search returns no results, automatically falls back to broader category search
+
+### v2.8.0
+- **Direct TVA Cache Access**: Fast path for searching using TVA's static cache file directly
+- **Performance**: Searches complete much faster by reading TVA cache directly instead of using API
+- **CDN Path Handling**: Properly filter CDN URL segments from folder exclusion checks
+
+### v2.7.0
+- **UI Responsiveness**: Improved parallelization and UI responsiveness during search
+- **Progress Notifications**: Better cache key handling for progress notifications
+- **Index Storage**: Index now stores all images for general search
+
+### v2.6.0
+- **Hierarchical JSON Index**: Configurable update frequency for index rebuilding
+- **Critical Bug Fixes**: Fixed index initialization issues
+- **Better Organization**: Improved index structure for faster lookups
+
+### v2.5.0
+- **Persistent Cache**: localStorage caching for faster subsequent searches
+- **Improved TVA Access**: Better integration with Token Variant Art cache
+- **Extended Exclusion Filters**: Non-blocking index build with extended folder exclusion
+- **Subtype Parsing**: Parse subtype from string format like "Humanoid (Tiefling)"
+
+### v2.4.0
+- **Pre-built Keyword Index**: O(1) search performance using hash table lookups
+- **Asset Folder Exclusion**: Exclude non-token asset folders from index
+
+### v2.3.0
+- **Direct TVA Search**: Remove custom IndexService, use TVA doImageSearch directly
+- **Critical Bug Fix**: Fixed TVA Map result parsing to extract all results
+
+### v2.2.0
+- **Performance Optimization**: Pre-built keyword index for O(1) searches
+- **Direct CACHED_IMAGES Access**: Faster performance by accessing TVA cache directly
+
+### v2.1.0
+- **OR Logic for Subtypes**: Subtype search now uses OR logic (show all matching subtypes)
+- **UI Cleanup**: Removed quick search buttons for cleaner interface
+
+### v2.0.0
+- **Major Refactoring**: Complete OOP architecture with modular services
+- **Service Architecture**: Separate services for Token, Search, Index, Scan, and UI
+- **Code Optimization**: O(1) Set lookups, improved performance
+- **TVA Compatibility**: Better handling of various TVA result formats
+- **Creature Type Extraction**: Improved actor data parsing
+
+### v1.5.0
+- **AND Logic Filter**: Text filter uses AND logic for multiple search terms
+- **Progress Bar**: Visual progress bar during category search
+- **Search Filter UI**: Debounced filter input with delimiter support
+- **Dialog Improvements**: Taller dialog that adapts to content
+
 ### v1.4.0
 - **Category Browser on No Match**: When no fuzzy search matches are found, a dropdown menu now appears allowing you to browse artwork by creature type (Humanoid, Aberration, Beast, Undead, etc.)
 - **Creature Type Detection**: The dropdown pre-selects the creature type from the token's character sheet

@@ -3,7 +3,7 @@
 ## Specifications & Requirements Document
 
 **Module ID:** `token-replacer-fa`
-**Version:** 2.5.1
+**Version:** 2.9.0
 **Last Updated:** 2026-01-10
 
 ---
@@ -114,7 +114,7 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 | `searchPriority` | Choice | both | faNexus / forgeBazaar / both |
 | `autoReplace` | Boolean | false | Auto-apply best match |
 | `confirmReplace` | Boolean | true | Show confirmation dialog |
-| `fallbackFullSearch` | Boolean | false | Search all when no category match (**NOT IMPLEMENTED**) |
+| `fallbackFullSearch` | Boolean | false | Search all when no category match (**Planned - not yet implemented**) |
 | `useTVACache` | Boolean | true | Use TVA's pre-built cache |
 | `refreshTVACache` | Boolean | false | Refresh cache before search |
 | `additionalPaths` | String | "" | Extra directories to scan |
@@ -332,6 +332,12 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.9.0 | 2026-01-10 | **FEATURE**: Enhanced filtering to exclude environmental assets (maps, tiles, portraits) |
+| 2.8.3 | 2026-01-10 | **FIX**: Exclude CDN path segments from folder exclusion check |
+| 2.8.0 | 2026-01-10 | **FEATURE**: Direct TVA cache access for faster search (FAST PATH) |
+| 2.7.0 | 2026-01-10 | **PERFORMANCE**: Improved UI responsiveness and parallelization |
+| 2.6.1 | 2026-01-10 | **FIX**: Critical bugs in index initialization |
+| 2.6.0 | 2026-01-10 | **FEATURE**: Hierarchical JSON index with configurable update frequency |
 | 2.5.1 | 2026-01-10 | **FIX**: Parse subtype from string format "Humanoid (Tiefling)", "Humanoid (Elf)" etc. |
 | 2.5.0 | 2026-01-10 | **PERFORMANCE**: Persistent localStorage cache, improved TVA access, batch size 25 |
 | 2.4.1 | 2026-01-10 | Exclude asset folders from index |
@@ -355,7 +361,7 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 |-------|--------|------------|
 | Dialog V1 deprecation warning | Deferred | Functional until v16 |
 | Large result sets slow UI | Open | Virtualization planned |
-| `fallbackFullSearch` setting not implemented | Open | Use category browser manually |
+| `fallbackFullSearch` setting | Planned | UI setting exists, implementation pending. Use category browser manually |
 | ~~Slow search performance~~ | **Fixed v2.2.0** | Pre-built index provides O(1) lookups |
 
 ---
@@ -364,7 +370,7 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 - [ ] Migrate to ApplicationV2/DialogV2
 - [ ] Virtual scrolling for large result sets
-- [ ] Implement `fallbackFullSearch` setting
+- [ ] Implement `fallbackFullSearch` setting (UI exists, logic pending)
 - [ ] Batch apply to all tokens
 - [ ] Custom token scaling options
 - [ ] Token ring/border support

@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Token Replacer FA is a Foundry VTT module that automatically replaces NPC token artwork with matching tokens from Forgotten Adventures and The Forge Bazaar. It requires Token Variant Art (TVA) module and optionally uses FA Nexus.
 
 **Module ID:** `token-replacer-fa`
+**Version:** 2.9.0
 **System:** D&D 5e only
 **Foundry VTT:** v12-v13
 
@@ -34,8 +35,8 @@ scripts/
 │   └── Utils.js         # Path extraction from TVA results, Fuse.js loader
 ├── services/
 │   ├── SearchService.js # Main search orchestrator - TVA direct cache access (FAST PATH)
-│   ├── IndexService.js  # Pre-built keyword index for O(1) searches, localStorage caching
-│   ├── TokenService.js  # Extract creature info from Foundry actors
+│   ├── IndexService.js  # Hierarchical category index, localStorage caching with size limits
+│   ├── TokenService.js  # Extract creature info from Foundry actors (static methods)
 │   └── ScanService.js   # Directory scanning (fallback when TVA unavailable)
 └── ui/
     └── UIManager.js     # Dialog generation, match selection UI, progress tracking
@@ -45,8 +46,8 @@ scripts/
 
 1. `main.js` → `processTokenReplacement()` triggered by scene control button
 2. `TokenService` extracts creature type/subtype from selected tokens
-3. `SearchService.loadTVACache()` reads TVA's static cache file directly (163K+ images)
-4. `IndexService.build()` creates keyword index from cache for instant lookups
+3. `SearchService.loadTVACache()` reads TVA's static cache file directly
+4. `IndexService.build()` creates hierarchical category index from cache
 5. `UIManager` displays matches for user selection
 
 ### TVA Integration
@@ -78,6 +79,7 @@ Files in `lang/en.json` and `lang/it.json`. All UI strings use `TOKEN_REPLACER_F
 
 ## Known Constraints
 
-- Index too large for localStorage (~52MB) - rebuilds on each page load (~15 seconds)
+- Index caching limited to ~4.5MB localStorage - larger indices rebuild on page load
 - Uses deprecated V1 Dialog API (deadline: Foundry v16)
 - D&D 5e system only (creature type extraction is system-specific)
+- TokenService uses static methods (intentional for stateless token operations)

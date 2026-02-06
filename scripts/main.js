@@ -1,6 +1,7 @@
 /**
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
+ * @module main
  * @version 2.9.0
  */
 
@@ -13,13 +14,19 @@ import { indexService } from './services/IndexService.js';
 import { uiManager } from './ui/UIManager.js';
 
 /**
- * Module configuration and state
+ * TokenReplacerApp class - Main application controller
+ * Manages module state and orchestrates token replacement workflow
  */
-const TokenReplacerFA = {
-  isProcessing: false,
+export class TokenReplacerApp {
+  constructor() {
+    this.isProcessing = false;
+  }
 
   /**
    * Get localized string
+   * @param {string} key - Localization key (without namespace prefix)
+   * @param {Object} data - Replacement data for placeholders
+   * @returns {string} Localized string
    */
   i18n(key, data = {}) {
     let str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
@@ -27,196 +34,203 @@ const TokenReplacerFA = {
       str = str.replace(`{${k}}`, v);
     }
     return str;
-  },
+  }
 
   /**
    * Get module setting
+   * @param {string} key - Setting key
+   * @returns {*} Setting value
    */
   getSetting(key) {
     return game.settings.get(MODULE_ID, key);
-  },
+  }
 
   /**
    * Check if Token Variant Art is available
+   * @returns {boolean} True if TVA is active
    */
   get hasTVA() {
     return game.modules.get('token-variants')?.active ?? false;
-  },
+  }
 
   /**
    * Check if FA Nexus is available
+   * @returns {boolean} True if FA Nexus is active
    */
   get hasFANexus() {
     return game.modules.get('fa-nexus')?.active ?? false;
-  },
+  }
 
   /**
    * Get Token Variant Art API
+   * @returns {Object|null} TVA API or null if unavailable
    */
   get tvaAPI() {
     if (!this.hasTVA) return null;
     return game.modules.get('token-variants')?.api;
   }
-};
 
-/**
- * Register module settings
- */
-function registerSettings() {
-  game.settings.register(MODULE_ID, 'fuzzyThreshold', {
-    name: 'TOKEN_REPLACER_FA.settings.fuzzyThreshold.name',
-    hint: 'TOKEN_REPLACER_FA.settings.fuzzyThreshold.hint',
-    scope: 'world',
-    config: true,
-    type: Number,
-    range: { min: 0, max: 1, step: 0.1 },
-    default: 0.1
-  });
+  /**
+   * Register module settings
+   */
+  registerSettings() {
+    game.settings.register(MODULE_ID, 'fuzzyThreshold', {
+      name: 'TOKEN_REPLACER_FA.settings.fuzzyThreshold.name',
+      hint: 'TOKEN_REPLACER_FA.settings.fuzzyThreshold.hint',
+      scope: 'world',
+      config: true,
+      type: Number,
+      range: { min: 0, max: 1, step: 0.1 },
+      default: 0.1
+    });
 
-  game.settings.register(MODULE_ID, 'searchPriority', {
-    name: 'TOKEN_REPLACER_FA.settings.searchPriority.name',
-    hint: 'TOKEN_REPLACER_FA.settings.searchPriority.hint',
-    scope: 'world',
-    config: true,
-    type: String,
-    choices: {
-      faNexus: 'TOKEN_REPLACER_FA.priority.faNexus',
-      forgeBazaar: 'TOKEN_REPLACER_FA.priority.forgeBazaar',
-      both: 'TOKEN_REPLACER_FA.priority.both'
-    },
-    default: 'both'
-  });
+    game.settings.register(MODULE_ID, 'searchPriority', {
+      name: 'TOKEN_REPLACER_FA.settings.searchPriority.name',
+      hint: 'TOKEN_REPLACER_FA.settings.searchPriority.hint',
+      scope: 'world',
+      config: true,
+      type: String,
+      choices: {
+        faNexus: 'TOKEN_REPLACER_FA.priority.faNexus',
+        forgeBazaar: 'TOKEN_REPLACER_FA.priority.forgeBazaar',
+        both: 'TOKEN_REPLACER_FA.priority.both'
+      },
+      default: 'both'
+    });
 
-  game.settings.register(MODULE_ID, 'autoReplace', {
-    name: 'TOKEN_REPLACER_FA.settings.autoReplace.name',
-    hint: 'TOKEN_REPLACER_FA.settings.autoReplace.hint',
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: false
-  });
+    game.settings.register(MODULE_ID, 'autoReplace', {
+      name: 'TOKEN_REPLACER_FA.settings.autoReplace.name',
+      hint: 'TOKEN_REPLACER_FA.settings.autoReplace.hint',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: false
+    });
 
-  game.settings.register(MODULE_ID, 'confirmReplace', {
-    name: 'TOKEN_REPLACER_FA.settings.confirmReplace.name',
-    hint: 'TOKEN_REPLACER_FA.settings.confirmReplace.hint',
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: true
-  });
+    game.settings.register(MODULE_ID, 'confirmReplace', {
+      name: 'TOKEN_REPLACER_FA.settings.confirmReplace.name',
+      hint: 'TOKEN_REPLACER_FA.settings.confirmReplace.hint',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: true
+    });
 
-  game.settings.register(MODULE_ID, 'fallbackFullSearch', {
-    name: 'TOKEN_REPLACER_FA.settings.fallbackFullSearch.name',
-    hint: 'TOKEN_REPLACER_FA.settings.fallbackFullSearch.hint',
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: false
-  });
+    game.settings.register(MODULE_ID, 'fallbackFullSearch', {
+      name: 'TOKEN_REPLACER_FA.settings.fallbackFullSearch.name',
+      hint: 'TOKEN_REPLACER_FA.settings.fallbackFullSearch.hint',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: false
+    });
 
-  game.settings.register(MODULE_ID, 'additionalPaths', {
-    name: 'TOKEN_REPLACER_FA.settings.additionalPaths.name',
-    hint: 'TOKEN_REPLACER_FA.settings.additionalPaths.hint',
-    scope: 'world',
-    config: true,
-    type: String,
-    default: ''
-  });
+    game.settings.register(MODULE_ID, 'additionalPaths', {
+      name: 'TOKEN_REPLACER_FA.settings.additionalPaths.name',
+      hint: 'TOKEN_REPLACER_FA.settings.additionalPaths.hint',
+      scope: 'world',
+      config: true,
+      type: String,
+      default: ''
+    });
 
-  game.settings.register(MODULE_ID, 'useTVACache', {
-    name: 'TOKEN_REPLACER_FA.settings.useTVACache.name',
-    hint: 'TOKEN_REPLACER_FA.settings.useTVACache.hint',
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: true
-  });
+    game.settings.register(MODULE_ID, 'useTVACache', {
+      name: 'TOKEN_REPLACER_FA.settings.useTVACache.name',
+      hint: 'TOKEN_REPLACER_FA.settings.useTVACache.hint',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: true
+    });
 
-  game.settings.register(MODULE_ID, 'refreshTVACache', {
-    name: 'TOKEN_REPLACER_FA.settings.refreshTVACache.name',
-    hint: 'TOKEN_REPLACER_FA.settings.refreshTVACache.hint',
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: false
-  });
+    game.settings.register(MODULE_ID, 'refreshTVACache', {
+      name: 'TOKEN_REPLACER_FA.settings.refreshTVACache.name',
+      hint: 'TOKEN_REPLACER_FA.settings.refreshTVACache.hint',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: false
+    });
 
-  game.settings.register(MODULE_ID, 'indexUpdateFrequency', {
-    name: 'TOKEN_REPLACER_FA.settings.indexUpdateFrequency.name',
-    hint: 'TOKEN_REPLACER_FA.settings.indexUpdateFrequency.hint',
-    scope: 'world',
-    config: true,
-    type: String,
-    choices: {
-      daily: 'TOKEN_REPLACER_FA.frequency.daily',
-      weekly: 'TOKEN_REPLACER_FA.frequency.weekly',
-      monthly: 'TOKEN_REPLACER_FA.frequency.monthly',
-      quarterly: 'TOKEN_REPLACER_FA.frequency.quarterly'
-    },
-    default: 'weekly'
-  });
-}
+    game.settings.register(MODULE_ID, 'indexUpdateFrequency', {
+      name: 'TOKEN_REPLACER_FA.settings.indexUpdateFrequency.name',
+      hint: 'TOKEN_REPLACER_FA.settings.indexUpdateFrequency.hint',
+      scope: 'world',
+      config: true,
+      type: String,
+      choices: {
+        daily: 'TOKEN_REPLACER_FA.frequency.daily',
+        weekly: 'TOKEN_REPLACER_FA.frequency.weekly',
+        monthly: 'TOKEN_REPLACER_FA.frequency.monthly',
+        quarterly: 'TOKEN_REPLACER_FA.frequency.quarterly'
+      },
+      default: 'weekly'
+    });
+  }
 
-/**
- * Replace token image using TVA or direct update
- */
-async function replaceTokenImage(token, imagePath) {
-  try {
-    if (TokenReplacerFA.hasTVA && TokenReplacerFA.tvaAPI?.updateTokenImage) {
-      await TokenReplacerFA.tvaAPI.updateTokenImage(imagePath, {
-        token: token,
-        actor: token.actor,
-        imgName: imagePath.split('/').pop()
-      });
-      return true;
+  /**
+   * Replace token image using TVA or direct update
+   * @param {Token} token - Foundry token to update
+   * @param {string} imagePath - Path to new token image
+   * @returns {Promise<boolean>} True if replacement succeeded
+   */
+  async replaceTokenImage(token, imagePath) {
+    try {
+      if (this.hasTVA && this.tvaAPI?.updateTokenImage) {
+        await this.tvaAPI.updateTokenImage(imagePath, {
+          token: token,
+          actor: token.actor,
+          imgName: imagePath.split('/').pop()
+        });
+        return true;
+      }
+      return await TokenService.replaceTokenImage(token, imagePath);
+    } catch (error) {
+      console.error(`${MODULE_ID} | Failed to update token:`, error);
+      return false;
     }
-    return await TokenService.replaceTokenImage(token, imagePath);
-  } catch (error) {
-    console.error(`${MODULE_ID} | Failed to update token:`, error);
-    return false;
-  }
-}
-
-/**
- * Main replacement process
- */
-async function processTokenReplacement() {
-  if (TokenReplacerFA.isProcessing) {
-    ui.notifications.warn(TokenReplacerFA.i18n('notifications.inProgress'));
-    return;
   }
 
-  TokenReplacerFA.isProcessing = true;
+  /**
+   * Main replacement process - orchestrates the entire token replacement workflow
+   */
+  async processTokenReplacement() {
+    if (this.isProcessing) {
+      ui.notifications.warn(this.i18n('notifications.inProgress'));
+      return;
+    }
 
-  try {
+    this.isProcessing = true;
     searchService.clearCache();
 
-    // Load Fuse.js (required for fuzzy search)
+    // Load Fuse.js
     const Fuse = await loadFuse();
     if (!Fuse) {
-      ui.notifications.error(TokenReplacerFA.i18n('notifications.fuseLoadFailed') || 'Token Replacer FA: Failed to load search library. Check console for details.');
+      this.isProcessing = false;
       return;
     }
 
     // Check for active scene
     if (!canvas?.scene) {
-      ui.notifications.warn(TokenReplacerFA.i18n('notifications.noScene'));
+      ui.notifications.warn(this.i18n('notifications.noScene'));
+      this.isProcessing = false;
       return;
     }
 
     // Get NPC tokens
     const npcTokens = TokenService.getSceneNPCTokens();
     if (npcTokens.length === 0) {
-      ui.notifications.info(TokenReplacerFA.i18n('notifications.noTokens'));
+      ui.notifications.info(this.i18n('notifications.noTokens'));
+      this.isProcessing = false;
       return;
     }
 
-    ui.notifications.info(TokenReplacerFA.i18n('notifications.started'));
+    ui.notifications.info(this.i18n('notifications.started'));
 
     // Create main dialog
     const dialog = uiManager.createMainDialog(
       uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
-      () => { TokenReplacerFA.isProcessing = false; }
+      () => { this.isProcessing = false; }
     );
     dialog.render(true);
     await yieldToMain(100);
@@ -225,21 +239,21 @@ async function processTokenReplacement() {
     searchService.init();
 
     // PHASE 1: Build token index
-    const useTVACache = TokenReplacerFA.getSetting('useTVACache');
-    const refreshTVACache = TokenReplacerFA.getSetting('refreshTVACache');
+    const useTVACache = this.getSetting('useTVACache');
+    const refreshTVACache = this.getSetting('refreshTVACache');
     let localIndex = [];
 
-    if (TokenReplacerFA.hasTVA && useTVACache) {
+    if (this.hasTVA && useTVACache) {
       console.log(`${MODULE_ID} | Using TVA cache`);
       uiManager.updateDialogContent(uiManager.createTVACacheHTML(false));
       await yieldToMain(100);
 
       // If refresh requested, do it FIRST before loading our cache
-      if (refreshTVACache && TokenReplacerFA.tvaAPI?.cacheImages) {
+      if (refreshTVACache && this.tvaAPI?.cacheImages) {
         uiManager.updateDialogContent(uiManager.createTVACacheHTML(true));
         await yieldToMain(50);
         try {
-          await TokenReplacerFA.tvaAPI.cacheImages();
+          await this.tvaAPI.cacheImages();
           console.log(`${MODULE_ID} | TVA cache refreshed`);
         } catch (e) {
           console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
@@ -263,10 +277,11 @@ async function processTokenReplacement() {
     }
 
     // Check for search sources
-    if (!TokenReplacerFA.hasTVA && localIndex.length === 0) {
+    if (!this.hasTVA && localIndex.length === 0) {
       uiManager.updateDialogContent(
-        uiManager.createErrorHTML(TokenReplacerFA.i18n('notifications.missingDeps'))
+        uiManager.createErrorHTML(this.i18n('notifications.missingDeps'))
       );
+      this.isProcessing = false;
       return;
     }
 
@@ -292,22 +307,23 @@ async function processTokenReplacement() {
 
     // PHASE 3: Process tokens
     const results = [];
-    const autoReplace = TokenReplacerFA.getSetting('autoReplace');
-    const confirmReplace = TokenReplacerFA.getSetting('confirmReplace');
-    const threshold = TokenReplacerFA.getSetting('fuzzyThreshold');
+    const autoReplace = this.getSetting('autoReplace');
+    const confirmReplace = this.getSetting('confirmReplace');
+    const threshold = this.getSetting('fuzzyThreshold');
 
     const updateProgress = (current, total, status, result = null) => {
       if (result) results.push(result);
       uiManager.updateDialogContent(uiManager.createProgressHTML(current, total, status, results));
     };
 
-    updateProgress(0, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+    updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
     await yieldToMain(50);
 
     let tokenIndex = 0;
+    let cancelled = false;
 
     for (const [key, data] of searchResults) {
-      if (!uiManager.isDialogOpen()) break;
+      if (cancelled || !uiManager.isDialogOpen()) break;
 
       const { matches, tokens, creatureInfo } = data;
 
@@ -336,14 +352,14 @@ async function processTokenReplacement() {
             : selectedPaths;
 
           for (const token of tokens) {
-            if (!uiManager.isDialogOpen()) break;
+            if (cancelled || !uiManager.isDialogOpen()) break;
             tokenIndex++;
 
             const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
             const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
-            const success = await replaceTokenImage(token, pathForToken);
-            updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), {
+            const success = await this.replaceTokenImage(token, pathForToken);
+            updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: success ? 'success' : 'failed',
               match: matchName
@@ -354,14 +370,14 @@ async function processTokenReplacement() {
         } else {
           for (const token of tokens) {
             tokenIndex++;
-            updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {
+            updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: 'skipped'
             });
           }
         }
 
-        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+        updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
         continue;
       }
@@ -389,7 +405,7 @@ async function processTokenReplacement() {
           }
         }
 
-        updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), null);
+        updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
       } else {
         selectedPaths = [bestMatch.path];
@@ -402,7 +418,7 @@ async function processTokenReplacement() {
         : selectedPaths;
 
       for (const token of tokens) {
-        if (!uiManager.isDialogOpen()) break;
+        if (cancelled || !uiManager.isDialogOpen()) break;
 
         tokenIndex++;
 
@@ -410,8 +426,8 @@ async function processTokenReplacement() {
           const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
           const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
-          const success = await replaceTokenImage(token, pathForToken);
-          updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.replacing'), {
+          const success = await this.replaceTokenImage(token, pathForToken);
+          updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: success ? 'success' : 'failed',
             match: matchName
@@ -419,7 +435,7 @@ async function processTokenReplacement() {
 
           pathIndex++;
         } else {
-          updateProgress(tokenIndex, npcTokens.length, TokenReplacerFA.i18n('dialog.skipped'), {
+          updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: 'skipped'
           });
@@ -428,47 +444,45 @@ async function processTokenReplacement() {
     }
 
     // Final update
-    if (uiManager.isDialogOpen()) {
+    if (!cancelled && uiManager.isDialogOpen()) {
       const successCount = results.filter(r => r.status === 'success').length;
       const failedCount = results.filter(r => r.status === 'failed').length;
 
-      updateProgress(npcTokens.length, npcTokens.length, TokenReplacerFA.i18n('dialog.complete'), null);
+      updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
 
-      ui.notifications.info(TokenReplacerFA.i18n('notifications.complete', { count: successCount }));
+      ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
       if (failedCount > 0) {
         console.log(`${MODULE_ID} | ${failedCount} tokens had no matching art found`);
       }
     }
 
-  } catch (error) {
-    console.error(`${MODULE_ID} | Error in processTokenReplacement:`, error);
-    const errorMsg = error?.message || String(error);
-    ui.notifications.error(
-      TokenReplacerFA.i18n('notifications.processingError', { error: errorMsg }) ||
-      `Token Replacer FA encountered an error: ${errorMsg}. Check console for details.`
-    );
-  } finally {
-    TokenReplacerFA.isProcessing = false;
+    this.isProcessing = false;
   }
 }
+
+// Create singleton instance
+export const tokenReplacerApp = new TokenReplacerApp();
+
+// Backward compatibility - expose on window
+window.TokenReplacerFA = tokenReplacerApp;
 
 /**
  * Module initialization
  */
 Hooks.once('init', () => {
   console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.9.0`);
-  registerSettings();
+  tokenReplacerApp.registerSettings();
 });
 
 Hooks.once('ready', async () => {
   console.log(`${MODULE_ID} | Module ready`);
   await loadFuse();
-  console.log(`${MODULE_ID} | Token Variant Art available: ${TokenReplacerFA.hasTVA}`);
-  console.log(`${MODULE_ID} | FA Nexus available: ${TokenReplacerFA.hasFANexus}`);
+  console.log(`${MODULE_ID} | Token Variant Art available: ${tokenReplacerApp.hasTVA}`);
+  console.log(`${MODULE_ID} | FA Nexus available: ${tokenReplacerApp.hasFANexus}`);
 
   // Initialize search service and load TVA cache FIRST
-  if (TokenReplacerFA.hasTVA) {
+  if (tokenReplacerApp.hasTVA) {
     searchService.init();
     console.log(`${MODULE_ID} | Loading TVA cache directly...`);
     const cacheLoaded = await searchService.loadTVACache();
@@ -481,7 +495,7 @@ Hooks.once('ready', async () => {
   }
 
   // Build image index for fast searches (runs in background)
-  if (TokenReplacerFA.hasTVA) {
+  if (tokenReplacerApp.hasTVA) {
     console.log(`${MODULE_ID} | Building image index in background...`);
 
     // Check if this will be a first-time build (no cache)
@@ -492,7 +506,7 @@ Hooks.once('ready', async () => {
     const onProgress = (current, total, images) => {
       const percent = Math.round((current / total) * 100);
       ui.notifications.info(
-        TokenReplacerFA.i18n('notifications.indexing', { percent, images }) ||
+        tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
         `Token Replacer FA: Building index... ${percent}% (${images} images)`,
         { permanent: false }
       );
@@ -502,7 +516,7 @@ Hooks.once('ready', async () => {
     if (!hasCache) {
       notificationShown = true;
       ui.notifications.info(
-        TokenReplacerFA.i18n('notifications.indexingStart') ||
+        tokenReplacerApp.i18n('notifications.indexingStart') ||
         'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
         { permanent: false }
       );
@@ -518,7 +532,7 @@ Hooks.once('ready', async () => {
         // Show completion notification if we showed the start notification
         if (notificationShown) {
           ui.notifications.info(
-            TokenReplacerFA.i18n('notifications.indexingComplete', { count: stats.totalImages }) ||
+            tokenReplacerApp.i18n('notifications.indexingComplete', { count: stats.totalImages }) ||
             `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
             { permanent: false }
           );
@@ -548,8 +562,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
         icon: 'fas fa-wand-magic-sparkles',
         button: true,
         visible: true,
-        onChange: () => processTokenReplacement(),  // v13+ uses onChange
-        onClick: () => processTokenReplacement()    // v12 fallback
+        onChange: () => tokenReplacerApp.processTokenReplacement(),  // v13+ uses onChange
+        onClick: () => tokenReplacerApp.processTokenReplacement()    // v12 fallback
       });
     }
   } else {
@@ -564,11 +578,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
       order: toolCount + 1,
       button: true,
       visible: true,
-      onChange: () => processTokenReplacement(),  // v13+ uses onChange
-      onClick: () => processTokenReplacement()    // v12 fallback
+      onChange: () => tokenReplacerApp.processTokenReplacement(),  // v13+ uses onChange
+      onClick: () => tokenReplacerApp.processTokenReplacement()    // v12 fallback
     };
   }
 });
-
-// Export for debugging
-window.TokenReplacerFA = TokenReplacerFA;
