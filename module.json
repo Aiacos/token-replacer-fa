@@ -2,7 +2,7 @@
   "id": "token-replacer-fa",
   "title": "Token Replacer - Forgotten Adventures",
   "description": "Automatically replaces NPC token art with matching tokens from Forgotten Adventures and The Forge Bazaar using fuzzy search.",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "compatibility": {
     "minimum": "12",
     "verified": "13"
@@ -58,5 +58,5 @@
   "url": "https://github.com/Aiacos/token-replacer-fa",
   "bugs": "https://github.com/Aiacos/token-replacer-fa/issues",
   "manifest": "https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json",
-  "download": "https://github.com/Aiacos/token-replacer-fa/releases/download/v2.9.0/token-replacer-fa-v2.9.0.zip"
+  "download": "https://github.com/Aiacos/token-replacer-fa/releases/download/v2.10.0/token-replacer-fa-v2.10.0.zip"
 }
