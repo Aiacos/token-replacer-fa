@@ -5,8 +5,8 @@
  * @module services/IndexService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
-import { extractPathFromTVAResult, extractNameFromTVAResult } from '../core/Utils.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
+import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
 const INDEX_VERSION = 13;  // v2.9.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
@@ -63,47 +63,6 @@ export class IndexService {
     const frequency = this.getUpdateFrequency();
     const elapsed = Date.now() - this.index.lastUpdate;
     return elapsed > frequency;
-  }
-
-  /**
-   * Check if a path should be excluded
-   * Checks both folder names and filename for environmental/prop terms
-   * @param {string} path - Image path
-   * @returns {boolean} True if excluded
-   */
-  isExcludedPath(path) {
-    if (!path) return true;
-    const pathLower = path.toLowerCase();
-    const segments = pathLower.split('/');
-
-    // Skip CDN/URL structure segments - only check actual folder names
-    // These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
-    const cdnSegments = new Set([
-      'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
-      'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
-      'www', 'cdn', 'static', 'public', 'uploads', 'files'
-    ]);
-
-    // Filter out CDN segments and check remaining folder names
-    const folderSegments = segments.filter(s => !cdnSegments.has(s) && s.length > 0);
-
-    // Check folder names against exclusion list
-    const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
-      folderSegments.some(segment => segment === folder)
-    );
-    if (folderExcluded) return true;
-
-    // Also check filename for environmental/prop terms
-    const filename = segments[segments.length - 1] || '';
-    // Remove extension and convert separators to spaces for word matching
-    const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
-
-    // Check if filename contains excluded terms (as whole words or prefixes)
-    return EXCLUDED_FILENAME_TERMS.some(term => {
-      // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-      const regex = new RegExp(`\\b${term}`, 'i');
-      return regex.test(filenameClean);
-    });
   }
 
   /**
@@ -218,7 +177,7 @@ export class IndexService {
    */
   addImageToIndex(path, name) {
     // Skip if no path, already indexed, or excluded folder
-    if (!path || this.index.allPaths[path] || this.isExcludedPath(path)) return false;
+    if (!path || this.index.allPaths[path] || isExcludedPath(path)) return false;
 
     // Extract name from path if not provided
     const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
