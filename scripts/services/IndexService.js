@@ -59,6 +59,37 @@ export class IndexService {
   }
 
   /**
+   * Create a structured error object with localized messages
+   * @private
+   * @param {string} errorType - Error type key (e.g., 'index_build_failed')
+   * @param {string} details - Technical details about the error
+   * @param {string[]} recoveryKeys - Array of recovery suggestion keys
+   * @returns {Object} Structured error object
+   */
+  _createError(errorType, details, recoveryKeys = []) {
+    return {
+      errorType,
+      message: game.i18n.localize(`TOKEN_REPLACER_FA.errors.${errorType}`),
+      details,
+      recoverySuggestions: recoveryKeys.map(key =>
+        game.i18n.localize(`TOKEN_REPLACER_FA.recovery.${key}`)
+      )
+    };
+  }
+
+  /**
+   * Log a debug message if debug mode is enabled
+   * @private
+   * @param {string} message - Debug message to log
+   * @param {...any} args - Additional arguments to log
+   */
+  _debugLog(message, ...args) {
+    if (game.settings.get(MODULE_ID, 'debugMode')) {
+      console.log(`${MODULE_ID} | [IndexService] ${message}`, ...args);
+    }
+  }
+
+  /**
    * Build reverse lookup Map from CREATURE_TYPE_MAPPINGS
    * Maps each term to its category for O(1) lookups
    * @private
@@ -121,7 +152,13 @@ export class IndexService {
    * @returns {Object} { category, subcategories }
    */
   categorizeImage(path, name) {
-    const searchText = `${path} ${name}`.toLowerCase();
+    // Validate inputs - return empty categorization on invalid input
+    if (!path || typeof path !== 'string') {
+      this._debugLog('Invalid path in categorizeImage:', path);
+      return { category: null, subcategories: [] };
+    }
+
+    const searchText = `${path} ${name || ''}`.toLowerCase();
     const categoryMatches = new Map(); // category -> {count, terms}
 
     // Single loop through all terms using the pre-built map
@@ -177,24 +214,38 @@ export class IndexService {
    */
   loadFromCache() {
     try {
+      this._debugLog('Attempting to load index from localStorage');
+
       const cached = localStorage.getItem(CACHE_KEY);
-      if (!cached) return false;
+      if (!cached) {
+        this._debugLog('No cached index found in localStorage');
+        return false;
+      }
 
       const data = JSON.parse(cached);
 
       // Version check
       if (data.version !== INDEX_VERSION) {
+        this._debugLog(`Index version mismatch (cached: ${data.version}, current: ${INDEX_VERSION}), rebuilding`);
         console.log(`${MODULE_ID} | Index version mismatch, rebuilding`);
         localStorage.removeItem(CACHE_KEY);
         return false;
       }
 
       this.index = data;
-      console.log(`${MODULE_ID} | Loaded index from cache: ${Object.keys(data.allPaths || {}).length} images`);
+      const imageCount = Object.keys(data.allPaths || {}).length;
+      this._debugLog(`Loaded index from cache: ${imageCount} images`);
+      console.log(`${MODULE_ID} | Loaded index from cache: ${imageCount} images`);
       return true;
     } catch (error) {
+      this._debugLog('Failed to load cache:', error);
       console.warn(`${MODULE_ID} | Failed to load cache:`, error);
-      localStorage.removeItem(CACHE_KEY);
+      // Clean up corrupted cache
+      try {
+        localStorage.removeItem(CACHE_KEY);
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
       return false;
     }
   }
@@ -205,19 +256,38 @@ export class IndexService {
    */
   saveToCache() {
     try {
+      if (!this.index) {
+        this._debugLog('Cannot save cache: index is null');
+        return false;
+      }
+
+      this._debugLog('Attempting to save index to localStorage');
+
       const json = JSON.stringify(this.index);
+      const sizeMB = json.length / 1024 / 1024;
 
       // Check size limit (~5MB for localStorage)
       if (json.length > 4.5 * 1024 * 1024) {
-        console.warn(`${MODULE_ID} | Index too large for cache (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
+        this._debugLog(`Index too large for cache: ${sizeMB.toFixed(1)}MB`);
+        console.warn(`${MODULE_ID} | Index too large for cache (${sizeMB.toFixed(1)}MB)`);
         return false;
       }
 
       localStorage.setItem(CACHE_KEY, json);
-      console.log(`${MODULE_ID} | Saved index to cache (${(json.length / 1024).toFixed(0)}KB)`);
+      const sizeKB = (json.length / 1024).toFixed(0);
+      this._debugLog(`Saved index to cache: ${sizeKB}KB`);
+      console.log(`${MODULE_ID} | Saved index to cache (${sizeKB}KB)`);
       return true;
     } catch (error) {
-      console.warn(`${MODULE_ID} | Failed to save cache:`, error);
+      this._debugLog('Failed to save cache:', error);
+
+      // Check if it's a QuotaExceededError (localStorage full)
+      if (error.name === 'QuotaExceededError' || error.code === 22) {
+        console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
+        // This is expected for large indices, not a critical error
+      } else {
+        console.warn(`${MODULE_ID} | Failed to save cache:`, error);
+      }
       return false;
     }
   }
@@ -250,54 +320,71 @@ export class IndexService {
    * @returns {boolean} True if image was added, false if skipped
    */
   addImageToIndex(path, name) {
-    // Skip if no path, already indexed, or excluded folder
-    if (!path || this.index.allPaths[path] || isExcludedPath(path)) return false;
-
-    // Extract name from path if not provided
-    const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
-
-    // Try to categorize the image
-    const { category, subcategories } = this.categorizeImage(path, imageName);
-
-    // ALWAYS add to allPaths (even if uncategorized) for general search
-    this.index.allPaths[path] = {
-      name: imageName,
-      category: category || null,
-      subcategories: subcategories || []
-    };
-
-    // Populate termIndex for O(1) search term lookups
-    const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
-    for (const term of searchTerms) {
-      if (!this.index.termIndex[term]) {
-        this.index.termIndex[term] = [];
-      }
-      this.index.termIndex[term].push(path);
+    // Validate path - skip if invalid
+    if (!path || typeof path !== 'string') {
+      this._debugLog('Invalid path in addImageToIndex:', path);
+      return false;
     }
 
-    // If categorized, also add to category structure for fast category lookups
-    if (category) {
-      // Ensure category exists
-      if (!this.index.categories[category]) {
-        this.index.categories[category] = {};
-      }
+    // Validate index exists
+    if (!this.index || !this.index.allPaths || !this.index.termIndex) {
+      this._debugLog('Index not initialized, cannot add image');
+      return false;
+    }
 
-      // Add to each matching subcategory
-      for (const subcat of subcategories) {
-        if (!this.index.categories[category][subcat]) {
-          this.index.categories[category][subcat] = [];
+    // Skip if already indexed or excluded folder
+    if (this.index.allPaths[path] || isExcludedPath(path)) return false;
+
+    try {
+      // Extract name from path if not provided
+      const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
+
+      // Try to categorize the image
+      const { category, subcategories } = this.categorizeImage(path, imageName);
+
+      // ALWAYS add to allPaths (even if uncategorized) for general search
+      this.index.allPaths[path] = {
+        name: imageName,
+        category: category || null,
+        subcategories: subcategories || []
+      };
+
+      // Populate termIndex for O(1) search term lookups
+      const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
+      for (const term of searchTerms) {
+        if (!this.index.termIndex[term]) {
+          this.index.termIndex[term] = [];
         }
-        this.index.categories[category][subcat].push({ path, name: imageName });
+        this.index.termIndex[term].push(path);
       }
 
-      // Also add to a "_all" subcategory for the category
-      if (!this.index.categories[category]._all) {
-        this.index.categories[category]._all = [];
+      // If categorized, also add to category structure for fast category lookups
+      if (category) {
+        // Ensure category exists
+        if (!this.index.categories[category]) {
+          this.index.categories[category] = {};
+        }
+
+        // Add to each matching subcategory
+        for (const subcat of subcategories) {
+          if (!this.index.categories[category][subcat]) {
+            this.index.categories[category][subcat] = [];
+          }
+          this.index.categories[category][subcat].push({ path, name: imageName });
+        }
+
+        // Also add to a "_all" subcategory for the category
+        if (!this.index.categories[category]._all) {
+          this.index.categories[category]._all = [];
+        }
+        this.index.categories[category]._all.push({ path, name: imageName });
       }
-      this.index.categories[category]._all.push({ path, name: imageName });
+
+      return true;
+    } catch (error) {
+      this._debugLog(`Error adding image to index (${path}):`, error);
+      return false;
     }
-
-    return true;
   }
 
   /**
@@ -512,76 +599,117 @@ export class IndexService {
    * 6. _tryInternalCache() - Direct inspection of TVA's internal cache structure
    *
    * Each strategy is implemented as a separate method for maintainability and testing.
-   * If all strategies fail, returns 0 (no images indexed).
+   * If all strategies fail, falls back to buildFromTVASearch().
    *
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
    * @returns {Promise<number>} Number of images indexed
+   * @throws {Object} Structured error if TVA not available
    */
   async buildFromTVA(onProgress = null, tvaCacheImages = null) {
     const tvaAPI = game.modules.get('token-variants')?.api;
     if (!tvaAPI) {
+      this._debugLog('TVA API not available');
       console.warn(`${MODULE_ID} | TVA API not available`);
-      return 0;
+      throw this._createError(
+        'tva_missing',
+        'Token Variant Art module is not installed, enabled, or its API is not available',
+        ['install_tva', 'check_console']
+      );
     }
 
+    this._debugLog('Building index from TVA cache...');
     console.log(`${MODULE_ID} | Building index from TVA cache...`);
 
     // Try to read TVA cache directly (much faster than doImageSearch)
     let allPaths = [];
 
-    // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
-    allPaths = this._tryPreloadedCache(tvaCacheImages);
+    try {
+      // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
+      allPaths = this._tryPreloadedCache(tvaCacheImages);
 
-    // Method 1: Try TVA's cacheImagePaths (direct cache access)
-    if (allPaths.length === 0) {
-      allPaths = this._tryCacheImagePaths(tvaAPI);
-    }
-
-    // Method 2: Try TVA's internal cache via getSearchCache
-    if (allPaths.length === 0) {
-      allPaths = await this._tryGetSearchCache(tvaAPI);
-    }
-
-    // Method 3: Check TVA_CONFIG for cache info
-    if (allPaths.length === 0) {
-      allPaths = this._tryTVAConfig(tvaAPI);
-    }
-
-    // Method 4: Try Foundry game settings for TVA static cache
-    if (allPaths.length === 0) {
-      allPaths = this._tryGameSettings();
-    }
-
-    // Method 5: Access TVA's internal cache structure directly
-    if (allPaths.length === 0) {
-      allPaths = this._tryInternalCache(tvaAPI);
-    }
-
-    // If we found paths in cache, index them directly
-    if (allPaths.length > 0) {
-      console.log(`${MODULE_ID} | Found ${allPaths.length} paths in TVA cache, indexing...`);
-
-      // Use Web Worker if available, otherwise fallback to direct indexing
-      if (this.worker) {
-        console.log(`${MODULE_ID} | Using Web Worker for background index building`);
-        return this.indexPathsWithWorker(allPaths, onProgress);
-      } else {
-        console.log(`${MODULE_ID} | Using fallback method (main thread with yields)`);
-        return this.indexPathsDirectly(allPaths, onProgress);
+      // Method 1: Try TVA's cacheImagePaths (direct cache access)
+      if (allPaths.length === 0) {
+        this._debugLog('Trying TVA cacheImagePaths...');
+        allPaths = this._tryCacheImagePaths(tvaAPI);
       }
+
+      // Method 2: Try TVA's internal cache via getSearchCache
+      if (allPaths.length === 0) {
+        this._debugLog('Trying TVA getSearchCache...');
+        allPaths = await this._tryGetSearchCache(tvaAPI);
+      }
+
+      // Method 3: Check TVA_CONFIG for cache info
+      if (allPaths.length === 0) {
+        this._debugLog('Trying TVA_CONFIG inspection...');
+        allPaths = this._tryTVAConfig(tvaAPI);
+      }
+
+      // Method 4: Try Foundry game settings for TVA static cache
+      if (allPaths.length === 0) {
+        this._debugLog('Trying game settings...');
+        allPaths = this._tryGameSettings();
+      }
+
+      // Method 5: Access TVA's internal cache structure directly
+      if (allPaths.length === 0) {
+        this._debugLog('Trying internal cache access...');
+        allPaths = this._tryInternalCache(tvaAPI);
+      }
+
+      // If we found paths in cache, index them directly
+      if (allPaths.length > 0) {
+        this._debugLog(`Found ${allPaths.length} paths in TVA cache, indexing...`);
+        console.log(`${MODULE_ID} | Found ${allPaths.length} paths in TVA cache, indexing...`);
+
+        // Use Web Worker if available, otherwise fallback to direct indexing
+        if (this.worker) {
+          this._debugLog('Using Web Worker for background index building');
+          console.log(`${MODULE_ID} | Using Web Worker for background index building`);
+          try {
+            return await this.indexPathsWithWorker(allPaths, onProgress);
+          } catch (error) {
+            // Worker failed, fallback to direct indexing
+            this._debugLog('Worker indexing failed, falling back to direct indexing:', error);
+            console.warn(`${MODULE_ID} | Worker failed, falling back to direct indexing:`, error);
+            this.worker = null; // Disable worker for future attempts
+            return await this.indexPathsDirectly(allPaths, onProgress);
+          }
+        } else {
+          this._debugLog('Using fallback method (main thread with yields)');
+          console.log(`${MODULE_ID} | Using fallback method (main thread with yields)`);
+          return await this.indexPathsDirectly(allPaths, onProgress);
+        }
+      }
+
+      // Fallback: Log available TVA API methods to find the cache
+      this._debugLog('Could not find TVA cache directly, logging available API methods');
+      console.log(`${MODULE_ID} | Could not find TVA cache directly. Available API methods:`);
+      const apiMethods = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] === 'function');
+      const apiProps = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] !== 'function');
+      console.log(`${MODULE_ID} | Methods:`, apiMethods);
+      console.log(`${MODULE_ID} | Properties:`, apiProps);
+
+      // Ultimate fallback: use doImageSearch with a broad search
+      this._debugLog('Falling back to broad search via doImageSearch');
+      console.log(`${MODULE_ID} | Falling back to broad search...`);
+      return await this.buildFromTVASearch(onProgress);
+    } catch (error) {
+      this._debugLog('Error during TVA index build:', error);
+
+      // Re-throw structured errors
+      if (error.errorType) {
+        throw error;
+      }
+
+      // Wrap unexpected errors
+      throw this._createError(
+        'index_build_failed',
+        `Failed to build index from TVA: ${error.message || 'Unknown error'}`,
+        ['rebuild_cache', 'reload_module', 'check_console']
+      );
     }
-
-    // Fallback: Log available TVA API methods to find the cache
-    console.log(`${MODULE_ID} | Could not find TVA cache directly. Available API methods:`);
-    const apiMethods = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] === 'function');
-    const apiProps = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] !== 'function');
-    console.log(`${MODULE_ID} | Methods:`, apiMethods);
-    console.log(`${MODULE_ID} | Properties:`, apiProps);
-
-    // Ultimate fallback: use doImageSearch with a broad search
-    console.log(`${MODULE_ID} | Falling back to broad search...`);
-    return this.buildFromTVASearch(onProgress);
   }
 
   /**
@@ -696,11 +824,29 @@ export class IndexService {
    * @param {Array} paths - Array of image paths or {path, name} objects
    * @param {Function} onProgress - Progress callback
    * @returns {Promise<number>} Number of images indexed
+   * @throws {Object} Structured error if worker fails
    */
   async indexPathsWithWorker(paths, onProgress = null) {
     if (!this.worker) {
-      throw new Error('Web Worker not available');
+      this._debugLog('Worker not available for indexPathsWithWorker');
+      throw this._createError(
+        'worker_failed',
+        'Web Worker not available for background indexing',
+        ['disable_worker', 'reload_module']
+      );
     }
+
+    // Validate paths array
+    if (!Array.isArray(paths) || paths.length === 0) {
+      this._debugLog('Invalid paths array in indexPathsWithWorker:', paths);
+      throw this._createError(
+        'invalid_paths',
+        'Paths array is empty or invalid',
+        ['check_paths', 'reload_module']
+      );
+    }
+
+    this._debugLog(`Starting worker-based indexing for ${paths.length} paths`);
 
     return new Promise((resolve, reject) => {
       // Create a unique message handler for this indexing operation
@@ -710,6 +856,7 @@ export class IndexService {
         switch (type) {
           case 'progress':
             // Call progress callback with worker's progress update
+            this._debugLog(`Worker progress: ${processed}/${total} (${imagesFound} images found)`);
             if (onProgress) {
               onProgress(processed, total, imagesFound);
             }
@@ -723,6 +870,7 @@ export class IndexService {
             // Clean up the message handler
             this.worker.removeEventListener('message', messageHandler);
 
+            this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
             console.log(`${MODULE_ID} | Worker completed: ${imagesFound} images from ${total} paths`);
             resolve(imagesFound);
             break;
@@ -730,8 +878,16 @@ export class IndexService {
           case 'error':
             // Clean up and reject on error
             this.worker.removeEventListener('message', messageHandler);
+            this._debugLog(`Worker error: ${message}`, stack);
             console.error(`${MODULE_ID} | Worker error:`, message);
-            reject(new Error(message || 'Worker error'));
+
+            // Create structured error
+            const error = this._createError(
+              'worker_failed',
+              `Web Worker indexing failed: ${message || 'Unknown error'}`,
+              ['disable_worker', 'reload_module', 'check_console']
+            );
+            reject(error);
             break;
 
           default:
@@ -743,16 +899,46 @@ export class IndexService {
       // Attach message handler
       this.worker.addEventListener('message', messageHandler);
 
-      // Post the indexing task to the worker
-      this.worker.postMessage({
-        command: 'indexPaths',
-        data: {
-          paths: paths,
-          creatureTypeMappings: CREATURE_TYPE_MAPPINGS,
-          excludedFolders: EXCLUDED_FOLDERS,
-          excludedFilenameTerms: EXCLUDED_FILENAME_TERMS
-        }
-      });
+      // Add error handler for worker errors
+      const errorHandler = (error) => {
+        this.worker.removeEventListener('message', messageHandler);
+        this.worker.removeEventListener('error', errorHandler);
+        this._debugLog('Worker error event:', error);
+        console.error(`${MODULE_ID} | Worker error event:`, error);
+
+        const structuredError = this._createError(
+          'worker_failed',
+          `Web Worker crashed: ${error.message || 'Unknown error'}`,
+          ['disable_worker', 'reload_module', 'check_console']
+        );
+        reject(structuredError);
+      };
+
+      this.worker.addEventListener('error', errorHandler);
+
+      try {
+        // Post the indexing task to the worker
+        this.worker.postMessage({
+          command: 'indexPaths',
+          data: {
+            paths: paths,
+            creatureTypeMappings: CREATURE_TYPE_MAPPINGS,
+            excludedFolders: EXCLUDED_FOLDERS,
+            excludedFilenameTerms: EXCLUDED_FILENAME_TERMS
+          }
+        });
+      } catch (error) {
+        this.worker.removeEventListener('message', messageHandler);
+        this.worker.removeEventListener('error', errorHandler);
+        this._debugLog('Failed to post message to worker:', error);
+
+        const structuredError = this._createError(
+          'worker_failed',
+          `Failed to start worker: ${error.message}`,
+          ['disable_worker', 'reload_module']
+        );
+        reject(structuredError);
+      }
     });
   }
 
@@ -761,11 +947,28 @@ export class IndexService {
    * @param {Array} paths - Array of path strings
    * @param {Function} onProgress - Progress callback
    * @returns {Promise<number>} Number of images indexed
+   * @throws {Object} Structured error if indexing fails
    */
   async indexPathsDirectly(paths, onProgress = null) {
+    // Validate paths array
+    if (!Array.isArray(paths)) {
+      this._debugLog('Invalid paths parameter in indexPathsDirectly:', paths);
+      throw this._createError(
+        'invalid_paths',
+        'Paths parameter is not an array',
+        ['check_paths', 'check_console']
+      );
+    }
+
+    if (paths.length === 0) {
+      this._debugLog('Empty paths array in indexPathsDirectly');
+      return 0; // Not an error, just no paths to index
+    }
+
     const totalPaths = paths.length;
     let imagesFound = 0;
 
+    this._debugLog(`Starting direct indexing for ${totalPaths} paths`);
     console.log(`${MODULE_ID} | Indexing ${totalPaths} paths directly...`);
 
     // Performance tracking
@@ -773,50 +976,61 @@ export class IndexService {
     let batchStartTime = performance.now();
     let batchImagesProcessed = 0;
 
-    const BATCH_SIZE = 1000;
-    for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
-      const batch = paths.slice(i, i + BATCH_SIZE);
+    try {
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
+        const batch = paths.slice(i, i + BATCH_SIZE);
 
-      for (const item of batch) {
-        // Handle both string paths and {path, name, category} objects
-        const path = typeof item === 'string' ? item : item?.path;
-        const name = typeof item === 'string' ? null : item?.name;
-        if (this.addImageToIndex(path, name)) {
-          imagesFound++;
+        for (const item of batch) {
+          // Handle both string paths and {path, name, category} objects
+          const path = typeof item === 'string' ? item : item?.path;
+          const name = typeof item === 'string' ? null : item?.name;
+          if (this.addImageToIndex(path, name)) {
+            imagesFound++;
+          }
+          batchImagesProcessed++;
         }
-        batchImagesProcessed++;
+
+        // Log performance stats every 1000 images
+        const batchEndTime = performance.now();
+        const batchDuration = batchEndTime - batchStartTime;
+        const timePerImage = batchDuration / batchImagesProcessed;
+        const processed = Math.min(i + BATCH_SIZE, totalPaths);
+
+        this._debugLog(`Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image)`);
+        console.log(`${MODULE_ID} | Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image, ${(1000/batchDuration*batchImagesProcessed).toFixed(0)} images/sec)`);
+
+        // Reset batch tracking
+        batchStartTime = performance.now();
+        batchImagesProcessed = 0;
+
+        // Progress callback
+        if (onProgress) {
+          onProgress(processed, totalPaths, imagesFound);
+        }
+
+        // Yield to main thread
+        await new Promise(r => setTimeout(r, 10));
       }
 
-      // Log performance stats every 1000 images
-      const batchEndTime = performance.now();
-      const batchDuration = batchEndTime - batchStartTime;
-      const timePerImage = batchDuration / batchImagesProcessed;
-      const processed = Math.min(i + BATCH_SIZE, totalPaths);
+      // Final performance summary
+      const totalTime = performance.now() - startTime;
+      const avgTimePerImage = totalTime / totalPaths;
+      const throughput = (totalPaths / totalTime * 1000).toFixed(0);
 
-      console.log(`${MODULE_ID} | Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image, ${(1000/batchDuration*batchImagesProcessed).toFixed(0)} images/sec)`);
+      this._debugLog(`Indexed ${imagesFound} images from ${totalPaths} paths in ${totalTime.toFixed(0)}ms`);
+      console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
+      console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
 
-      // Reset batch tracking
-      batchStartTime = performance.now();
-      batchImagesProcessed = 0;
-
-      // Progress callback
-      if (onProgress) {
-        onProgress(processed, totalPaths, imagesFound);
-      }
-
-      // Yield to main thread
-      await new Promise(r => setTimeout(r, 10));
+      return imagesFound;
+    } catch (error) {
+      this._debugLog('Error during direct indexing:', error);
+      throw this._createError(
+        'index_build_failed',
+        `Failed to index paths: ${error.message || 'Unknown error'}`,
+        ['reload_module', 'check_console']
+      );
     }
-
-    // Final performance summary
-    const totalTime = performance.now() - startTime;
-    const avgTimePerImage = totalTime / totalPaths;
-    const throughput = (totalPaths / totalTime * 1000).toFixed(0);
-
-    console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
-    console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
-
-    return imagesFound;
   }
 
   /**
@@ -975,53 +1189,89 @@ export class IndexService {
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
    * @returns {Promise<boolean>} True if successful
+   * @throws {Object} Structured error if build fails
    */
   async build(forceRebuild = false, onProgress = null, tvaCacheImages = null) {
-    if (this.buildPromise) return this.buildPromise;
+    if (this.buildPromise) {
+      this._debugLog('Build already in progress, returning existing promise');
+      return this.buildPromise;
+    }
 
     this.buildPromise = (async () => {
       const startTime = performance.now();
+      this._debugLog(`Starting index build (forceRebuild: ${forceRebuild})`);
       console.log(`${MODULE_ID} | Starting index build...`);
 
-      // Try to load from cache first
-      if (!forceRebuild && this.loadFromCache()) {
-        // Check if update is needed
-        if (!this.needsUpdate()) {
+      try {
+        // Try to load from cache first
+        if (!forceRebuild && this.loadFromCache()) {
+          // Check if update is needed
+          if (!this.needsUpdate()) {
+            this.isBuilt = true;
+            this._debugLog('Index loaded from cache, no update needed');
+            console.log(`${MODULE_ID} | Index loaded from cache, no update needed`);
+            return true;
+          }
+          this._debugLog('Index needs update based on frequency setting');
+          console.log(`${MODULE_ID} | Index needs update based on frequency setting`);
+        }
+
+        // Create new index
+        this.index = this.createEmptyIndex();
+        this._debugLog('Created empty index structure');
+
+        // Build from TVA (pass pre-loaded cache if available)
+        await this.buildFromTVA(onProgress, tvaCacheImages);
+
+        // Use actual count from allPaths
+        const totalImages = Object.keys(this.index.allPaths).length;
+
+        if (totalImages > 0) {
+          this.index.lastUpdate = Date.now();
+          this.saveToCache();
           this.isBuilt = true;
-          console.log(`${MODULE_ID} | Index loaded from cache, no update needed`);
+
+          const stats = this.getStats();
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+          this._debugLog(`Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
+          console.log(`${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
           return true;
         }
-        console.log(`${MODULE_ID} | Index needs update based on frequency setting`);
+
+        this._debugLog('Index build returned 0 images');
+        console.warn(`${MODULE_ID} | Index build returned 0 images`);
+        this.isBuilt = false;
+
+        // Throw error instead of returning false for clearer error handling
+        throw this._createError(
+          'index_build_failed',
+          'Index build completed but no images were indexed',
+          ['rebuild_cache', 'check_paths', 'check_console']
+        );
+      } catch (error) {
+        this._debugLog('Index build failed:', error);
+        this.isBuilt = false;
+
+        // Re-throw structured errors as-is
+        if (error.errorType) {
+          throw error;
+        }
+
+        // Wrap unexpected errors
+        throw this._createError(
+          'index_build_failed',
+          `Index build failed: ${error.message || 'Unknown error'}`,
+          ['reload_module', 'check_console', 'contact_support']
+        );
       }
-
-      // Create new index
-      this.index = this.createEmptyIndex();
-
-      // Build from TVA (pass pre-loaded cache if available)
-      await this.buildFromTVA(onProgress, tvaCacheImages);
-
-      // Use actual count from allPaths
-      const totalImages = Object.keys(this.index.allPaths).length;
-
-      if (totalImages > 0) {
-        this.index.lastUpdate = Date.now();
-        this.saveToCache();
-        this.isBuilt = true;
-
-        const stats = this.getStats();
-        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-        console.log(`${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
-        return true;
-      }
-
-      console.warn(`${MODULE_ID} | Index build returned 0 images`);
-      this.isBuilt = false;
-      return false;
     })();
 
-    const result = await this.buildPromise;
-    this.buildPromise = null;
-    return result;
+    try {
+      const result = await this.buildPromise;
+      return result;
+    } finally {
+      this.buildPromise = null;
+    }
   }
 
   /**
@@ -1030,20 +1280,41 @@ export class IndexService {
    * @returns {Array} All images in category
    */
   searchByCategory(category) {
-    if (!this.isBuilt || !this.index?.categories) return [];
+    // Validate index is built
+    if (!this.isBuilt || !this.index?.categories) {
+      this._debugLog('Index not built, cannot search by category');
+      return [];
+    }
 
-    const categoryLower = category.toLowerCase();
-    const categoryData = this.index.categories[categoryLower];
+    // Validate category parameter
+    if (!category || typeof category !== 'string') {
+      this._debugLog('Invalid category parameter:', category);
+      return [];
+    }
 
-    if (!categoryData?._all) return [];
+    try {
+      const categoryLower = category.toLowerCase();
+      const categoryData = this.index.categories[categoryLower];
 
-    // Return all images in this category
-    return categoryData._all.map(item => ({
-      path: item.path,
-      name: item.name,
-      source: 'index',
-      category: categoryLower
-    }));
+      if (!categoryData?._all) {
+        this._debugLog(`No data found for category: ${categoryLower}`);
+        return [];
+      }
+
+      // Return all images in this category
+      const results = categoryData._all.map(item => ({
+        path: item.path,
+        name: item.name,
+        source: 'index',
+        category: categoryLower
+      }));
+
+      this._debugLog(`Found ${results.length} results for category: ${categoryLower}`);
+      return results;
+    } catch (error) {
+      this._debugLog(`Error searching by category (${category}):`, error);
+      return [];
+    }
   }
 
   /**
@@ -1053,48 +1324,69 @@ export class IndexService {
    * @returns {Array} Matching images
    */
   searchBySubcategory(category, subcategory) {
-    if (!this.isBuilt || !this.index?.categories) return [];
-
-    const categoryLower = category.toLowerCase();
-    const subcatLower = subcategory.toLowerCase();
-    const categoryData = this.index.categories[categoryLower];
-
-    if (!categoryData) return [];
-
-    // Direct subcategory match
-    if (categoryData[subcatLower]) {
-      return categoryData[subcatLower].map(item => ({
-        path: item.path,
-        name: item.name,
-        source: 'index',
-        category: categoryLower,
-        subcategory: subcatLower
-      }));
+    // Validate index is built
+    if (!this.isBuilt || !this.index?.categories) {
+      this._debugLog('Index not built, cannot search by subcategory');
+      return [];
     }
 
-    // Partial match in subcategory names
-    const results = [];
-    const seenPaths = new Set();
+    // Validate parameters
+    if (!category || typeof category !== 'string' || !subcategory || typeof subcategory !== 'string') {
+      this._debugLog('Invalid category or subcategory parameters:', { category, subcategory });
+      return [];
+    }
 
-    for (const [subcat, items] of Object.entries(categoryData)) {
-      if (subcat === '_all') continue;
-      if (subcat.includes(subcatLower) || subcatLower.includes(subcat)) {
-        for (const item of items) {
-          if (!seenPaths.has(item.path)) {
-            seenPaths.add(item.path);
-            results.push({
-              path: item.path,
-              name: item.name,
-              source: 'index',
-              category: categoryLower,
-              subcategory: subcat
-            });
+    try {
+      const categoryLower = category.toLowerCase();
+      const subcatLower = subcategory.toLowerCase();
+      const categoryData = this.index.categories[categoryLower];
+
+      if (!categoryData) {
+        this._debugLog(`Category not found: ${categoryLower}`);
+        return [];
+      }
+
+      // Direct subcategory match
+      if (categoryData[subcatLower]) {
+        const results = categoryData[subcatLower].map(item => ({
+          path: item.path,
+          name: item.name,
+          source: 'index',
+          category: categoryLower,
+          subcategory: subcatLower
+        }));
+        this._debugLog(`Found ${results.length} results for subcategory: ${categoryLower}/${subcatLower}`);
+        return results;
+      }
+
+      // Partial match in subcategory names
+      const results = [];
+      const seenPaths = new Set();
+
+      for (const [subcat, items] of Object.entries(categoryData)) {
+        if (subcat === '_all') continue;
+        if (subcat.includes(subcatLower) || subcatLower.includes(subcat)) {
+          for (const item of items) {
+            if (!seenPaths.has(item.path)) {
+              seenPaths.add(item.path);
+              results.push({
+                path: item.path,
+                name: item.name,
+                source: 'index',
+                category: categoryLower,
+                subcategory: subcat
+              });
+            }
           }
         }
       }
-    }
 
-    return results;
+      this._debugLog(`Found ${results.length} partial matches for subcategory: ${categoryLower}/${subcatLower}`);
+      return results;
+    } catch (error) {
+      this._debugLog(`Error searching by subcategory (${category}/${subcategory}):`, error);
+      return [];
+    }
   }
 
   /**
@@ -1103,35 +1395,53 @@ export class IndexService {
    * @returns {Array} Matching images
    */
   search(term) {
-    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) return [];
+    // Validate index is built
+    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) {
+      this._debugLog('Index not built or incomplete, cannot search');
+      return [];
+    }
 
-    const termLower = term.toLowerCase();
-    const tokens = this.tokenizeSearchText(termLower);
-    const seenPaths = new Set();
-    const results = [];
+    // Validate term parameter
+    if (!term || typeof term !== 'string') {
+      this._debugLog('Invalid search term:', term);
+      return [];
+    }
 
-    // O(1) lookup in termIndex for each token
-    for (const token of tokens) {
-      const paths = this.index.termIndex[token];
-      if (paths) {
-        for (const path of paths) {
-          if (!seenPaths.has(path)) {
-            seenPaths.add(path);
-            const data = this.index.allPaths[path];
-            if (data) {
-              results.push({
-                path,
-                name: data.name,
-                source: 'index',
-                category: data.category
-              });
+    try {
+      const termLower = term.toLowerCase();
+      const tokens = this.tokenizeSearchText(termLower);
+      const seenPaths = new Set();
+      const results = [];
+
+      this._debugLog(`Searching for term: "${term}" (tokens: ${tokens.join(', ')})`);
+
+      // O(1) lookup in termIndex for each token
+      for (const token of tokens) {
+        const paths = this.index.termIndex[token];
+        if (paths) {
+          for (const path of paths) {
+            if (!seenPaths.has(path)) {
+              seenPaths.add(path);
+              const data = this.index.allPaths[path];
+              if (data) {
+                results.push({
+                  path,
+                  name: data.name,
+                  source: 'index',
+                  category: data.category
+                });
+              }
             }
           }
         }
       }
-    }
 
-    return results;
+      this._debugLog(`Found ${results.length} results for term: "${term}"`);
+      return results;
+    } catch (error) {
+      this._debugLog(`Error searching for term (${term}):`, error);
+      return [];
+    }
   }
 
   /**
@@ -1140,43 +1450,62 @@ export class IndexService {
    * @returns {Array} Combined results
    */
   searchMultiple(terms) {
-    if (!terms?.length) return [];
-    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) return [];
-
-    const seenPaths = new Set();
-    const results = [];
-
-    // Tokenize all terms once and collect unique tokens
-    const allTokens = new Set();
-    for (const term of terms) {
-      const tokens = this.tokenizeSearchText(term.toLowerCase());
-      for (const token of tokens) {
-        allTokens.add(token);
-      }
+    // Validate terms parameter
+    if (!terms || !Array.isArray(terms) || terms.length === 0) {
+      this._debugLog('Invalid or empty terms array:', terms);
+      return [];
     }
 
-    // O(1) lookup in termIndex for each unique token
-    for (const token of allTokens) {
-      const paths = this.index.termIndex[token];
-      if (paths) {
-        for (const path of paths) {
-          if (!seenPaths.has(path)) {
-            seenPaths.add(path);
-            const data = this.index.allPaths[path];
-            if (data) {
-              results.push({
-                path,
-                name: data.name,
-                source: 'index',
-                category: data.category
-              });
+    // Validate index is built
+    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) {
+      this._debugLog('Index not built or incomplete, cannot search multiple terms');
+      return [];
+    }
+
+    try {
+      const seenPaths = new Set();
+      const results = [];
+
+      // Tokenize all terms once and collect unique tokens
+      const allTokens = new Set();
+      for (const term of terms) {
+        if (term && typeof term === 'string') {
+          const tokens = this.tokenizeSearchText(term.toLowerCase());
+          for (const token of tokens) {
+            allTokens.add(token);
+          }
+        }
+      }
+
+      this._debugLog(`Searching for multiple terms: [${terms.join(', ')}] (${allTokens.size} unique tokens)`);
+
+      // O(1) lookup in termIndex for each unique token
+      for (const token of allTokens) {
+        const paths = this.index.termIndex[token];
+        if (paths) {
+          for (const path of paths) {
+            if (!seenPaths.has(path)) {
+              seenPaths.add(path);
+              const data = this.index.allPaths[path];
+              if (data) {
+                results.push({
+                  path,
+                  name: data.name,
+                  source: 'index',
+                  category: data.category
+                });
+              }
             }
           }
         }
       }
-    }
 
-    return results;
+      this._debugLog(`Found ${results.length} results for multiple terms`);
+      return results;
+    } catch (error) {
+      this._debugLog('Error searching multiple terms:', error);
+      return [];
+    }
   }
 
   /**
