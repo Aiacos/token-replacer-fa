@@ -1,250 +1,246 @@
-# Manual Testing Guide - RegExp Precompilation Optimization
+# Manual Testing Guide - Skeleton Loaders
 
 ## Overview
-This guide provides comprehensive test cases to verify the RegExp precompilation optimization in `isExcludedPath()`. The optimization precompiles 40+ RegExp patterns at module load time instead of creating them dynamically on every function call.
+This guide provides step-by-step instructions to manually test the skeleton loader feature implementation in Foundry VTT.
 
-## Prerequisites
-1. Load the module in Foundry VTT
-2. Open browser console (F12)
-3. Ensure Token Replacer FA module is active
+## What Was Implemented
 
-## Quick Verification Tests
+### CSS Animations (styles/styles.css)
+- `.skeleton-loader` - Base wrapper class with gradient background
+- `@keyframes skeleton-shimmer` - Animated shimmer effect
+- `@keyframes skeleton-pulse` - Subtle pulse animation on the ::after pseudo-element
+- `.skeleton-52` - 52px × 52px size variant (token preview images)
+- `.skeleton-72` - 72px × 72px size variant (match grid images)
+- `.loaded` state - Hides skeleton and reveals image when loaded
 
-### Test 1: Verify Precompiled Patterns Exist
-```javascript
-// Access the module's Utils
-const utils = game.modules.get('token-replacer-fa')?.api?.utils;
+### Template Updates
+1. **match-selection.hbs** (lines 2-4, 40-42)
+   - Token preview image: wrapped in `skeleton-loader skeleton-52`
+   - Match grid images: wrapped in `skeleton-loader skeleton-72`
 
-// If direct access isn't available, test via import
-// This verifies the patterns were created at module load
-console.log("Testing isExcludedPath function exists...");
-```
+2. **no-match.hbs** (lines 2-4)
+   - Token preview image: wrapped in `skeleton-loader skeleton-52`
 
-### Test 2: Test Excluded Paths (Should return TRUE)
-```javascript
-// Copy and paste this entire block into browser console
+3. **UIManager.js** (displayResults method, lines 625-641)
+   - Dynamic category search results: wrapped in `skeleton-loader skeleton-72`
 
-const excludedPaths = [
-  // Terrain/Environment terms
-  'assets/FA_Pack/tokens/cliff_entrance.webp',
-  'modules/fa/tokens/cave_opening_01.png',
-  'bazaar/assets/FA_Pack/mountain_path.webp',
-  'tokens/forest_tree_ancient.png',
+## Testing Prerequisites
 
-  // Props/Objects terms
-  'assets/dungeon/barrel_wooden.webp',
-  'tokens/props/chest_treasure.png',
-  'FA_Pack/furniture/table_round.webp',
-  'dungeon/torch_burning.png',
+1. **Foundry VTT Setup:**
+   - Foundry VTT v12 or v13 installed
+   - D&D 5e system enabled
+   - Token Variant Art (TVA) module installed and active
+   - Token Replacer FA module installed and active
 
-  // Water features
-  'wilderness/river_crossing.webp',
-  'terrain/waterfall_large.png',
-  'nature/pond_forest.webp',
+2. **Test Environment:**
+   - Modern browser (Chrome, Firefox, or Edge)
+   - Browser DevTools available
+   - Test scene with NPC tokens
 
-  // Structures
-  'maps/bridge_stone.webp',
-  'structures/tower_ancient.png',
-  'assets/wall_section.webp',
-  'dungeon/gate_iron.png',
+## Test Procedures
 
-  // Map elements
-  'tiles/overlay_fog.png',
-  'assets/background_forest.webp',
-  'tiles/border_stone.png',
+### Test 1: Match Selection Dialog - Skeleton Loaders
 
-  // Vegetation
-  'nature/bush_green.webp',
-  'wilderness/grass_tall.png',
-  'forest/flower_bed.webp',
+**Purpose:** Verify skeleton loaders appear on both preview and match grid images
 
-  // Forge CDN URLs
-  'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/environment/cliff_face.webp',
-  'https://assets.forge-vtt.com/bazaar/assets/props/barrel_ale.png',
-  'https://assets.forge-vtt.com/bazaar/assets/terrain/tree_oak.webp',
+**Steps:**
+1. Open Foundry VTT and load a D&D 5e world
+2. Open a scene with NPC tokens
+3. Open browser DevTools (F12)
+4. Go to Network tab and enable throttling to "Slow 3G" or "Fast 3G"
+5. Select one or more NPC tokens on the canvas
+6. Click the Token Replacer FA scene control button
+7. Wait for the match selection dialog to appear
 
-  // Edge cases - word boundaries (should match)
-  'tokens/cliff-entrance.webp',       // cliff as separate word
-  'assets/old_barrel.png',              // barrel as separate word
-  'maps/stone_bridge_crossing.webp',   // bridge as separate word
-];
+**Expected Results:**
+- ✅ Token preview image (top left, 52×52px) shows shimmer animation while loading
+- ✅ Match grid images (bottom grid, 72×72px each) show shimmer animation while loading
+- ✅ Shimmer effect is smooth and visible (gradient moving left to right)
+- ✅ Subtle pulse effect visible on skeleton placeholders
+- ✅ Images fade in smoothly when loaded (opacity transition)
+- ✅ Skeleton disappears completely when image loads
+- ✅ No layout shift or visual jump when skeleton transitions to image
+- ✅ Dark theme colors match (#1a1a1a background, #252525-#333333 gradient)
 
-console.log("=== Testing EXCLUDED Paths (should all return TRUE) ===");
-let excludedPassCount = 0;
-excludedPaths.forEach(path => {
-  // Use the actual function from your Utils module
-  // Adjust the path to access isExcludedPath based on your module structure
-  const result = true; // Placeholder - replace with actual function call
-  console.log(`${result ? '✅' : '❌'} ${path}: ${result}`);
-  if (result) excludedPassCount++;
-});
-console.log(`Excluded tests passed: ${excludedPassCount}/${excludedPaths.length}`);
-```
+**Checkpoint:**
+- Open DevTools Console
+- Verify no errors or warnings
+- Check Network tab - images should load successfully
 
-### Test 3: Test Included Paths (Should return FALSE)
-```javascript
-// Copy and paste this entire block into browser console
+### Test 2: No-Match Dialog - Skeleton Loader
 
-const includedPaths = [
-  // Creature names (should NOT be excluded)
-  'tokens/goblin_warrior.webp',
-  'FA_Pack/creatures/dragon_red_adult.png',
-  'bazaar/assets/FA_Pack/undead/skeleton_archer.webp',
-  'modules/fa/tokens/owlbear.png',
-  'creatures/beholder.webp',
-  'tokens/wizard_human.png',
-  'FA_Pack/humanoid/elf_ranger.webp',
+**Purpose:** Verify skeleton loader on token preview when no matches found
 
-  // Creatures that contain excluded terms as substrings (should NOT match due to word boundary)
-  'tokens/clifford_the_big_red_dog.png',    // Contains 'cliff' but as substring
-  'creatures/treant_ancient.webp',          // Contains 'tree' but as different word
-  'monsters/barrel_mimic.png',              // 'barrel' but it's the creature type
+**Steps:**
+1. Keep network throttling enabled ("Slow 3G")
+2. Select an NPC token that likely has no matches (obscure creature type)
+3. Click Token Replacer FA button
+4. Observe the no-match dialog
 
-  // Valid creature tokens from Forgotten Adventures
-  'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/creatures/giant_hill.webp',
-  'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/undead/zombie_commoner.png',
-  'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/beasts/wolf_dire.webp',
+**Expected Results:**
+- ✅ Token preview image (52×52px) shows shimmer animation while loading
+- ✅ Shimmer effect is smooth and matches the dark theme
+- ✅ Image fades in smoothly when loaded
+- ✅ Skeleton disappears when image loads
 
-  // Monsters with common names
-  'tokens/troll.png',
-  'creatures/vampire.webp',
-  'monsters/demon_vrock.png',
-  'tokens/elemental_fire.webp',
-];
+### Test 3: Category Search Results - Dynamic HTML
 
-console.log("=== Testing INCLUDED Paths (should all return FALSE) ===");
-let includedPassCount = 0;
-includedPaths.forEach(path => {
-  // Use the actual function from your Utils module
-  const result = false; // Placeholder - replace with actual function call
-  console.log(`${!result ? '✅' : '❌'} ${path}: ${result}`);
-  if (!result) includedPassCount++;
-});
-console.log(`Included tests passed: ${includedPassCount}/${includedPaths.length}`);
-```
+**Purpose:** Verify skeleton loaders on dynamically generated category search results
 
-### Test 4: Edge Cases - Word Boundary Testing
-```javascript
-// This tests that word boundaries work correctly
+**Steps:**
+1. Keep network throttling enabled
+2. From a no-match dialog, enter a category type (e.g., "Humanoid" or "Dragon")
+3. Click "Search Category" button
+4. Observe the category results grid as it loads
 
-const edgeCases = [
-  // Should be EXCLUDED (word boundary match)
-  { path: 'tokens/cliff_face.png', expected: true, reason: 'cliff as whole word' },
-  { path: 'assets/barrel-01.webp', expected: true, reason: 'barrel as whole word' },
-  { path: 'maps/tree oak.png', expected: true, reason: 'tree as whole word' },
+**Expected Results:**
+- ✅ Each result image (72×72px) shows shimmer animation while loading
+- ✅ Multiple skeletons animate independently (some may finish before others)
+- ✅ Shimmer effect visible on all images before they load
+- ✅ Images fade in smoothly as they complete loading
+- ✅ All skeletons disappear when respective images load
 
-  // Should be INCLUDED (substring, not whole word)
-  { path: 'tokens/clifford.png', expected: false, reason: 'cliff is substring of clifford' },
-  { path: 'creatures/scarecrow.png', expected: false, reason: 'crow is substring, not whole word crow' },
-];
+### Test 4: Image Load Fallback
 
-console.log("=== Testing Edge Cases - Word Boundaries ===");
-edgeCases.forEach(test => {
-  // Replace with actual function call
-  const result = test.expected; // Placeholder
-  const passed = result === test.expected;
-  console.log(`${passed ? '✅' : '❌'} ${test.path}`);
-  console.log(`   Expected: ${test.expected}, Got: ${result}`);
-  console.log(`   Reason: ${test.reason}`);
-});
-```
+**Purpose:** Verify fallback behavior when images fail to load
 
-### Test 5: Performance Comparison (Optional)
-```javascript
-// This test measures the performance improvement
+**Steps:**
+1. Open browser DevTools
+2. Go to Network tab
+3. Right-click on an image request and select "Block request URL" (or use ad blocker)
+4. Refresh and trigger token replacement dialog
+5. Observe behavior when some images fail
 
-// Create test dataset
-const testPaths = [];
-for (let i = 0; i < 10000; i++) {
-  testPaths.push(`assets/tokens/creature_${i}.webp`);
-  testPaths.push(`assets/props/barrel_${i}.png`);
-  testPaths.push(`maps/cliff_${i}.webp`);
-}
+**Expected Results:**
+- ✅ Skeleton loader appears initially
+- ✅ On image error, fallback icon (mystery-man.svg) appears
+- ✅ No console errors or broken image icons
+- ✅ Layout remains intact
 
-// Test with precompiled patterns (current implementation)
-console.log("Testing with precompiled patterns...");
-console.time("Precompiled patterns");
-testPaths.forEach(path => {
-  // Call isExcludedPath from module
-  // isExcludedPath(path);
-});
-console.timeEnd("Precompiled patterns");
+### Test 5: Performance Check
 
-console.log("\nNote: Before optimization, this would have created " + (testPaths.length * 40) + " RegExp objects!");
-console.log("Now it reuses the same " + 40 + " precompiled patterns.");
-```
+**Purpose:** Verify animations are smooth and don't impact performance
 
-## Integration Tests
+**Steps:**
+1. Disable network throttling
+2. Open a match selection dialog with many results (10+ tokens)
+3. Observe animation performance
 
-### Test 6: Verify Index Building Still Works
-```javascript
-// Trigger index building and verify no errors
-console.log("=== Testing Index Building ===");
-console.log("1. Click the Token Replacer FA scene control button");
-console.log("2. Verify index builds without console errors");
-console.log("3. Check that environmental assets are properly filtered out");
-console.log("4. Verify creature tokens are properly included");
-```
+**Expected Results:**
+- ✅ Shimmer animation is smooth (no stuttering or lag)
+- ✅ Pulse animation is smooth
+- ✅ Multiple skeleton loaders don't cause performance issues
+- ✅ Dialog remains responsive during loading
+- ✅ CPU usage in DevTools Performance tab is reasonable
 
-### Test 7: Verify Token Replacement Workflow
-```javascript
-console.log("=== Testing Token Replacement Workflow ===");
-console.log("1. Select token(s) on the canvas");
-console.log("2. Click Token Replacer FA button");
-console.log("3. Verify search results show only creature tokens");
-console.log("4. Verify no barrel/cliff/tree/etc. tokens appear");
-console.log("5. Select a replacement and verify it applies correctly");
-console.log("6. Check console for any errors");
-```
+### Test 6: Visual Consistency
 
-## Acceptance Criteria Checklist
+**Purpose:** Verify skeleton loaders match the module's dark theme
 
-- [ ] No console errors when module loads
-- [ ] `isExcludedPath()` correctly excludes paths with environmental terms
-- [ ] `isExcludedPath()` correctly includes paths with creature names
-- [ ] Word boundaries work correctly (e.g., "clifford" is not excluded)
-- [ ] Index building completes without errors
-- [ ] Token replacement workflow functions correctly
-- [ ] Search results exclude environmental/prop assets
-- [ ] No performance regressions observed
+**Steps:**
+1. Open any dialog with skeleton loaders
+2. Inspect visual appearance
 
-## Expected Results
+**Expected Results:**
+- ✅ Background color matches dialog background (#1a1a1a)
+- ✅ Gradient colors blend with dark theme (#252525 → #333333)
+- ✅ Border radius matches existing image styles (4-6px)
+- ✅ Size matches exactly (52px or 72px, no overflow/underflow)
+- ✅ Positioning is pixel-perfect (no gaps or overlaps)
 
-### Excluded Paths
-All paths containing terms from `EXCLUDED_FILENAME_TERMS` as complete words should return `true`:
-- cliff, cave, cavern, entrance, portal, gateway
-- tunnel, bridge, road, path, terrain, landscape
-- barrel, crate, chest, table, chair, bed
-- torch, lantern, sign, banner, cart, wagon
-- tree, bush, grass, flower, forest, jungle
-- river, lake, pond, waterfall, stream
-- And 20+ more terms...
+### Test 7: Multi-Select Mode
 
-### Included Paths
-All creature token paths should return `false`:
-- goblin, dragon, skeleton, owlbear, beholder
-- wizard, ranger, troll, vampire, demon
-- elemental, giant, zombie, wolf
-- Any creature names from D&D 5e
+**Purpose:** Verify skeleton loaders work in multi-select mode
 
-### Word Boundary Behavior
-- `cliff_entrance.png` → excluded (contains "cliff" as word)
-- `clifford.png` → included ("cliff" is substring, not word)
-- `barrel_wooden.png` → excluded (contains "barrel" as word)
-- `scarecrow.png` → included ("crow" is substring, not word)
+**Steps:**
+1. Select multiple NPC tokens of the same type
+2. Open Token Replacer FA dialog
+3. Observe match selection with multi-select UI
+
+**Expected Results:**
+- ✅ All skeleton loaders work correctly
+- ✅ Selection checkmarks appear properly over loaded images
+- ✅ No visual conflicts between skeleton and selection UI
+
+## Test Checklist
+
+Complete this checklist during testing:
+
+- [ ] Match selection dialog - token preview skeleton (52px)
+- [ ] Match selection dialog - match grid skeletons (72px)
+- [ ] No-match dialog - token preview skeleton (52px)
+- [ ] Category search results - dynamic skeletons (72px)
+- [ ] Shimmer animation is smooth and visible
+- [ ] Pulse animation is subtle and smooth
+- [ ] Images fade in smoothly when loaded
+- [ ] Skeletons disappear completely after load
+- [ ] Fallback icons work when images fail
+- [ ] No layout shifts or visual jumps
+- [ ] No console errors
+- [ ] Dark theme colors are consistent
+- [ ] Performance is acceptable with many images
+- [ ] Multi-select mode works correctly
 
 ## Troubleshooting
 
+### Issue: Skeleton loaders not visible
+- **Check:** Network throttling is enabled (otherwise images load too fast)
+- **Check:** CSS file is loaded correctly
+- **Check:** Browser cache is cleared
+
+### Issue: Skeleton doesn't disappear
+- **Check:** `onload` handler is present on img tags
+- **Check:** `.loaded` class is being added (inspect element in DevTools)
+- **Check:** CSS transitions are not disabled
+
+### Issue: Layout shifts when image loads
+- **Check:** Skeleton loader has exact same dimensions as image
+- **Check:** `.skeleton-52` is 52×52px, `.skeleton-72` is 72×72px
+- **Check:** No padding or margin differences
+
+### Issue: Console errors
+- **Check:** Image paths are valid
+- **Check:** No JavaScript syntax errors
+- **Check:** All template files are properly formatted
+
+## Acceptance Criteria
+
+All of the following must be true to pass testing:
+
+✅ Skeleton loaders appear on all token images before loading
+✅ Skeleton loaders disappear smoothly when images load
+✅ No visual layout shifts during image loading
+✅ Fallback icons still work when images fail to load
+✅ No console errors in Foundry VTT
+✅ Skeleton animation is smooth and matches dark theme
+
+## Reporting Results
+
+After completing all tests, document results in `build-progress.txt`:
+
+```
+=== MANUAL TESTING RESULTS (Session X) ===
+
+Test 1 (Match Selection): [PASS/FAIL] - Notes: ...
+Test 2 (No-Match Dialog): [PASS/FAIL] - Notes: ...
+Test 3 (Category Search): [PASS/FAIL] - Notes: ...
+Test 4 (Fallback): [PASS/FAIL] - Notes: ...
+Test 5 (Performance): [PASS/FAIL] - Notes: ...
+Test 6 (Visual Consistency): [PASS/FAIL] - Notes: ...
+Test 7 (Multi-Select): [PASS/FAIL] - Notes: ...
+
+Overall: [PASS/FAIL]
+Issues Found: [None/List issues]
+```
+
+## Next Steps
+
+If all tests pass:
+1. Mark subtask-1-5 as completed in implementation_plan.json
+2. Update QA signoff status
+3. Prepare for release
+
 If tests fail:
-1. Check browser console for errors
-2. Verify module loaded correctly: `game.modules.get('token-replacer-fa')`
-3. Verify Utils.js was properly updated
-4. Check that EXCLUDED_FILENAME_PATTERNS constant exists
-5. Ensure no syntax errors in the code
-
-## Notes
-
-- The optimization precompiles ~40 RegExp patterns once at module load
-- Each call to `isExcludedPath()` now reuses these patterns instead of creating new ones
-- Expected performance improvement: 10-50x faster path filtering
-- Critical for index building which processes 10,000+ image paths
+1. Document specific failures in build-progress.txt
+2. Create bug fix subtasks if needed
+3. Re-test after fixes
