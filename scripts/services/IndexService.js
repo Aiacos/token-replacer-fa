@@ -364,6 +364,41 @@ export class IndexService {
   }
 
   /**
+   * Try to access TVA's internal cache structure directly (Method 5)
+   * Attempts to access various internal cache locations in TVA module
+   * @param {Object} tvaAPI - TVA API instance
+   * @returns {Array} Array of path objects or empty array
+   * @private
+   */
+  _tryInternalCache(tvaAPI) {
+    console.log(`${MODULE_ID} | Trying to access TVA internal cache...`);
+    const tvaModule = game.modules.get('token-variants');
+
+    // Try various internal cache locations
+    const possibleCaches = [
+      tvaAPI.cache,
+      tvaAPI._cache,
+      tvaAPI.imageCache,
+      tvaAPI.staticCache,
+      tvaModule?.cache,
+      tvaModule?.api?.cache,
+      window.TVA?.cache,
+      window.TVA?.staticCache,
+      globalThis.TVA_CACHE
+    ];
+
+    for (const cache of possibleCaches) {
+      if (cache) {
+        console.log(`${MODULE_ID} | Found potential cache:`, typeof cache, cache?.constructor?.name);
+        const paths = this.extractPathsFromTVACache(cache);
+        if (paths.length > 0) return paths;
+      }
+    }
+
+    return [];
+  }
+
+  /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
@@ -413,29 +448,7 @@ export class IndexService {
 
     // Method 5: Access TVA's internal cache structure directly
     if (allPaths.length === 0) {
-      console.log(`${MODULE_ID} | Trying to access TVA internal cache...`);
-      const tvaModule = game.modules.get('token-variants');
-
-      // Try various internal cache locations
-      const possibleCaches = [
-        tvaAPI.cache,
-        tvaAPI._cache,
-        tvaAPI.imageCache,
-        tvaAPI.staticCache,
-        tvaModule?.cache,
-        tvaModule?.api?.cache,
-        window.TVA?.cache,
-        window.TVA?.staticCache,
-        globalThis.TVA_CACHE
-      ];
-
-      for (const cache of possibleCaches) {
-        if (cache) {
-          console.log(`${MODULE_ID} | Found potential cache:`, typeof cache, cache?.constructor?.name);
-          allPaths = this.extractPathsFromTVACache(cache);
-          if (allPaths.length > 0) break;
-        }
-      }
+      allPaths = this._tryInternalCache(tvaAPI);
     }
 
     // Method 4: Try to get paths via TVA's caching mechanism
