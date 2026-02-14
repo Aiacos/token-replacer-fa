@@ -383,13 +383,26 @@ export class UIManager {
 
   /**
    * Create error HTML
-   * @param {string} message - Error message
+   * @param {Object|string} errorData - Error object or message string
+   * @param {string} errorData.errorType - Error type (e.g., "error", "warning")
+   * @param {string} errorData.message - Error message
+   * @param {string} [errorData.details] - Technical details (optional)
+   * @param {string[]} [errorData.recoverySuggestions] - Recovery suggestions array (optional)
    * @returns {Promise<string>} HTML string
    */
-  async createErrorHTML(message) {
+  async createErrorHTML(errorData) {
     const templatePath = `modules/${MODULE_ID}/templates/error.hbs`;
+
+    // Support backward compatibility: accept string or object
+    const data = typeof errorData === 'string'
+      ? { errorType: 'error', message: errorData }
+      : errorData;
+
     return await renderTemplate(templatePath, {
-      message
+      errorType: data.errorType || 'error',
+      message: data.message,
+      details: data.details,
+      recoverySuggestions: data.recoverySuggestions
     });
   }
 
