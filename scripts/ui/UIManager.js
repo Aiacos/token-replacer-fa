@@ -22,6 +22,111 @@ function i18n(key, data = {}) {
 }
 
 /**
+ * TokenReplacerDialog - ApplicationV2-based dialog for Token Replacer FA
+ * Replaces deprecated V1 Dialog API with modern ApplicationV2
+ */
+class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
+  /**
+   * @param {Object} options - Dialog options
+   * @param {string} options.content - HTML content for the dialog
+   * @param {Function} options.onClose - Callback when dialog closes
+   */
+  constructor(options = {}) {
+    super(options);
+    this.content = options.content || '';
+    this.onCloseCallback = options.onClose;
+  }
+
+  /**
+   * Default configuration options for the dialog
+   */
+  static DEFAULT_OPTIONS = {
+    id: 'token-replacer-fa-dialog',
+    classes: ['token-replacer-fa'],
+    window: {
+      title: 'Token Replacer FA',
+      resizable: true,
+      positioned: true,
+      minimizable: false
+    },
+    position: {
+      width: 600,
+      height: 'auto'
+    },
+    tag: 'div'
+  };
+
+  /**
+   * Prepare rendering context data
+   * @param {Object} options - Render options
+   * @returns {Promise<Object>} Context data for template
+   */
+  async _prepareContext(options) {
+    const context = await super._prepareContext(options);
+    context.content = this.content;
+    return context;
+  }
+
+  /**
+   * Render the dialog HTML template
+   * @param {Object} context - Rendering context
+   * @param {Object} options - Rendering options
+   * @returns {Promise<string>} Rendered HTML
+   */
+  async _renderHTML(context, options) {
+    // Simple HTML template - just wrap content in a div
+    return `<div class="token-replacer-fa-content">${context.content}</div>`;
+  }
+
+  /**
+   * Actions performed after rendering
+   * @param {Object} context - Rendering context
+   * @param {Object} options - Rendering options
+   */
+  async _onRender(context, options) {
+    await super._onRender(context, options);
+    // Post-render setup can be done here if needed
+  }
+
+  /**
+   * Actions performed when the dialog is closed
+   * @param {Object} options - Close options
+   */
+  async _onClose(options) {
+    await super._onClose(options);
+    if (this.onCloseCallback) {
+      this.onCloseCallback();
+    }
+  }
+
+  /**
+   * Update dialog content dynamically using partial rendering
+   * @param {string} html - New HTML content
+   */
+  updateContent(html) {
+    this.content = html;
+    // Use partial rendering to update just the content
+    this.render({ parts: ['content'] });
+  }
+
+  /**
+   * Get the dialog element (compatibility method)
+   * @returns {HTMLElement} The dialog element
+   */
+  getDialogElement() {
+    return this.element;
+  }
+
+  /**
+   * Check if dialog is currently open
+   * @returns {boolean} True if dialog is rendered
+   */
+  isOpen() {
+    return this.rendered;
+  }
+}
+
+/**
  * UIManager class for handling all UI operations
  */
 export class UIManager {
