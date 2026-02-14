@@ -1,5 +1,7 @@
 <div class="token-replacer-fa-token-preview">
-  <img src="{{currentImage}}" alt="{{actorName}}">
+  <div class="skeleton-loader skeleton-52">
+    <img src="{{currentImage}}" alt="{{actorName}}" onload="this.parentElement.classList.add('loaded')">
+  </div>
   <div class="token-info">
     <div class="token-name">{{actorName}}</div>
     <div class="token-type">{{type}} {{subtype}}</div>
@@ -35,7 +37,9 @@
 <div class="token-replacer-fa-match-select" data-multiselect="{{showMultiSelect}}" data-total="{{totalCount}}">
   {{#each matches}}
     <div class="match-option{{#if isFirst}} selected{{/if}}" data-index="{{index}}" data-path="{{path}}" data-name="{{nameLower}}">
-      <img src="{{path}}" alt="{{name}}" onerror="this.src='icons/svg/mystery-man.svg'">
+      <div class="skeleton-loader skeleton-72">
+        <img src="{{path}}" alt="{{name}}" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+      </div>
       <div class="match-name">{{name}}</div>
       <div class="match-score">{{scoreDisplay}}</div>
       <div class="match-check"><i class="fas fa-check"></i></div>

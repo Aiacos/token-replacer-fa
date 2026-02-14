@@ -1,5 +1,7 @@
 <div class="token-replacer-fa-token-preview">
-  <img src="{{currentImage}}" alt="{{actorName}}">
+  <div class="skeleton-loader skeleton-52">
+    <img src="{{currentImage}}" alt="{{actorName}}" onload="this.parentElement.classList.add('loaded')">
+  </div>
   <div class="token-info">
     <div class="token-name">{{actorName}}</div>
     <div class="token-type">{{type}} {{subtype}}</div>
