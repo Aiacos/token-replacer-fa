@@ -16,6 +16,9 @@ const I18N_CACHE_STATS = {
   misses: 0
 };
 
+// Filter persistence key for session-only localStorage
+const FILTER_CACHE_KEY = 'token-replacer-fa-filter-term';
+
 /**
  * Get localized string
  * Caches base strings to avoid repeated game.i18n.localize() calls
@@ -51,6 +54,46 @@ function logI18nCacheStats() {
   const total = I18N_CACHE_STATS.hits + I18N_CACHE_STATS.misses;
   const hitRate = total > 0 ? ((I18N_CACHE_STATS.hits / total) * 100).toFixed(1) : 0;
   console.log(`${MODULE_ID} | UIManager i18n cache stats: ${I18N_CACHE.size} entries, ${I18N_CACHE_STATS.hits} hits, ${I18N_CACHE_STATS.misses} misses (${hitRate}% hit rate)`);
+}
+
+/**
+ * Save filter term to localStorage for session persistence
+ * @param {string} filterTerm - Filter term to save
+ */
+function saveFilterTerm(filterTerm) {
+  try {
+    if (filterTerm && filterTerm.trim().length > 0) {
+      localStorage.setItem(FILTER_CACHE_KEY, filterTerm);
+    } else {
+      localStorage.removeItem(FILTER_CACHE_KEY);
+    }
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Failed to save filter term:`, error);
+  }
+}
+
+/**
+ * Load filter term from localStorage
+ * @returns {string} Saved filter term or empty string
+ */
+function loadFilterTerm() {
+  try {
+    return localStorage.getItem(FILTER_CACHE_KEY) || '';
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Failed to load filter term:`, error);
+    return '';
+  }
+}
+
+/**
+ * Clear filter term from localStorage
+ */
+function clearFilterTerm() {
+  try {
+    localStorage.removeItem(FILTER_CACHE_KEY);
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Failed to clear filter term:`, error);
+  }
 }
 
 /**
@@ -254,6 +297,9 @@ export class UIManager {
       };
     });
 
+    // Restore filter term from localStorage for session persistence
+    const savedFilterTerm = loadFilterTerm();
+
     return await renderTemplate(
       `modules/${MODULE_ID}/templates/match-selection.hbs`,
       {
@@ -266,7 +312,8 @@ export class UIManager {
         showMultiSelect,
         totalCount,
         matches: transformedMatches,
-        skipLabel: i18n('dialog.skip')
+        skipLabel: i18n('dialog.skip'),
+        savedFilterTerm
       }
     );
   }
@@ -285,6 +332,9 @@ export class UIManager {
       displayName: type.charAt(0).toUpperCase() + type.slice(1)
     }));
 
+    // Restore filter term from localStorage for session persistence
+    const savedFilterTerm = loadFilterTerm();
+
     return await renderTemplate(
       `modules/${MODULE_ID}/templates/no-match.hbs`,
       {
@@ -300,7 +350,8 @@ export class UIManager {
         searchCategoryLabel: i18n('dialog.searchCategory'),
         typeValue: creatureInfo.type || '',
         creatureTypes,
-        skipLabel: i18n('dialog.skip')
+        skipLabel: i18n('dialog.skip'),
+        savedFilterTerm
       }
     );
   }
@@ -435,10 +486,35 @@ export class UIManager {
 
       // Setup search filter
       const searchInput = container.querySelector('.search-filter-input');
+      const searchClearBtn = container.querySelector('.search-clear-btn');
       const visibleCountEl = container.querySelector('.visible-count');
       if (searchInput) {
         let debounceTimer = null;
+
+        // Toggle clear button visibility based on input value
+        const toggleClearButton = () => {
+          if (searchClearBtn) {
+            if (searchInput.value.trim().length > 0) {
+              searchClearBtn.classList.add('visible');
+            } else {
+              searchClearBtn.classList.remove('visible');
+            }
+          }
+        };
+
+        // Initial state - show clear button and apply filter if restored from localStorage
+        toggleClearButton();
+        if (searchInput.value.trim().length > 0) {
+          // Trigger filter logic for restored filter term
+          searchInput.dispatchEvent(new Event('input'));
+        }
+
         searchInput.addEventListener('input', () => {
+          toggleClearButton();
+
+          // Save filter term to localStorage for session persistence
+          saveFilterTerm(searchInput.value);
+
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             const filterTerms = parseFilterTerms(searchInput.value);
@@ -469,6 +545,15 @@ export class UIManager {
             updateSelectionCount();
           }, 150);
         });
+
+        // Clear button click handler
+        if (searchClearBtn) {
+          searchClearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.focus();
+          });
+        }
       }
 
       // Handle mode toggle buttons
@@ -665,8 +750,33 @@ export class UIManager {
 
         // Setup category filter with AND logic
         if (categorySearchInput) {
+          const categoryClearBtn = container.querySelector('.category-filter .search-clear-btn');
           let debounceTimer = null;
+
+          // Toggle clear button visibility based on input value
+          const toggleClearButton = () => {
+            if (categoryClearBtn) {
+              if (categorySearchInput.value.trim().length > 0) {
+                categoryClearBtn.classList.add('visible');
+              } else {
+                categoryClearBtn.classList.remove('visible');
+              }
+            }
+          };
+
+          // Initial state - show clear button and apply filter if restored from localStorage
+          toggleClearButton();
+          if (categorySearchInput.value.trim().length > 0) {
+            // Trigger filter logic for restored filter term
+            categorySearchInput.dispatchEvent(new Event('input'));
+          }
+
           categorySearchInput.addEventListener('input', () => {
+            toggleClearButton();
+
+            // Save filter term to localStorage for session persistence
+            saveFilterTerm(categorySearchInput.value);
+
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
               const filterTerms = parseFilterTerms(categorySearchInput.value);
@@ -697,6 +807,15 @@ export class UIManager {
               updateSelectionCount();
             }, 150);
           });
+
+          // Clear button click handler
+          if (categoryClearBtn) {
+            categoryClearBtn.addEventListener('click', () => {
+              categorySearchInput.value = '';
+              categorySearchInput.dispatchEvent(new Event('input'));
+              categorySearchInput.focus();
+            });
+          }
         }
       };
 
@@ -772,6 +891,8 @@ export class UIManager {
     this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
       onClose: () => {
+        // Clear filter term on dialog close (session-only persistence)
+        clearFilterTerm();
         onClose?.();
         this.mainDialog = null;
       },
@@ -877,6 +998,8 @@ export class UIManager {
       }
       this.mainDialog = null;
     }
+    // Clear filter term on dialog close (session-only persistence)
+    clearFilterTerm();
   }
 }
 
