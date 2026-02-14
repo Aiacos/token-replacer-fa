@@ -35,6 +35,60 @@
 }
 
 /* ============================================
+   SKELETON LOADER
+   ============================================ */
+.skeleton-loader {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #1a1a1a 0%, #252525 50%, #1a1a1a 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+  border: 2px solid #333;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Size variants for different contexts */
+.skeleton-loader.skeleton-52 {
+  width: 52px;
+  height: 52px;
+}
+
+.skeleton-loader.skeleton-72 {
+  width: 72px;
+  height: 72px;
+}
+
+/* Optional: Add a subtle pulse effect */
+.skeleton-loader::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(74, 222, 128, 0.05) 50%, transparent 100%);
+  animation: skeleton-pulse 2s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ============================================
    TOKEN PREVIEW HEADER
    ============================================ */
 .token-replacer-fa-token-preview {
