@@ -12,7 +12,7 @@ import { searchService } from './services/SearchService.js';
 import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
-import { uiManager } from './ui/UIManager.js';
+import { uiManager, logI18nCacheStats as logUIManagerI18nCacheStats } from './ui/UIManager.js';
 
 /**
  * TokenReplacerApp class - Main application controller
@@ -21,20 +21,50 @@ import { uiManager } from './ui/UIManager.js';
 export class TokenReplacerApp {
   constructor() {
     this.isProcessing = false;
+    // i18n cache to avoid repeated localization lookups
+    this.i18nCache = new Map();
+    // Cache statistics for debugging
+    this.i18nCacheStats = {
+      hits: 0,
+      misses: 0
+    };
   }
 
   /**
    * Get localized string
+   * Caches base strings to avoid repeated game.i18n.localize() calls
    * @param {string} key - Localization key (without namespace prefix)
    * @param {Object} data - Replacement data for placeholders
    * @returns {string} Localized string
    */
   i18n(key, data = {}) {
-    let str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
+    // Check cache first
+    let str = this.i18nCache.get(key);
+
+    if (!str) {
+      // Cache miss - localize and store
+      str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
+      this.i18nCache.set(key, str);
+      this.i18nCacheStats.misses++;
+    } else {
+      // Cache hit
+      this.i18nCacheStats.hits++;
+    }
+
+    // Apply placeholder replacements
     for (const [k, v] of Object.entries(data)) {
       str = str.replace(`{${k}}`, v);
     }
     return str;
+  }
+
+  /**
+   * Log i18n cache statistics
+   */
+  logI18nCacheStats() {
+    const total = this.i18nCacheStats.hits + this.i18nCacheStats.misses;
+    const hitRate = total > 0 ? ((this.i18nCacheStats.hits / total) * 100).toFixed(1) : 0;
+    console.log(`${MODULE_ID} | i18n cache stats: ${this.i18nCache.size} entries, ${this.i18nCacheStats.hits} hits, ${this.i18nCacheStats.misses} misses (${hitRate}% hit rate)`);
   }
 
   /**
@@ -545,6 +575,10 @@ Hooks.once('ready', async () => {
       console.warn(`${MODULE_ID} | Index build error:`, err);
     });
   }
+
+  // Log i18n cache statistics after initialization
+  tokenReplacerApp.logI18nCacheStats();
+  logUIManagerI18nCacheStats();
 });
 
 /**

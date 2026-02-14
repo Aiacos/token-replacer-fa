@@ -7,18 +7,50 @@
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
 import { escapeHtml, parseFilterTerms, matchesAllTerms } from '../core/Utils.js';
 
+// i18n cache to avoid repeated localization lookups
+const I18N_CACHE = new Map();
+
+// Cache statistics for debugging
+const I18N_CACHE_STATS = {
+  hits: 0,
+  misses: 0
+};
+
 /**
  * Get localized string
+ * Caches base strings to avoid repeated game.i18n.localize() calls
  * @param {string} key - Localization key
  * @param {Object} data - Replacement data
  * @returns {string} Localized string
  */
 function i18n(key, data = {}) {
-  let str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
+  // Check cache first
+  let str = I18N_CACHE.get(key);
+
+  if (!str) {
+    // Cache miss - localize and store
+    str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
+    I18N_CACHE.set(key, str);
+    I18N_CACHE_STATS.misses++;
+  } else {
+    // Cache hit
+    I18N_CACHE_STATS.hits++;
+  }
+
+  // Apply placeholder replacements
   for (const [k, v] of Object.entries(data)) {
     str = str.replace(`{${k}}`, v);
   }
   return str;
+}
+
+/**
+ * Log i18n cache statistics
+ */
+function logI18nCacheStats() {
+  const total = I18N_CACHE_STATS.hits + I18N_CACHE_STATS.misses;
+  const hitRate = total > 0 ? ((I18N_CACHE_STATS.hits / total) * 100).toFixed(1) : 0;
+  console.log(`${MODULE_ID} | UIManager i18n cache stats: ${I18N_CACHE.size} entries, ${I18N_CACHE_STATS.hits} hits, ${I18N_CACHE_STATS.misses} misses (${hitRate}% hit rate)`);
 }
 
 /**
@@ -1010,5 +1042,6 @@ export class UIManager {
   }
 }
 
-// Export singleton instance
+// Export singleton instance and utility functions
 export const uiManager = new UIManager();
+export { logI18nCacheStats };
