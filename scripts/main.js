@@ -230,7 +230,7 @@ export class TokenReplacerApp {
 
     // Create main dialog
     const dialog = uiManager.createMainDialog(
-      uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+      await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
       () => { this.isProcessing = false; }
     );
     dialog.render();

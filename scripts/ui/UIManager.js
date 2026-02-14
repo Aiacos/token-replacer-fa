@@ -147,53 +147,26 @@ export class UIManager {
    * @param {number} filesInDir - Files in current directory
    * @param {number} subDirs - Subdirectories count
    * @param {string} currentFile - Current file being processed
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir, subDirs, currentFile = null) {
-    const safeDir = escapeHtml(currentDir);
-    const safeFile = currentFile ? escapeHtml(currentFile) : '';
-
+  async createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir, subDirs, currentFile = null) {
     const shortDir = currentDir.length > 50
       ? '...' + currentDir.substring(currentDir.length - 47)
       : currentDir;
-    const safeShortDir = escapeHtml(shortDir);
 
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status">
-          <i class="fas fa-search fa-spin"></i>
-          <span>Scanning token artwork...</span>
-        </div>
-
-        <div class="scan-stats">
-          <div class="stat-item">
-            <div class="stat-value">${dirsScanned}</div>
-            <div class="stat-label">Directories</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${imagesFound}</div>
-            <div class="stat-label">Images Found</div>
-          </div>
-        </div>
-
-        <div class="scan-current">
-          <div class="current-label">Current directory:</div>
-          <div class="current-path" title="${safeDir}">${safeShortDir}</div>
-          ${currentFile ? `
-            <div class="current-file">
-              <i class="fas fa-image"></i> ${safeFile}
-            </div>
-          ` : ''}
-        </div>
-
-        ${filesInDir > 0 ? `
-          <div class="dir-info">
-            <span><i class="fas fa-file-image"></i> ${filesInDir} files</span>
-            <span><i class="fas fa-folder"></i> ${subDirs} subdirectories</span>
-          </div>
-        ` : ''}
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/scan-progress.hbs`,
+      {
+        currentDir,
+        shortDir,
+        dirsScanned,
+        imagesFound,
+        filesInDir,
+        subDirs,
+        currentFile,
+        showDirInfo: filesInDir > 0
+      }
+    );
   }
 
   /**
