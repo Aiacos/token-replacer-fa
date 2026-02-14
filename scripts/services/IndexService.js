@@ -419,6 +419,18 @@ export class IndexService {
 
   /**
    * Build index from TVA API - reads cache directly for speed
+   *
+   * Uses a fallback chain of 6 cache access strategies, tried in sequence until one succeeds:
+   * 1. _tryPreloadedCache() - Pre-loaded cache from TVACacheService (FASTEST)
+   * 2. _tryCacheImagePaths() - TVA's cacheImagePaths property
+   * 3. _tryGetSearchCache() - TVA's getSearchCache() API method
+   * 4. _tryTVAConfig() - TVA_CONFIG inspection and globalThis variables
+   * 5. _tryGameSettings() - Foundry game.settings for TVA static cache
+   * 6. _tryInternalCache() - Direct inspection of TVA's internal cache structure
+   *
+   * Each strategy is implemented as a separate method for maintainability and testing.
+   * If all strategies fail, returns 0 (no images indexed).
+   *
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
    * @returns {Promise<number>} Number of images indexed
