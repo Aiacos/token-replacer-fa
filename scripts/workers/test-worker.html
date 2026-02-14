@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndexWorker Test - Token Replacer FA</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      max-width: 1200px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+    .test-section {
+      background: white;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .log {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    .log-entry {
+      margin: 4px 0;
+      padding: 2px 0;
+    }
+    .log-entry.info { color: #4EC9B0; }
+    .log-entry.success { color: #4CAF50; }
+    .log-entry.error { color: #f44336; }
+    .log-entry.warning { color: #ff9800; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .stat-card {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      border-left: 4px solid #4CAF50;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 30px;
+      background: #e0e0e0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4CAF50, #45a049);
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧪 IndexWorker Test Suite</h1>
+  <p>Standalone test for the Token Replacer FA Web Worker implementation</p>
+
+  <div class="test-section">
+    <h2>Test Controls</h2>
+    <div class="controls">
+      <button onclick="testSmallDataset()">Test Small Dataset (500 paths)</button>
+      <button onclick="testMediumDataset()">Test Medium Dataset (2500 paths)</button>
+      <button onclick="testLargeDataset()">Test Large Dataset (10000 paths)</button>
+      <button onclick="testWorkerPing()">Ping Worker</button>
+      <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress" style="width: 0%">0%</div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Processed</div>
+        <div class="stat-value" id="stat-processed">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total</div>
+        <div class="stat-value" id="stat-total">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Images Found</div>
+        <div class="stat-value" id="stat-found">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value" id="stat-duration">0ms</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="test-section">
+    <h2>Console Log</h2>
+    <div class="log" id="log"></div>
+  </div>
+
+  <script>
+    let worker = null;
+    let testStartTime = 0;
+
+    // Mock creature type mappings (from Constants.js)
+    const CREATURE_TYPE_MAPPINGS = {
+      humanoid: ['human', 'elf', 'dwarf', 'halfling', 'gnome', 'orc', 'goblin'],
+      beast: ['wolf', 'bear', 'lion', 'tiger', 'eagle', 'horse'],
+      dragon: ['dragon', 'wyrmling', 'wyrm', 'drake'],
+      undead: ['zombie', 'skeleton', 'ghost', 'vampire', 'lich'],
+      aberration: ['mind flayer', 'beholder', 'aboleth'],
+      celestial: ['angel', 'deva', 'solar'],
+      construct: ['golem', 'animated armor', 'helmed horror'],
+      elemental: ['fire elemental', 'water elemental', 'air elemental'],
+      fey: ['pixie', 'sprite', 'satyr', 'dryad'],
+      fiend: ['demon', 'devil', 'yugoloth'],
+      giant: ['giant', 'ogre', 'troll'],
+      monstrosity: ['griffon', 'chimera', 'hydra'],
+      ooze: ['black pudding', 'gelatinous cube', 'ochre jelly'],
+      plant: ['shambling mound', 'treant', 'vine blight']
+    };
+
+    const EXCLUDED_FOLDERS = ['props', 'maps', 'tiles', 'ui'];
+    const EXCLUDED_FILENAME_TERMS = ['cliff', 'tree', 'rock', 'building'];
+
+    // Initialize worker
+    function initWorker() {
+      if (worker) {
+        worker.terminate();
+      }
+
+      try {
+        worker = new Worker('./IndexWorker.js');
+        log('Worker initialized successfully', 'success');
+
+        worker.addEventListener('message', handleWorkerMessage);
+        worker.addEventListener('error', (e) => {
+          log(`Worker error: ${e.message}`, 'error');
+        });
+
+        return true;
+      } catch (error) {
+        log(`Failed to create worker: ${error.message}`, 'error');
+        return false;
+      }
+    }
+
+    function handleWorkerMessage(event) {
+      const { type, processed, total, imagesFound, result, message } = event.data;
+
+      switch (type) {
+        case 'progress':
+          updateProgress(processed, total, imagesFound);
+          log(`Progress: ${processed}/${total} - Found: ${imagesFound}`, 'info');
+          break;
+
+        case 'complete':
+          const duration = Date.now() - testStartTime;
+          updateStats(total, total, imagesFound, duration);
+          log(`✓ Indexing complete! ${imagesFound} images indexed in ${duration}ms`, 'success');
+          log(`Categories: ${Object.keys(result.categories).length}`, 'info');
+          log(`All paths: ${Object.keys(result.allPaths).length}`, 'info');
+
+          // Log category breakdown
+          for (const [category, subcats] of Object.entries(result.categories)) {
+            const count = Object.values(subcats).flat().length;
+            if (count > 0) {
+              log(`  ${category}: ${count} images`, 'info');
+            }
+          }
+          break;
+
+        case 'error':
+          log(`✗ Worker error: ${message}`, 'error');
+          break;
+
+        case 'pong':
+          log('✓ Worker responded to ping', 'success');
+          break;
+
+        default:
+          log(`Unknown message type: ${type}`, 'warning');
+      }
+    }
+
+    function updateProgress(processed, total, found) {
+      const percent = total > 0 ? Math.round((processed / total) * 100) : 0;
+      const progressEl = document.getElementById('progress');
+      progressEl.style.width = percent + '%';
+      progressEl.textContent = percent + '%';
+
+      updateStats(processed, total, found, Date.now() - testStartTime);
+    }
+
+    function updateStats(processed, total, found, duration) {
+      document.getElementById('stat-processed').textContent = processed.toLocaleString();
+      document.getElementById('stat-total').textContent = total.toLocaleString();
+      document.getElementById('stat-found').textContent = found.toLocaleString();
+      document.getElementById('stat-duration').textContent = duration + 'ms';
+    }
+
+    function generateTestPaths(count) {
+      const paths = [];
+      const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS);
+      const extensions = ['.png', '.jpg', '.webp'];
+
+      for (let i = 0; i < count; i++) {
+        // 80% creature tokens, 20% other
+        if (Math.random() < 0.8) {
+          const category = creatureTypes[Math.floor(Math.random() * creatureTypes.length)];
+          const terms = CREATURE_TYPE_MAPPINGS[category];
+          const term = terms[Math.floor(Math.random() * terms.length)];
+          const ext = extensions[Math.floor(Math.random() * extensions.length)];
+          const num = Math.floor(Math.random() * 100);
+          paths.push(`https://assets.forge-vtt.com/bazaar/FA_Pack/tokens/${category}/${term}_${num}${ext}`);
+        } else {
+          // Some excluded paths
+          const excluded = EXCLUDED_FOLDERS[Math.floor(Math.random() * EXCLUDED_FOLDERS.length)];
+          paths.push(`https://assets.forge-vtt.com/bazaar/FA_Pack/${excluded}/test_${i}.png`);
+        }
+      }
+
+      return paths;
+    }
+
+    function runTest(pathCount) {
+      if (!worker && !initWorker()) {
+        log('Cannot run test: Worker initialization failed', 'error');
+        return;
+      }
+
+      log(`\n=== Starting test with ${pathCount} paths ===`, 'info');
+      const paths = generateTestPaths(pathCount);
+      log(`Generated ${paths.length} test paths`, 'info');
+
+      testStartTime = Date.now();
+      updateStats(0, pathCount, 0, 0);
+
+      worker.postMessage({
+        command: 'indexPaths',
+        data: {
+          paths: paths,
+          creatureTypeMappings: CREATURE_TYPE_MAPPINGS,
+          excludedFolders: EXCLUDED_FOLDERS,
+          excludedFilenameTerms: EXCLUDED_FILENAME_TERMS
+        }
+      });
+    }
+
+    function testSmallDataset() {
+      runTest(500);
+    }
+
+    function testMediumDataset() {
+      runTest(2500);
+    }
+
+    function testLargeDataset() {
+      runTest(10000);
+    }
+
+    function testWorkerPing() {
+      if (!worker && !initWorker()) {
+        log('Cannot ping: Worker initialization failed', 'error');
+        return;
+      }
+
+      log('Pinging worker...', 'info');
+      worker.postMessage({ command: 'ping' });
+    }
+
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+      log('Log cleared', 'info');
+    }
+
+    // Initialize on page load
+    window.addEventListener('load', () => {
+      log('Page loaded - ready to test', 'info');
+      if (typeof Worker !== 'undefined') {
+        log('✓ Web Workers are supported', 'success');
+        initWorker();
+      } else {
+        log('✗ Web Workers are NOT supported in this browser', 'error');
+      }
+    });
+  </script>
+</body>
+</html>
