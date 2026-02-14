@@ -630,7 +630,9 @@ export class UIManager {
             : escapeHtml(match.source || '');
           return `
             <div class="match-option" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
-              <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
+              <div class="skeleton-loader skeleton-72">
+                <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+              </div>
               <div class="match-name">${safeMatchName}</div>
               <div class="match-score">${scoreDisplay}</div>
               <div class="match-check"><i class="fas fa-check"></i></div>
