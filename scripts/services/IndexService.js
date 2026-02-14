@@ -1205,11 +1205,11 @@ export class IndexService {
   /**
    * Clear the index
    */
-  clear() {
+  async clear() {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
-    localStorage.removeItem(CACHE_KEY);
+    await storageService.remove(CACHE_KEY);
     console.log(`${MODULE_ID} | Index cleared`);
   }
 
@@ -1219,7 +1219,7 @@ export class IndexService {
    * @returns {Promise<boolean>}
    */
   async forceRebuild(onProgress = null) {
-    this.clear();
+    await this.clear();
     return this.build(true, onProgress);
   }
 }
