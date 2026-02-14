@@ -324,6 +324,46 @@ export class IndexService {
   }
 
   /**
+   * Try to access TVA cache data from Foundry game settings (Method 4)
+   * Checks multiple possible setting names where TVA might store cache data
+   * @returns {Array} Array of path objects or empty array
+   * @private
+   */
+  _tryGameSettings() {
+    let allPaths = [];
+
+    console.log(`${MODULE_ID} | Trying TVA game settings...`);
+    try {
+      // TVA stores static cache in game settings
+      const staticCache = game.settings.get('token-variants', 'staticCache');
+      if (staticCache) {
+        console.log(`${MODULE_ID} | Found staticCache in game settings, type:`, typeof staticCache,
+          Array.isArray(staticCache) ? `length: ${staticCache.length}` : '');
+        allPaths = this.extractPathsFromTVACache(staticCache);
+      }
+    } catch (e) {
+      console.log(`${MODULE_ID} | No staticCache in settings:`, e.message);
+    }
+
+    // Also try other possible setting names
+    const settingNames = ['staticCachePaths', 'cachedImages', 'imageCache', 'cacheData'];
+    for (const name of settingNames) {
+      if (allPaths.length > 0) break;
+      try {
+        const data = game.settings.get('token-variants', name);
+        if (data) {
+          console.log(`${MODULE_ID} | Found ${name} in settings`);
+          allPaths = this.extractPathsFromTVACache(data);
+        }
+      } catch (e) {
+        // Setting doesn't exist
+      }
+    }
+
+    return allPaths;
+  }
+
+  /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
@@ -368,33 +408,7 @@ export class IndexService {
 
     // Method 4: Try Foundry game settings for TVA static cache
     if (allPaths.length === 0) {
-      console.log(`${MODULE_ID} | Trying TVA game settings...`);
-      try {
-        // TVA stores static cache in game settings
-        const staticCache = game.settings.get('token-variants', 'staticCache');
-        if (staticCache) {
-          console.log(`${MODULE_ID} | Found staticCache in game settings, type:`, typeof staticCache,
-            Array.isArray(staticCache) ? `length: ${staticCache.length}` : '');
-          allPaths = this.extractPathsFromTVACache(staticCache);
-        }
-      } catch (e) {
-        console.log(`${MODULE_ID} | No staticCache in settings:`, e.message);
-      }
-
-      // Also try other possible setting names
-      const settingNames = ['staticCachePaths', 'cachedImages', 'imageCache', 'cacheData'];
-      for (const name of settingNames) {
-        if (allPaths.length > 0) break;
-        try {
-          const data = game.settings.get('token-variants', name);
-          if (data) {
-            console.log(`${MODULE_ID} | Found ${name} in settings`);
-            allPaths = this.extractPathsFromTVACache(data);
-          }
-        } catch (e) {
-          // Setting doesn't exist
-        }
-      }
+      allPaths = this._tryGameSettings();
     }
 
     // Method 5: Access TVA's internal cache structure directly
