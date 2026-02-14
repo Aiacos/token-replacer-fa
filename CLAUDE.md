@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Token Replacer FA is a Foundry VTT module that automatically replaces NPC token artwork with matching tokens from Forgotten Adventures and The Forge Bazaar. It requires Token Variant Art (TVA) module and optionally uses FA Nexus.
 
 **Module ID:** `token-replacer-fa`
-**Version:** 2.9.0
+**Version:** 2.10.0
 **System:** D&D 5e only
 **Foundry VTT:** v12-v13
 
