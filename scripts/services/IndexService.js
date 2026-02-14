@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 13;  // v2.9.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
+const INDEX_VERSION = 14;  // v2.9.0: Added termIndex for O(1) search term lookups
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -31,7 +31,8 @@ const UPDATE_FREQUENCIES = {
  *     beast: { wolf: [...], bear: [...] },
  *     ...
  *   },
- *   allPaths: { "path": { name, category, subcategories: [] } }
+ *   allPaths: { "path": { name, category, subcategories: [] } },
+ *   termIndex: { "term": ["path1", "path2", ...] }
  * }
  */
 export class IndexService {
@@ -164,7 +165,8 @@ export class IndexService {
       timestamp: Date.now(),
       lastUpdate: Date.now(),
       categories,
-      allPaths: {}
+      allPaths: {},
+      termIndex: {}
     };
   }
 
