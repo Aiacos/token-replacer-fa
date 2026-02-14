@@ -221,12 +221,34 @@ export class SearchOrchestrator {
 
   /**
    * Search local index using fuzzy search
+   * Uses Web Worker for background processing when available, falls back to main thread
+   * @param {string[]} searchTerms - Terms to search
+   * @param {Array} index - Local image index
+   * @param {string} creatureType - Optional creature type filter
+   * @param {Function} onProgress - Optional progress callback
+   * @returns {Promise<Array>} Search results
+   */
+  async searchLocalIndex(searchTerms, index, creatureType = null, onProgress = null) {
+    if (!index || index.length === 0) return [];
+
+    // Use Web Worker if available, otherwise fallback to direct search
+    if (this.worker) {
+      console.log(`${MODULE_ID} | Using Web Worker for fuzzy search`);
+      return this.searchLocalIndexWithWorker(searchTerms, index, creatureType, onProgress);
+    } else {
+      console.log(`${MODULE_ID} | Using fallback method (main thread)`);
+      return this.searchLocalIndexDirectly(searchTerms, index, creatureType);
+    }
+  }
+
+  /**
+   * Search local index directly on main thread (fallback when worker unavailable)
    * @param {string[]} searchTerms - Terms to search
    * @param {Array} index - Local image index
    * @param {string} creatureType - Optional creature type filter
    * @returns {Promise<Array>} Search results
    */
-  async searchLocalIndex(searchTerms, index, creatureType = null) {
+  async searchLocalIndexDirectly(searchTerms, index, creatureType = null) {
     if (!index || index.length === 0) return [];
 
     const Fuse = await loadFuse();
