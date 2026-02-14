@@ -46,7 +46,7 @@ export class IndexService {
    * Build reverse lookup Map from CREATURE_TYPE_MAPPINGS
    * Maps each term to its category for O(1) lookups
    * @private
-   * @returns {Map<string, string>} Map of lowercase term → category
+   * @returns {Map<string, Object>} Map of lowercase term → {category, originalTerm}
    */
   buildTermCategoryMap() {
     const map = new Map();
@@ -54,7 +54,7 @@ export class IndexService {
     for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
       for (const term of terms) {
         const termLower = term.toLowerCase();
-        map.set(termLower, category);
+        map.set(termLower, { category, originalTerm: term });
       }
     }
 
@@ -87,31 +87,37 @@ export class IndexService {
 
   /**
    * Determine which category and subcategories an image belongs to
+   * Uses pre-built Map for O(n) lookup instead of O(n*m) nested loops
    * @param {string} path - Image path
    * @param {string} name - Image name
    * @returns {Object} { category, subcategories }
    */
   categorizeImage(path, name) {
     const searchText = `${path} ${name}`.toLowerCase();
+    const categoryMatches = new Map(); // category -> {count, terms}
+
+    // Single loop through all terms using the pre-built map
+    for (const [termLower, { category, originalTerm }] of this.termCategoryMap.entries()) {
+      if (searchText.includes(termLower)) {
+        if (!categoryMatches.has(category)) {
+          categoryMatches.set(category, { count: 0, terms: [] });
+        }
+        const match = categoryMatches.get(category);
+        match.count++;
+        match.terms.push(originalTerm);
+      }
+    }
+
+    // Find category with most matches
     let bestCategory = null;
     let subcategories = [];
     let maxMatches = 0;
 
-    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
-      let matches = 0;
-      const matchedTerms = [];
-
-      for (const term of terms) {
-        if (searchText.includes(term.toLowerCase())) {
-          matches++;
-          matchedTerms.push(term);
-        }
-      }
-
-      if (matches > maxMatches) {
-        maxMatches = matches;
+    for (const [category, { count, terms }] of categoryMatches.entries()) {
+      if (count > maxMatches) {
+        maxMatches = count;
         bestCategory = category;
-        subcategories = matchedTerms;
+        subcategories = terms;
       }
     }
 
