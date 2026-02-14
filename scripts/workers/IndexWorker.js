@@ -149,8 +149,18 @@ function categorizeImage(path, name, creatureTypeMappings) {
 }
 
 /**
+ * CDN URL segments to skip when checking folder exclusions
+ * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+ */
+const CDN_SEGMENTS = new Set([
+  'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
+  'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
+  'www', 'cdn', 'static', 'public', 'uploads', 'files'
+]);
+
+/**
  * Check if a path should be excluded from indexing
- * TODO: Will be implemented in subtask-1-3
+ * Checks both folder names and filename for environmental/prop terms
  *
  * @param {string} path - Path to check
  * @param {Array} excludedFolders - Folder names to exclude
@@ -158,8 +168,30 @@ function categorizeImage(path, name, creatureTypeMappings) {
  * @returns {boolean} True if path should be excluded
  */
 function isExcludedPath(path, excludedFolders, excludedFilenameTerms) {
-  // Placeholder - will be implemented in next subtask
-  return false;
+  if (!path) return true;
+  const pathLower = path.toLowerCase();
+  const segments = pathLower.split('/');
+
+  // Filter out CDN segments and check remaining folder names
+  const folderSegments = segments.filter(s => !CDN_SEGMENTS.has(s) && s.length > 0);
+
+  // Check folder names against exclusion list
+  const folderExcluded = excludedFolders.some(folder =>
+    folderSegments.some(segment => segment === folder)
+  );
+  if (folderExcluded) return true;
+
+  // Also check filename for environmental/prop terms
+  const filename = segments[segments.length - 1] || '';
+  // Remove extension and convert separators to spaces for word matching
+  const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+
+  // Check if filename contains excluded terms (as whole words or prefixes)
+  return excludedFilenameTerms.some(term => {
+    // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
+    const regex = new RegExp(`\\b${term}`, 'i');
+    return regex.test(filenameClean);
+  });
 }
 
 /**
