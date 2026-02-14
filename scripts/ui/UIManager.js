@@ -937,22 +937,25 @@ export class UIManager {
    * Create main dialog
    * @param {string} initialContent - Initial content
    * @param {Function} onClose - Close callback
-   * @returns {Dialog} Foundry Dialog instance
+   * @returns {TokenReplacerDialog} TokenReplacerDialog instance
    */
   createMainDialog(initialContent, onClose) {
-    this.mainDialog = new Dialog({
-      title: i18n('dialog.title'),
+    this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
-      buttons: {},
-      close: () => {
+      onClose: () => {
         onClose?.();
         this.mainDialog = null;
+      },
+      window: {
+        title: i18n('dialog.title'),
+        resizable: true,
+        positioned: true,
+        minimizable: false
+      },
+      position: {
+        width: 500,
+        height: 'auto'
       }
-    }, {
-      classes: ['token-replacer-fa-dialog'],
-      width: 500,
-      height: 'auto',
-      resizable: true
     });
     return this.mainDialog;
   }
@@ -965,14 +968,7 @@ export class UIManager {
     if (!this.mainDialog) return;
 
     try {
-      this.mainDialog.data.content = content;
-      const dialogElement = this.mainDialog.element?.[0];
-      if (dialogElement) {
-        const contentEl = dialogElement.querySelector('.dialog-content');
-        if (contentEl) {
-          contentEl.innerHTML = content;
-        }
-      }
+      this.mainDialog.updateContent(content);
     } catch (e) {
       // Dialog might be in transition
     }
@@ -983,7 +979,7 @@ export class UIManager {
    * @returns {HTMLElement|null} Dialog element
    */
   getDialogElement() {
-    return this.mainDialog?.element?.[0] || null;
+    return this.mainDialog?.getDialogElement() || null;
   }
 
   /**
@@ -991,16 +987,16 @@ export class UIManager {
    * @returns {boolean} True if dialog is open
    */
   isDialogOpen() {
-    return !!this.mainDialog;
+    return this.mainDialog?.isOpen() || false;
   }
 
   /**
    * Close main dialog
    */
-  closeDialog() {
+  async closeDialog() {
     if (this.mainDialog) {
       try {
-        this.mainDialog.close();
+        await this.mainDialog.close();
       } catch (e) {
         // Dialog might already be closed
       }
