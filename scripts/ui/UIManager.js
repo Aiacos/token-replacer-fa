@@ -176,56 +176,24 @@ export class UIManager {
    * @param {number} uniqueTypes - Unique creature types
    * @param {number} totalTokens - Total tokens
    * @param {string[]} currentBatch - Currently searching batch
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
+  async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     const safeBatch = currentBatch.map(name => escapeHtml(name));
 
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status">
-          <i class="fas fa-bolt"></i>
-          <span>Parallel Search in Progress...</span>
-        </div>
-
-        <div class="scan-stats">
-          <div class="stat-item">
-            <div class="stat-value">${uniqueTypes}</div>
-            <div class="stat-label">Unique Creatures</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${totalTokens}</div>
-            <div class="stat-label">Total Tokens</div>
-          </div>
-        </div>
-
-        <div class="token-replacer-fa-progress">
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: ${percent}%"></div>
-          </div>
-          <div class="progress-text">${completed} / ${total} creature types searched</div>
-        </div>
-
-        ${currentBatch.length > 0 ? `
-          <div class="scan-current">
-            <div class="current-label">Currently searching (parallel):</div>
-            <div class="parallel-batch">
-              ${safeBatch.map(name => `
-                <span class="batch-item">
-                  <i class="fas fa-search fa-spin"></i> ${name}
-                </span>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-
-        <div class="optimization-info">
-          <i class="fas fa-info-circle"></i>
-          <span>Identical creatures share search results for faster processing</span>
-        </div>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/parallel-search.hbs`,
+      {
+        percent,
+        completed,
+        total,
+        uniqueTypes,
+        totalTokens,
+        currentBatch: safeBatch,
+        hasBatch: safeBatch.length > 0
+      }
+    );
   }
 
   /**

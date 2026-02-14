@@ -294,14 +294,14 @@ export class TokenReplacerApp {
 
     // PHASE 2: Parallel search
     uiManager.updateDialogContent(
-      uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
+      await uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
     );
     await yieldToMain(50);
 
-    const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, (info) => {
+    const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, async (info) => {
       if (info.type === 'batch' && uiManager.isDialogOpen()) {
         uiManager.updateDialogContent(
-          uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
+          await uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
         );
       }
     });
