@@ -22,6 +22,116 @@ function i18n(key, data = {}) {
 }
 
 /**
+ * TokenReplacerDialog - ApplicationV2-based dialog for Token Replacer FA
+ * Replaces deprecated V1 Dialog API with modern ApplicationV2
+ * Compatible with Foundry VTT v12-v13
+ */
+class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
+  /**
+   * @param {Object} options - Dialog options
+   * @param {string} options.content - HTML content for the dialog
+   * @param {Function} options.onClose - Callback when dialog closes
+   */
+  constructor(options = {}) {
+    super(options);
+    this._dialogContent = options.content || '';
+    this._onCloseCallback = options.onClose;
+  }
+
+  static DEFAULT_OPTIONS = {
+    id: 'token-replacer-fa-dialog',
+    classes: ['token-replacer-fa-dialog'],
+    window: {
+      title: 'Token Replacer FA',
+      resizable: true,
+      minimizable: false
+    },
+    position: {
+      width: 500,
+      height: 'auto'
+    }
+  };
+
+  /**
+   * Prepare rendering context data
+   * @param {Object} options - Render options
+   * @returns {Promise<Object>} Context data for template
+   */
+  async _prepareContext(options) {
+    return { content: this._dialogContent };
+  }
+
+  /**
+   * Render the dialog content as an HTMLElement
+   * ApplicationV2 requires _renderHTML to return DOM elements, not strings
+   * @param {Object} context - Rendering context
+   * @param {Object} options - Rendering options
+   * @returns {Promise<HTMLElement>} Rendered DOM element
+   */
+  async _renderHTML(context, options) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('dialog-content');
+    wrapper.innerHTML = context.content;
+    return wrapper;
+  }
+
+  /**
+   * Replace the dialog content in the DOM
+   * Required by ApplicationV2 to handle both initial render and re-renders
+   * @param {HTMLElement} result - New content from _renderHTML
+   * @param {HTMLElement} content - The application's content element
+   * @param {Object} options - Rendering options
+   */
+  _replaceHTML(result, content, options) {
+    const existing = content.querySelector('.dialog-content');
+    if (existing) {
+      existing.replaceWith(result);
+    } else {
+      content.appendChild(result);
+    }
+  }
+
+  /**
+   * Actions performed when the dialog is closed
+   * @param {Object} options - Close options
+   */
+  async _onClose(options) {
+    await super._onClose(options);
+    this._onCloseCallback?.();
+  }
+
+  /**
+   * Update dialog content directly via DOM manipulation
+   * Avoids full re-render cycle for better performance during frequent updates
+   * @param {string} html - New HTML content
+   */
+  updateContent(html) {
+    this._dialogContent = html;
+    if (!this.rendered) return;
+    const el = this.element?.querySelector('.dialog-content');
+    if (el) {
+      el.innerHTML = html;
+    }
+  }
+
+  /**
+   * Get the dialog's root element
+   * @returns {HTMLElement|null} The dialog element
+   */
+  getDialogElement() {
+    return this.element;
+  }
+
+  /**
+   * Check if dialog is currently rendered and open
+   * @returns {boolean} True if dialog is rendered
+   */
+  isOpen() {
+    return this.rendered;
+  }
+}
+
+/**
  * UIManager class for handling all UI operations
  */
 export class UIManager {
@@ -832,22 +942,25 @@ export class UIManager {
    * Create main dialog
    * @param {string} initialContent - Initial content
    * @param {Function} onClose - Close callback
-   * @returns {Dialog} Foundry Dialog instance
+   * @returns {TokenReplacerDialog} TokenReplacerDialog instance
    */
   createMainDialog(initialContent, onClose) {
-    this.mainDialog = new Dialog({
-      title: i18n('dialog.title'),
+    this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
-      buttons: {},
-      close: () => {
+      onClose: () => {
         onClose?.();
         this.mainDialog = null;
+      },
+      window: {
+        title: i18n('dialog.title'),
+        resizable: true,
+        positioned: true,
+        minimizable: false
+      },
+      position: {
+        width: 500,
+        height: 'auto'
       }
-    }, {
-      classes: ['token-replacer-fa-dialog'],
-      width: 500,
-      height: 'auto',
-      resizable: true
     });
     return this.mainDialog;
   }
@@ -860,14 +973,7 @@ export class UIManager {
     if (!this.mainDialog) return;
 
     try {
-      this.mainDialog.data.content = content;
-      const dialogElement = this.mainDialog.element?.[0];
-      if (dialogElement) {
-        const contentEl = dialogElement.querySelector('.dialog-content');
-        if (contentEl) {
-          contentEl.innerHTML = content;
-        }
-      }
+      this.mainDialog.updateContent(content);
     } catch (e) {
       // Dialog might be in transition
     }
@@ -878,7 +984,7 @@ export class UIManager {
    * @returns {HTMLElement|null} Dialog element
    */
   getDialogElement() {
-    return this.mainDialog?.element?.[0] || null;
+    return this.mainDialog?.getDialogElement() || null;
   }
 
   /**
@@ -886,16 +992,16 @@ export class UIManager {
    * @returns {boolean} True if dialog is open
    */
   isDialogOpen() {
-    return !!this.mainDialog;
+    return this.mainDialog?.isOpen() || false;
   }
 
   /**
    * Close main dialog
    */
-  closeDialog() {
+  async closeDialog() {
     if (this.mainDialog) {
       try {
-        this.mainDialog.close();
+        await this.mainDialog.close();
       } catch (e) {
         // Dialog might already be closed
       }

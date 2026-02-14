@@ -112,6 +112,5 @@ Files in `lang/en.json` and `lang/it.json`. All UI strings use `TOKEN_REPLACER_F
 ## Known Constraints
 
 - Index caching limited to ~4.5MB localStorage - larger indices rebuild on page load
-- Uses deprecated V1 Dialog API (deadline: Foundry v16)
 - D&D 5e system only (creature type extraction is system-specific)
 - TokenService uses static methods (intentional for stateless token operations)
