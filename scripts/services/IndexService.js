@@ -405,7 +405,15 @@ export class IndexService {
     // If we found paths in cache, index them directly
     if (allPaths.length > 0) {
       console.log(`${MODULE_ID} | Found ${allPaths.length} paths in TVA cache, indexing...`);
-      return this.indexPathsDirectly(allPaths, onProgress);
+
+      // Use Web Worker if available, otherwise fallback to direct indexing
+      if (this.worker) {
+        console.log(`${MODULE_ID} | Using Web Worker for background index building`);
+        return this.indexPathsWithWorker(allPaths, onProgress);
+      } else {
+        console.log(`${MODULE_ID} | Using fallback method (main thread with yields)`);
+        return this.indexPathsDirectly(allPaths, onProgress);
+      }
     }
 
     // Fallback: Log available TVA API methods to find the cache
