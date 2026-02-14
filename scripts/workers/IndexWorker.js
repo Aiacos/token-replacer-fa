@@ -74,6 +74,13 @@ function handleIndexPaths(data) {
     throw new Error('excludedFilenameTerms must be an array');
   }
 
+  // Initialize empty index structure
+  const categories = {};
+  for (const category of Object.keys(creatureTypeMappings)) {
+    categories[category] = {};
+  }
+  const allPaths = {};
+
   // Send initial progress
   self.postMessage({
     type: 'progress',
@@ -82,14 +89,77 @@ function handleIndexPaths(data) {
     imagesFound: 0
   });
 
-  // TODO: Actual indexing logic will be implemented in subsequent subtasks
-  // For now, just send completion message with empty results
+  let imagesFound = 0;
+  const PROGRESS_BATCH = 1000;
+
+  // Process each path
+  for (let i = 0; i < paths.length; i++) {
+    const entry = paths[i];
+
+    // Extract path and name (handle both string and {path, name} object formats)
+    let path, name;
+    if (typeof entry === 'string') {
+      path = entry;
+      name = null;
+    } else if (entry && typeof entry === 'object') {
+      path = entry.path || entry[0];
+      name = entry.name || entry[1];
+    } else {
+      continue; // Skip invalid entries
+    }
+
+    // Skip if no path, already indexed, or excluded
+    if (!path || allPaths[path] || isExcludedPath(path, excludedFolders, excludedFilenameTerms)) {
+      continue;
+    }
+
+    // Extract name from path if not provided
+    const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
+
+    // Try to categorize the image
+    const { category, subcategories } = categorizeImage(path, imageName, creatureTypeMappings);
+
+    // ALWAYS add to allPaths (even if uncategorized) for general search
+    allPaths[path] = {
+      name: imageName,
+      category: category || null,
+      subcategories: subcategories || []
+    };
+
+    imagesFound++;
+
+    // If categorized, also add to category structure for fast category lookups
+    if (category) {
+      // Ensure category exists
+      if (!categories[category]) {
+        categories[category] = {};
+      }
+
+      // Add to each matched subcategory
+      for (const subcategory of subcategories) {
+        const key = subcategory.toLowerCase().replace(/\s+/g, '_');
+        if (!categories[category][key]) {
+          categories[category][key] = [];
+        }
+        categories[category][key].push({ path, name: imageName });
+      }
+    }
+
+    // Report progress every 1000 items
+    if ((i + 1) % PROGRESS_BATCH === 0) {
+      reportProgress(i + 1, paths.length, imagesFound);
+    }
+  }
+
+  // Send final progress update
+  reportProgress(paths.length, paths.length, imagesFound);
+
+  // Send completion message with results
   const result = {
-    categories: {},
-    allPaths: {}
+    categories,
+    allPaths
   };
 
-  // Send completion message
   self.postMessage({
     type: 'complete',
     result
@@ -194,15 +264,3 @@ function isExcludedPath(path, excludedFolders, excludedFilenameTerms) {
   });
 }
 
-/**
- * Process paths and build the index
- * TODO: Will be implemented in subtask-1-4
- *
- * @param {Array} paths - Array of paths to index
- * @param {Object} config - Configuration object
- * @returns {Object} { categories, allPaths }
- */
-function indexPaths(paths, config) {
-  // Placeholder - will be implemented in next subtask
-  return { categories: {}, allPaths: {} };
-}
