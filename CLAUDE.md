@@ -70,6 +70,8 @@ scripts/
 │   ├── IndexService.js  # Hierarchical category index, localStorage caching with size limits
 │   ├── TokenService.js  # Extract creature info from Foundry actors (static methods)
 │   └── ScanService.js   # Directory scanning (fallback when TVA unavailable)
+├── workers/
+│   └── IndexWorker.js   # Web Worker for background index building (non-blocking)
 └── ui/
     └── UIManager.js     # Dialog generation, match selection UI, progress tracking
 ```
@@ -90,6 +92,27 @@ The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather
 // Converted to: { path, name, category } objects in tvaCacheImages[]
 ```
 
+### Web Worker Architecture
+
+Index building uses Web Workers to prevent main thread blocking:
+
+**IndexWorker.js** - Runs in background thread, processes thousands of images at full speed without UI freezing
+- Receives `indexPaths` command with image paths and categorization rules
+- Processes all paths without setTimeout yields (unlike main thread fallback)
+- Sends progress updates every 1000 items via `postMessage`
+- Returns categorized index structure when complete
+
+**IndexService** - Manages worker lifecycle and fallback
+- Initializes worker on construction: `new Worker('modules/token-replacer-fa/scripts/workers/IndexWorker.js')`
+- Uses `indexPathsWithWorker()` when worker available (non-blocking)
+- Falls back to `indexPathsDirectly()` with 10ms yields if worker unavailable
+- Properly terminates worker with `terminate()` method
+
+**Benefits:**
+- Main thread remains completely responsive during large index builds
+- Full-speed processing (no yield delays) in worker thread
+- Graceful fallback for browsers without Worker support
+
 ### Critical: CDN Path Handling
 
 `isExcludedPath()` must filter out CDN URL segments before checking EXCLUDED_FOLDERS:
@@ -98,6 +121,8 @@ The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather
 // Must skip: 'https:', 'bazaar', 'assets' (CDN structure, not actual folders)
 const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules', ...]);
 ```
+
+**Note:** This CDN filtering logic exists in BOTH IndexService.js (main thread fallback) and IndexWorker.js (worker thread)
 
 ## Version Management
 
