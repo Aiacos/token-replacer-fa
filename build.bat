@@ -43,9 +43,23 @@ echo   Module:  %MODULE_ID%
 echo   Version: %VERSION%
 echo.
 
+REM ─── Sync version to other files ───────────────────────────────────
+
+echo [1/7] Syncing version to CLAUDE.md and main.js...
+if exist "sync-version.bat" (
+    call sync-version.bat
+    if errorlevel 1 (
+        echo [ERROR] Version sync failed!
+        exit /b 1
+    )
+    echo   OK
+) else (
+    echo [WARNING] sync-version.bat not found, skipping version sync
+)
+
 REM ─── Check project files ───────────────────────────────────────────
 
-echo [1/6] Checking project files...
+echo [2/7] Checking project files...
 
 REM Required files
 set "INCLUDE_FILES=module.json"
@@ -75,13 +89,13 @@ echo   OK
 
 REM ─── Create releases directory ─────────────────────────────────────
 
-echo [2/6] Creating releases directory...
+echo [3/7] Creating releases directory...
 if not exist "releases\" mkdir releases
 echo   OK
 
 REM ─── Create temporary staging directory ────────────────────────────
 
-echo [3/6] Creating temporary staging directory...
+echo [4/7] Creating temporary staging directory...
 set "TEMP_DIR=%TEMP%\fvtt-build-%MODULE_ID%-%RANDOM%"
 mkdir "%TEMP_DIR%"
 if errorlevel 1 (
@@ -92,7 +106,7 @@ echo   OK
 
 REM ─── Stage files ───────────────────────────────────────────────────
 
-echo [4/6] Staging files for packaging...
+echo [5/7] Staging files for packaging...
 
 REM Copy files
 for %%f in (%INCLUDE_FILES%) do (
@@ -112,7 +126,7 @@ for %%d in (%INCLUDE_DIRS%) do (
 
 REM ─── Update download URL in staged module.json ────────────────────
 
-echo [5/6] Updating module.json download URL...
+echo [6/7] Updating module.json download URL...
 
 if not "%GITHUB_URL%"=="" (
     REM Use PowerShell to update the download URL
@@ -128,7 +142,7 @@ if not "%GITHUB_URL%"=="" (
 
 REM ─── Create ZIP archive ───────────────────────────────────────────
 
-echo [6/6] Creating ZIP archive...
+echo [7/7] Creating ZIP archive...
 
 REM Remove existing release file if it exists
 if exist "releases\%OUTPUT_FILE%" (

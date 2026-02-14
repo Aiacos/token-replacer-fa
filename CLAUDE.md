@@ -164,7 +164,7 @@ const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules
 3. `scripts/main.js` - Console log in `Hooks.once('init', ...)`
 
 **How It Works:**
-- `build.sh` automatically calls `sync-version.sh` before packaging
+- `build.sh` (Unix) and `build.bat` (Windows) automatically call version sync scripts before packaging
 - Developers only need to update `"version"` in `module.json`
 - Version sync runs as step 1 of the build process
 - All files remain consistent without manual updates
