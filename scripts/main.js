@@ -366,6 +366,18 @@ export class TokenReplacerApp {
         if (cacheLoaded) {
           const stats = tvaCacheService.getTVACacheStats();
           this._debugLog('TVA direct cache ready:', stats.totalImages, 'images');
+
+          // Check for empty cache
+          if (stats.totalImages === 0) {
+            const error = this._createError(
+              'tva_cache_empty',
+              'TVA cache loaded but contains 0 images',
+              ['rebuild_cache', 'check_file_access']
+            );
+            const errorHTML = await uiManager.createErrorHTML(error);
+            uiManager.updateDialogContent(errorHTML);
+            throw error;
+          }
         } else {
           console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
           this._debugLog('TVA cache load failed, using API fallback');
