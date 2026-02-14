@@ -417,14 +417,7 @@ export class IndexService {
     let allPaths = [];
 
     // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
-    if (tvaCacheImages && tvaCacheImages.length > 0) {
-      console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
-      allPaths = tvaCacheImages.map(img => ({
-        path: img.path,
-        name: img.name,
-        category: img.category
-      }));
-    }
+    allPaths = this._tryPreloadedCache(tvaCacheImages);
 
     // Method 1: Try TVA's cacheImagePaths (direct cache access)
     if (allPaths.length === 0) {
@@ -449,19 +442,6 @@ export class IndexService {
     // Method 5: Access TVA's internal cache structure directly
     if (allPaths.length === 0) {
       allPaths = this._tryInternalCache(tvaAPI);
-    }
-
-    // Method 4: Try to get paths via TVA's caching mechanism
-    if (allPaths.length === 0 && tvaAPI.cacheImages) {
-      console.log(`${MODULE_ID} | Trying TVA cacheImages inspection...`);
-      // Check if there's a way to list all cached paths
-      if (typeof tvaAPI.getAllImagePaths === 'function') {
-        try {
-          allPaths = await tvaAPI.getAllImagePaths();
-        } catch (e) {
-          console.warn(`${MODULE_ID} | getAllImagePaths failed:`, e);
-        }
-      }
     }
 
     // If we found paths in cache, index them directly
