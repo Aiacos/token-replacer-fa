@@ -169,6 +169,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
 export class UIManager {
   constructor() {
     this.mainDialog = null;
+    this.cancelCallback = null;
   }
 
   /**
@@ -787,6 +788,14 @@ export class UIManager {
   }
 
   /**
+   * Set cancel callback for ongoing operations
+   * @param {Function|null} callback - Cancel callback function
+   */
+  setCancelCallback(callback) {
+    this.cancelCallback = callback;
+  }
+
+  /**
    * Update main dialog content
    * @param {string} content - New content
    */
@@ -795,9 +804,47 @@ export class UIManager {
 
     try {
       this.mainDialog.updateContent(content);
+      this._wireCancelButton();
     } catch (e) {
       // Dialog might be in transition
     }
+  }
+
+  /**
+   * Wire up cancel button event listener
+   * @private
+   */
+  _wireCancelButton() {
+    if (!this.mainDialog) return;
+
+    const dialogEl = this.mainDialog.getDialogElement();
+    if (!dialogEl) return;
+
+    const cancelBtn = dialogEl.querySelector('.cancel-btn[data-action="cancel"]');
+    if (!cancelBtn) return;
+
+    // Remove existing listener to avoid duplicates
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    cancelBtn.replaceWith(newCancelBtn);
+
+    // Add new listener
+    newCancelBtn.addEventListener('click', async () => {
+      if (this.cancelCallback) {
+        console.log(`${MODULE_ID} | Cancel button clicked`);
+        newCancelBtn.disabled = true;
+        newCancelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelling...';
+
+        try {
+          await this.cancelCallback();
+          this.updateDialogContent(await this.createErrorHTML('Operation cancelled by user'));
+        } catch (e) {
+          console.error(`${MODULE_ID} | Error during cancellation:`, e);
+          this.updateDialogContent(await this.createErrorHTML('Error cancelling operation'));
+        }
+
+        this.cancelCallback = null;
+      }
+    });
   }
 
   /**

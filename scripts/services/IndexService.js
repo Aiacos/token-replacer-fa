@@ -122,6 +122,17 @@ export class IndexService {
   }
 
   /**
+   * Cancel the current worker operation
+   * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
+   */
+  cancelOperation() {
+    if (this.worker) {
+      this.worker.postMessage({ command: 'cancel' });
+      console.log(`${MODULE_ID} | Cancellation requested`);
+    }
+  }
+
+  /**
    * Get the configured update frequency in milliseconds
    * @returns {number} Frequency in ms
    */
@@ -867,6 +878,13 @@ export class IndexService {
             this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
             console.log(`${MODULE_ID} | Worker completed: ${imagesFound} images from ${total} paths`);
             resolve(imagesFound);
+            break;
+
+          case 'cancelled':
+            // Clean up on cancellation
+            this.worker.removeEventListener('message', messageHandler);
+            console.log(`${MODULE_ID} | Operation cancelled by user`);
+            reject(new Error('Operation cancelled'));
             break;
 
           case 'error':
