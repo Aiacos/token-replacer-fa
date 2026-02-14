@@ -218,9 +218,11 @@ export class IndexService {
   }
 
   /**
-   * Try to use pre-loaded TVA cache passed from TVACacheService (FASTEST method)
-   * @param {Array} tvaCacheImages - Pre-loaded TVA cache images
-   * @returns {Array} Array of path objects or empty array
+   * Method 0: Try to use pre-loaded TVA cache passed from TVACacheService (FASTEST method)
+   * This is the preferred fallback strategy when TVACacheService has already loaded the cache.
+   * Uses direct cache access via TVACacheService._loadTVACacheFromFile() for maximum performance.
+   * @param {Array} tvaCacheImages - Pre-loaded TVA cache images from TVACacheService.tvaCacheImages
+   * @returns {Array} Array of {path, name, category} objects, or empty array if cache not available
    * @private
    */
   _tryPreloadedCache(tvaCacheImages) {
@@ -236,9 +238,11 @@ export class IndexService {
   }
 
   /**
-   * Try to access TVA's cacheImagePaths property directly
-   * @param {Object} tvaAPI - TVA API instance
-   * @returns {Array} Array of path objects or empty array
+   * Method 1: Try to access TVA's cacheImagePaths property directly
+   * This strategy accesses the internal cacheImagePaths property if exposed by TVA.
+   * Falls back to this method when pre-loaded cache is unavailable.
+   * @param {Object} tvaAPI - TVA API instance from game.modules.get('token-variants')?.api
+   * @returns {Array} Array of {path, name, category} objects via extractPathsFromTVACache(), or empty array
    * @private
    */
   _tryCacheImagePaths(tvaAPI) {
@@ -250,9 +254,11 @@ export class IndexService {
   }
 
   /**
-   * Try to access TVA's internal cache via getSearchCache function
-   * @param {Object} tvaAPI - TVA API instance
-   * @returns {Promise<Array>} Array of path objects or empty array
+   * Method 2: Try to access TVA's internal cache via getSearchCache function
+   * This strategy calls the public getSearchCache() API method if available.
+   * Asynchronous fallback when direct property access fails.
+   * @param {Object} tvaAPI - TVA API instance from game.modules.get('token-variants')?.api
+   * @returns {Promise<Array>} Promise resolving to array of {path, name, category} objects via extractPathsFromTVACache(), or empty array on failure
    * @private
    */
   async _tryGetSearchCache(tvaAPI) {
@@ -269,10 +275,14 @@ export class IndexService {
   }
 
   /**
-   * Attempt to inspect TVA_CONFIG and globalThis for cache data (Method 3)
-   * Tries multiple sub-strategies: TVA_CONFIG inspection, searchPaths, globalThis variables
-   * @param {Object} tvaAPI - TVA API object
-   * @returns {Array} Array of path objects or empty array
+   * Method 3: Attempt to inspect TVA_CONFIG and globalThis for cache data
+   * This strategy tries multiple sub-strategies to find cache data in TVA's configuration:
+   * - 3a: Inspect TVA_CONFIG object for large arrays/Maps/objects that might contain cache
+   * - 3b: Check TVA_CONFIG.searchPaths for configured paths
+   * - 3c: Search globalThis for TVA global variables (TVA_IMAGES, TVA_CACHE, etc.)
+   * Falls back to this when TVA API methods don't expose cache directly.
+   * @param {Object} tvaAPI - TVA API instance containing TVA_CONFIG property
+   * @returns {Array} Array of {path, name, category} objects from any found cache source, or empty array
    * @private
    */
   _tryTVAConfig(tvaAPI) {
@@ -324,9 +334,12 @@ export class IndexService {
   }
 
   /**
-   * Try to access TVA cache data from Foundry game settings (Method 4)
-   * Checks multiple possible setting names where TVA might store cache data
-   * @returns {Array} Array of path objects or empty array
+   * Method 4: Try to access TVA cache data from Foundry game settings
+   * This strategy checks Foundry's game.settings storage where TVA may persist cache data.
+   * Tries multiple possible setting names: staticCache, staticCachePaths, cachedImages, imageCache, cacheData.
+   * Each setting access is wrapped in try-catch to handle missing settings gracefully.
+   * Falls back to this when TVA API and config inspection fail.
+   * @returns {Array} Array of {path, name, category} objects from game settings, or empty array if not found
    * @private
    */
   _tryGameSettings() {
@@ -364,10 +377,16 @@ export class IndexService {
   }
 
   /**
-   * Try to access TVA's internal cache structure directly (Method 5)
-   * Attempts to access various internal cache locations in TVA module
-   * @param {Object} tvaAPI - TVA API instance
-   * @returns {Array} Array of path objects or empty array
+   * Method 5: Try to access TVA's internal cache structure directly
+   * This is the last-resort strategy before falling back to doImageSearch.
+   * Attempts to access various internal/undocumented cache locations:
+   * - tvaAPI.cache, tvaAPI._cache, tvaAPI.imageCache, tvaAPI.staticCache
+   * - tvaModule.cache, tvaModule.api.cache
+   * - window.TVA.cache, window.TVA.staticCache
+   * - globalThis.TVA_CACHE
+   * Only use when all documented access methods have failed.
+   * @param {Object} tvaAPI - TVA API instance for inspecting internal properties
+   * @returns {Array} Array of {path, name, category} objects from any found internal cache, or empty array
    * @private
    */
   _tryInternalCache(tvaAPI) {
