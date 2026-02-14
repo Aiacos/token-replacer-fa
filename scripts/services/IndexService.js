@@ -39,6 +39,33 @@ export class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
+    this.worker = null;
+
+    // Initialize Web Worker if supported
+    if (typeof Worker !== 'undefined') {
+      try {
+        const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
+        this.worker = new Worker(workerPath);
+        console.log(`${MODULE_ID} | Web Worker initialized for background index building`);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
+        this.worker = null;
+      }
+    } else {
+      console.warn(`${MODULE_ID} | Web Workers not supported in this browser, using fallback method`);
+    }
+  }
+
+  /**
+   * Terminate the Web Worker and clean up resources
+   * Should be called when the IndexService is no longer needed
+   */
+  terminate() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+      console.log(`${MODULE_ID} | Web Worker terminated`);
+    }
   }
 
   /**
