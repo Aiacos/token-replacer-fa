@@ -114,7 +114,7 @@ function reportProgress(processed, total, imagesFound) {
 
 /**
  * Categorize an image based on its path and name
- * TODO: Will be implemented in subtask-1-2
+ * Determines which creature category matches best based on term frequency
  *
  * @param {string} path - Image path
  * @param {string} name - Image name
@@ -122,8 +122,30 @@ function reportProgress(processed, total, imagesFound) {
  * @returns {Object} { category, subcategories }
  */
 function categorizeImage(path, name, creatureTypeMappings) {
-  // Placeholder - will be implemented in next subtask
-  return { category: null, subcategories: [] };
+  const searchText = `${path} ${name}`.toLowerCase();
+  let bestCategory = null;
+  let subcategories = [];
+  let maxMatches = 0;
+
+  for (const [category, terms] of Object.entries(creatureTypeMappings)) {
+    let matches = 0;
+    const matchedTerms = [];
+
+    for (const term of terms) {
+      if (searchText.includes(term.toLowerCase())) {
+        matches++;
+        matchedTerms.push(term);
+      }
+    }
+
+    if (matches > maxMatches) {
+      maxMatches = matches;
+      bestCategory = category;
+      subcategories = matchedTerms;
+    }
+  }
+
+  return { category: bestCategory, subcategories };
 }
 
 /**
