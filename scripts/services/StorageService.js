@@ -1,0 +1,488 @@
+/**
+ * Token Replacer FA - Storage Service
+ * IndexedDB wrapper for token index storage
+ * Features: Automatic connection management, version control, localStorage fallback
+ * @module services/StorageService
+ */
+
+import { MODULE_ID } from '../core/Constants.js';
+
+const DB_NAME = 'token-replacer-fa';
+const DB_VERSION = 1;
+const STORE_NAME = 'index';
+
+/**
+ * StorageService - IndexedDB wrapper with localStorage fallback
+ * Provides async storage API for token index data
+ * Handles connection pooling to avoid repeated database open calls
+ */
+export class StorageService {
+  constructor() {
+    this.db = null;
+    this.dbPromise = null;
+    this.isIndexedDBSupported = this.checkIndexedDBSupport();
+
+    if (!this.isIndexedDBSupported) {
+      console.warn(`${MODULE_ID} | IndexedDB not supported, falling back to localStorage`);
+    }
+  }
+
+  /**
+   * Check if IndexedDB is supported in this browser
+   * @private
+   * @returns {boolean} True if IndexedDB is available
+   */
+  checkIndexedDBSupport() {
+    try {
+      return typeof window !== 'undefined' &&
+             typeof window.indexedDB !== 'undefined' &&
+             window.indexedDB !== null;
+    } catch (error) {
+      console.warn(`${MODULE_ID} | IndexedDB support check failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Open IndexedDB connection with connection pooling
+   * Reuses existing connection if already open
+   * @private
+   * @returns {Promise<IDBDatabase>} Database instance
+   */
+  async openDatabase() {
+    // Return cached connection if available
+    if (this.db) {
+      return this.db;
+    }
+
+    // Return pending connection if already opening
+    if (this.dbPromise) {
+      return this.dbPromise;
+    }
+
+    // Create new connection
+    this.dbPromise = new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = () => {
+        const error = request.error;
+        console.error(`${MODULE_ID} | Failed to open IndexedDB:`, error);
+        this.dbPromise = null;
+        reject(error);
+      };
+
+      request.onsuccess = () => {
+        this.db = request.result;
+        console.log(`${MODULE_ID} | IndexedDB connection opened successfully`);
+
+        // Handle unexpected close events
+        this.db.onclose = () => {
+          console.warn(`${MODULE_ID} | IndexedDB connection closed unexpectedly`);
+          this.db = null;
+          this.dbPromise = null;
+        };
+
+        // Handle version change (if database is deleted in another tab)
+        this.db.onversionchange = () => {
+          console.warn(`${MODULE_ID} | IndexedDB version change detected, closing connection`);
+          this.db.close();
+          this.db = null;
+          this.dbPromise = null;
+        };
+
+        resolve(this.db);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+
+        // Create object store if it doesn't exist
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
+        }
+      };
+
+      request.onblocked = () => {
+        console.warn(`${MODULE_ID} | IndexedDB open request blocked - close other tabs or wait`);
+      };
+    });
+
+    try {
+      const db = await this.dbPromise;
+      return db;
+    } catch (error) {
+      this.dbPromise = null;
+      throw error;
+    }
+  }
+
+  /**
+   * Test database connection
+   * Useful for verification and debugging
+   * @returns {Promise<boolean>} True if connection successful
+   */
+  async testConnection() {
+    try {
+      if (!this.isIndexedDBSupported) {
+        console.log(`${MODULE_ID} | IndexedDB not supported, using localStorage fallback`);
+        return true; // localStorage fallback is always available
+      }
+
+      const db = await this.openDatabase();
+      console.log(`${MODULE_ID} | Database connection test successful`);
+      console.log(`${MODULE_ID} | Database name: ${db.name}, version: ${db.version}`);
+      console.log(`${MODULE_ID} | Object stores:`, Array.from(db.objectStoreNames));
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | Database connection test failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Save data to storage (IndexedDB or localStorage fallback)
+   * @param {string} key - Storage key (used as record ID)
+   * @param {*} data - Data to store (must be serializable to JSON)
+   * @returns {Promise<boolean>} True if saved successfully
+   */
+  async save(key, data) {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Prepare data with id (keyPath)
+        const record = {
+          id: key,
+          data: data,
+          timestamp: Date.now()
+        };
+
+        // Put data into object store
+        const request = objectStore.put(record);
+
+        // Wait for transaction to complete
+        await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            console.log(`${MODULE_ID} | Saved to IndexedDB: ${key}`);
+            resolve();
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to save to IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        return true;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB save failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback
+    try {
+      const json = JSON.stringify({
+        data: data,
+        timestamp: Date.now()
+      });
+
+      // Check size limit (~5MB for localStorage)
+      if (json.length > 4.5 * 1024 * 1024) {
+        console.warn(`${MODULE_ID} | Data too large for localStorage (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
+        return false;
+      }
+
+      localStorage.setItem(key, json);
+      console.log(`${MODULE_ID} | Saved to localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`);
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage save failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Load data from storage (IndexedDB or localStorage fallback)
+   * @param {string} key - Storage key (used as record ID)
+   * @returns {Promise<*>} Stored data, or null if not found
+   */
+  async load(key) {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Get data from object store
+        const request = objectStore.get(key);
+
+        // Wait for request to complete
+        const record = await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            resolve(request.result);
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to load from IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        if (record) {
+          console.log(`${MODULE_ID} | Loaded from IndexedDB: ${key}`);
+          return record.data;
+        }
+
+        console.log(`${MODULE_ID} | No data found in IndexedDB: ${key}`);
+        return null;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB load failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback
+    try {
+      const json = localStorage.getItem(key);
+      if (!json) {
+        console.log(`${MODULE_ID} | No data found in localStorage: ${key}`);
+        return null;
+      }
+
+      const record = JSON.parse(json);
+      console.log(`${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`);
+      return record.data;
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to load from localStorage:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Remove data from storage (IndexedDB or localStorage fallback)
+   * @param {string} key - Storage key to remove
+   * @returns {Promise<boolean>} True if removed successfully
+   */
+  async remove(key) {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Delete data from object store
+        const request = objectStore.delete(key);
+
+        // Wait for transaction to complete
+        await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            console.log(`${MODULE_ID} | Removed from IndexedDB: ${key}`);
+            resolve();
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to remove from IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        return true;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB remove failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback
+    try {
+      localStorage.removeItem(key);
+      console.log(`${MODULE_ID} | Removed from localStorage: ${key}`);
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage remove failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Clear all data from storage (IndexedDB or localStorage fallback)
+   * @returns {Promise<boolean>} True if cleared successfully
+   */
+  async clear() {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Clear all data from object store
+        const request = objectStore.clear();
+
+        // Wait for transaction to complete
+        await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            console.log(`${MODULE_ID} | Cleared all data from IndexedDB`);
+            resolve();
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to clear IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        return true;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB clear failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback - only clear module-specific keys
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('token-replacer-fa')) {
+          keysToRemove.push(key);
+        }
+      }
+
+      for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+      }
+
+      console.log(`${MODULE_ID} | Cleared ${keysToRemove.length} keys from localStorage`);
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage clear failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if migration from localStorage to IndexedDB is needed
+   * Migration is needed when:
+   * 1. Old data exists in localStorage
+   * 2. New storage location is empty
+   * @param {string} oldKey - localStorage key to check
+   * @param {string} newKey - IndexedDB/storage key to check
+   * @returns {Promise<boolean>} True if migration is needed
+   */
+  async needsMigration(oldKey, newKey) {
+    try {
+      // Check if old localStorage data exists
+      const hasLocalStorageData = localStorage.getItem(oldKey) !== null;
+
+      if (!hasLocalStorageData) {
+        console.log(`${MODULE_ID} | No migration needed: no localStorage data found for key "${oldKey}"`);
+        return false;
+      }
+
+      // Check if new storage location is empty
+      const newData = await this.load(newKey);
+      const hasNewData = newData !== null;
+
+      if (hasNewData) {
+        console.log(`${MODULE_ID} | No migration needed: data already exists in new storage for key "${newKey}"`);
+        return false;
+      }
+
+      // Migration needed: old data exists but new storage is empty
+      console.log(`${MODULE_ID} | Migration needed: localStorage data found for "${oldKey}", but "${newKey}" is empty in IndexedDB`);
+      return true;
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Error checking migration status:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Migrate data from localStorage to IndexedDB/new storage
+   * @param {string} oldKey - localStorage key to migrate from
+   * @param {string} newKey - Storage key to migrate to
+   * @returns {Promise<boolean>} True if migration succeeded, false otherwise
+   */
+  async migrateFromLocalStorage(oldKey, newKey) {
+    try {
+      console.log(`${MODULE_ID} | Starting migration from localStorage "${oldKey}" to storage "${newKey}"`);
+
+      // Read data from localStorage
+      const json = localStorage.getItem(oldKey);
+      if (!json) {
+        console.warn(`${MODULE_ID} | Migration failed: no data found in localStorage for key "${oldKey}"`);
+        return false;
+      }
+
+      // Parse JSON wrapper {data, timestamp}
+      const record = JSON.parse(json);
+      if (!record || !record.data) {
+        console.warn(`${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`);
+        return false;
+      }
+
+      const dataSize = (json.length / 1024).toFixed(0);
+      console.log(`${MODULE_ID} | Migrating ${dataSize}KB of data from localStorage to IndexedDB...`);
+
+      // Save to new storage (IndexedDB or localStorage fallback)
+      const success = await this.save(newKey, record.data);
+
+      if (success) {
+        console.log(`${MODULE_ID} | Migration successful: ${dataSize}KB migrated from "${oldKey}" to "${newKey}"`);
+        console.log(`${MODULE_ID} | Note: Original localStorage data kept as backup`);
+        return true;
+      } else {
+        console.warn(`${MODULE_ID} | Migration failed: could not save data to new storage`);
+        return false;
+      }
+    } catch (error) {
+      console.error(`${MODULE_ID} | Migration failed with error:`, error);
+      console.log(`${MODULE_ID} | Continuing with empty cache - index will rebuild automatically`);
+      return false;
+    }
+  }
+
+  /**
+   * Close database connection
+   * Should be called when service is no longer needed
+   */
+  close() {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+      this.dbPromise = null;
+      console.log(`${MODULE_ID} | IndexedDB connection closed`);
+    }
+  }
+}
+
+// Export singleton instance
+export const storageService = new StorageService();

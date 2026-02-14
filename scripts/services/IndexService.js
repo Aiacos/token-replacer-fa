@@ -7,6 +7,7 @@
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
+import { storageService } from './StorageService.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
 const INDEX_VERSION = 14;  // v2.10.0: Added termIndex for O(1) search term lookups
@@ -172,20 +173,24 @@ export class IndexService {
   }
 
   /**
-   * Load index from localStorage
-   * @returns {boolean} True if loaded successfully
+   * Load index from storage
+   * @returns {Promise<boolean>} True if loaded successfully
    */
-  loadFromCache() {
+  async loadFromCache() {
     try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (!cached) return false;
+      // Check for migration from localStorage to IndexedDB
+      if (await storageService.needsMigration(CACHE_KEY, CACHE_KEY)) {
+        console.log(`${MODULE_ID} | Detected localStorage cache, migrating to IndexedDB...`);
+        await storageService.migrateFromLocalStorage(CACHE_KEY, CACHE_KEY);
+      }
 
-      const data = JSON.parse(cached);
+      const data = await storageService.load(CACHE_KEY);
+      if (!data) return false;
 
       // Version check
       if (data.version !== INDEX_VERSION) {
         console.log(`${MODULE_ID} | Index version mismatch, rebuilding`);
-        localStorage.removeItem(CACHE_KEY);
+        await storageService.remove(CACHE_KEY);
         return false;
       }
 
@@ -194,27 +199,22 @@ export class IndexService {
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to load cache:`, error);
-      localStorage.removeItem(CACHE_KEY);
+      await storageService.remove(CACHE_KEY);
       return false;
     }
   }
 
   /**
-   * Save index to localStorage
-   * @returns {boolean} True if saved successfully
+   * Save index to storage
+   * @returns {Promise<boolean>} True if saved successfully
    */
-  saveToCache() {
+  async saveToCache() {
     try {
       const json = JSON.stringify(this.index);
+      const sizeKB = (json.length / 1024).toFixed(0);
 
-      // Check size limit (~5MB for localStorage)
-      if (json.length > 4.5 * 1024 * 1024) {
-        console.warn(`${MODULE_ID} | Index too large for cache (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
-        return false;
-      }
-
-      localStorage.setItem(CACHE_KEY, json);
-      console.log(`${MODULE_ID} | Saved index to cache (${(json.length / 1024).toFixed(0)}KB)`);
+      await storageService.save(CACHE_KEY, this.index);
+      console.log(`${MODULE_ID} | Saved index to cache (${sizeKB}KB)`);
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to save cache:`, error);
@@ -984,7 +984,7 @@ export class IndexService {
       console.log(`${MODULE_ID} | Starting index build...`);
 
       // Try to load from cache first
-      if (!forceRebuild && this.loadFromCache()) {
+      if (!forceRebuild && await this.loadFromCache()) {
         // Check if update is needed
         if (!this.needsUpdate()) {
           this.isBuilt = true;
@@ -1005,7 +1005,7 @@ export class IndexService {
 
       if (totalImages > 0) {
         this.index.lastUpdate = Date.now();
-        this.saveToCache();
+        await this.saveToCache();
         this.isBuilt = true;
 
         const stats = this.getStats();
@@ -1211,11 +1211,11 @@ export class IndexService {
   /**
    * Clear the index
    */
-  clear() {
+  async clear() {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
-    localStorage.removeItem(CACHE_KEY);
+    await storageService.remove(CACHE_KEY);
     console.log(`${MODULE_ID} | Index cleared`);
   }
 
@@ -1225,7 +1225,7 @@ export class IndexService {
    * @returns {Promise<boolean>}
    */
   async forceRebuild(onProgress = null) {
-    this.clear();
+    await this.clear();
     return this.build(true, onProgress);
   }
 }
