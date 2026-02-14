@@ -835,25 +835,36 @@ export class IndexService {
   }
 
   /**
-   * Search by term across all categories
+   * Search by term across all categories using O(1) termIndex lookup
    * @param {string} term - Search term
    * @returns {Array} Matching images
    */
   search(term) {
-    if (!this.isBuilt || !this.index?.allPaths) return [];
+    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) return [];
 
     const termLower = term.toLowerCase();
+    const tokens = this.tokenizeSearchText(termLower);
+    const seenPaths = new Set();
     const results = [];
 
-    for (const [path, data] of Object.entries(this.index.allPaths)) {
-      const searchText = `${path} ${data.name} ${data.subcategories?.join(' ') || ''}`.toLowerCase();
-      if (searchText.includes(termLower)) {
-        results.push({
-          path,
-          name: data.name,
-          source: 'index',
-          category: data.category
-        });
+    // O(1) lookup in termIndex for each token
+    for (const token of tokens) {
+      const paths = this.index.termIndex[token];
+      if (paths) {
+        for (const path of paths) {
+          if (!seenPaths.has(path)) {
+            seenPaths.add(path);
+            const data = this.index.allPaths[path];
+            if (data) {
+              results.push({
+                path,
+                name: data.name,
+                source: 'index',
+                category: data.category
+              });
+            }
+          }
+        }
       }
     }
 
