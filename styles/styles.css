@@ -183,7 +183,7 @@
   color: #666;
 }
 
-.token-replacer-fa-search-filter .clear-search {
+.token-replacer-fa-search-filter .search-clear-btn {
   position: absolute;
   right: 12px;
   color: #666;
@@ -195,13 +195,13 @@
   pointer-events: none;
 }
 
-.token-replacer-fa-search-filter .clear-search.visible {
+.token-replacer-fa-search-filter .search-clear-btn.visible {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
 
-.token-replacer-fa-search-filter .clear-search:hover {
+.token-replacer-fa-search-filter .search-clear-btn:hover {
   color: #e0e0e0;
   transform: scale(1.1);
 }
