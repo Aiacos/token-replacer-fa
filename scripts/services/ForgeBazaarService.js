@@ -25,6 +25,11 @@
 
 import { MODULE_ID } from '../core/Constants.js';
 
+const CACHE_KEY = 'token-replacer-fa-bazaar-cache';
+const CACHE_VERSION = 1;
+const SEARCH_CACHE_TTL = 5 * 60 * 1000; // 5 minutes for search results
+const CATEGORY_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours for category results
+
 /**
  * ForgeBazaarService - Stub for potential future Forge Bazaar API integration
  *
@@ -37,17 +42,15 @@ export class ForgeBazaarService {
     this.hasForgeVTT = false;
     this.forgeAPI = null;
 
-    // Cache for potential future implementation
-    this.cache = {
-      categories: {},
-      searchResults: new Map(),
-      lastUpdate: null
-    };
+    // In-memory cache for fast access (loaded from localStorage)
+    this.categoryCache = {}; // { category: { timestamp, results: [] } }
+    this.searchCache = new Map(); // Map<searchTerm, { timestamp, results: [] }>
+    this.cacheLoaded = false;
   }
 
   /**
    * Initialize the Forge Bazaar service
-   * Checks for ForgeVTT module availability
+   * Checks for ForgeVTT module availability and loads cache
    */
   init() {
     // Check if ForgeVTT module is installed
@@ -61,10 +64,164 @@ export class ForgeBazaarService {
     // Note: Even with ForgeVTT, we cannot browse Bazaar without authentication
     this.isAvailable = false; // Always false - no public API available
 
+    // Load cache from localStorage
+    this.loadCache();
+
     console.log(`${MODULE_ID} | ForgeBazaarService initialized (STUB)`);
     console.log(`${MODULE_ID} | ForgeVTT module: ${this.hasForgeVTT ? 'installed' : 'not found'}`);
     console.log(`${MODULE_ID} | game.forge API: ${this.forgeAPI ? 'available' : 'not available'}`);
     console.log(`${MODULE_ID} | ⚠️ Direct Bazaar browsing API not available - use TVA integration instead`);
+  }
+
+  /**
+   * Load cache from localStorage
+   * @returns {boolean} True if cache loaded successfully
+   */
+  loadCache() {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) {
+        this.cacheLoaded = false;
+        return false;
+      }
+
+      const data = JSON.parse(cached);
+
+      // Version check
+      if (data.version !== CACHE_VERSION) {
+        console.log(`${MODULE_ID} | Bazaar cache version mismatch, clearing`);
+        localStorage.removeItem(CACHE_KEY);
+        this.cacheLoaded = false;
+        return false;
+      }
+
+      // Load category cache
+      this.categoryCache = data.categoryCache || {};
+
+      // Clear expired category entries
+      const now = Date.now();
+      for (const [category, entry] of Object.entries(this.categoryCache)) {
+        if (!entry.timestamp || (now - entry.timestamp) > CATEGORY_CACHE_TTL) {
+          delete this.categoryCache[category];
+        }
+      }
+
+      this.cacheLoaded = true;
+      const validCategories = Object.keys(this.categoryCache).length;
+      console.log(`${MODULE_ID} | Loaded Bazaar cache from localStorage: ${validCategories} categories`);
+      return true;
+
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to load Bazaar cache:`, error);
+      localStorage.removeItem(CACHE_KEY);
+      this.cacheLoaded = false;
+      return false;
+    }
+  }
+
+  /**
+   * Save cache to localStorage
+   * Only persists category cache (search cache is transient)
+   * @returns {boolean} True if saved successfully
+   */
+  saveCache() {
+    try {
+      const cacheData = {
+        version: CACHE_VERSION,
+        timestamp: Date.now(),
+        categoryCache: this.categoryCache
+      };
+
+      const json = JSON.stringify(cacheData);
+
+      // Check size limit (~4.5MB for localStorage, same as IndexService)
+      if (json.length > 4.5 * 1024 * 1024) {
+        console.warn(`${MODULE_ID} | Bazaar cache too large for localStorage (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
+        return false;
+      }
+
+      localStorage.setItem(CACHE_KEY, json);
+      console.log(`${MODULE_ID} | Saved Bazaar cache to localStorage (${(json.length / 1024).toFixed(0)}KB)`);
+      return true;
+
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to save Bazaar cache:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a category result is cached and still valid
+   * @param {string} category - Category name
+   * @returns {boolean} True if valid cached result exists
+   */
+  isCategoryCached(category) {
+    const entry = this.categoryCache[category];
+    if (!entry || !entry.timestamp) return false;
+
+    const age = Date.now() - entry.timestamp;
+    return age < CATEGORY_CACHE_TTL;
+  }
+
+  /**
+   * Check if a search result is cached and still valid
+   * @param {string} searchTerm - Search term
+   * @returns {boolean} True if valid cached result exists
+   */
+  isSearchCached(searchTerm) {
+    const entry = this.searchCache.get(searchTerm);
+    if (!entry || !entry.timestamp) return false;
+
+    const age = Date.now() - entry.timestamp;
+    return age < SEARCH_CACHE_TTL;
+  }
+
+  /**
+   * Get cached category results if available and valid
+   * @param {string} category - Category name
+   * @returns {Array|null} Cached results or null if not cached/expired
+   */
+  getCachedCategory(category) {
+    if (!this.isCategoryCached(category)) return null;
+    return this.categoryCache[category].results || [];
+  }
+
+  /**
+   * Get cached search results if available and valid
+   * @param {string} searchTerm - Search term
+   * @returns {Array|null} Cached results or null if not cached/expired
+   */
+  getCachedSearch(searchTerm) {
+    if (!this.isSearchCached(searchTerm)) return null;
+    const entry = this.searchCache.get(searchTerm);
+    return entry?.results || [];
+  }
+
+  /**
+   * Cache category browse results
+   * @param {string} category - Category name
+   * @param {Array} results - Results to cache
+   */
+  cacheCategory(category, results) {
+    this.categoryCache[category] = {
+      timestamp: Date.now(),
+      results: results || []
+    };
+
+    // Persist to localStorage (async to avoid blocking)
+    setTimeout(() => this.saveCache(), 100);
+  }
+
+  /**
+   * Cache search results (in-memory only, not persisted)
+   * @param {string} searchTerm - Search term
+   * @param {Array} results - Results to cache
+   */
+  cacheSearch(searchTerm, results) {
+    this.searchCache.set(searchTerm, {
+      timestamp: Date.now(),
+      results: results || []
+    });
   }
 
   /**
@@ -79,11 +236,19 @@ export class ForgeBazaarService {
    * Browse Forge Bazaar tokens by category
    *
    * STUB: Not implemented - no public API available
+   * Demonstrates caching pattern for when API becomes available
    *
    * @param {string} category - Category to browse (e.g., "undead", "humanoid")
-   * @returns {Promise<Array>} Empty array (no implementation)
+   * @returns {Promise<Array>} Cached results if available, otherwise empty array
    */
   async browseCategory(category) {
+    // Check cache first (fast path)
+    const cached = this.getCachedCategory(category);
+    if (cached !== null) {
+      console.log(`${MODULE_ID} | ForgeBazaarService.browseCategory('${category}'): Using cache (${cached.length} results)`);
+      return cached;
+    }
+
     if (!this.isAvailable) {
       console.warn(`${MODULE_ID} | ForgeBazaarService.browseCategory: Service not available`);
       return [];
@@ -94,9 +259,12 @@ export class ForgeBazaarService {
     // 1. Map creature category to Bazaar package/tags
     // 2. Call Forge API endpoint to list tokens
     // 3. Parse and normalize results
-    // 4. Cache results locally
+    // 4. Cache results using this.cacheCategory(category, results)
 
     console.warn(`${MODULE_ID} | ForgeBazaarService.browseCategory('${category}'): Not implemented - no public API`);
+
+    // Cache the empty result to avoid repeated warnings
+    this.cacheCategory(category, []);
     return [];
   }
 
@@ -104,11 +272,19 @@ export class ForgeBazaarService {
    * Search Forge Bazaar tokens by term
    *
    * STUB: Not implemented - no public API available
+   * Demonstrates caching pattern for when API becomes available
    *
    * @param {string} searchTerm - Term to search for
-   * @returns {Promise<Array>} Empty array (no implementation)
+   * @returns {Promise<Array>} Cached results if available, otherwise empty array
    */
   async search(searchTerm) {
+    // Check cache first (fast path)
+    const cached = this.getCachedSearch(searchTerm);
+    if (cached !== null) {
+      console.log(`${MODULE_ID} | ForgeBazaarService.search('${searchTerm}'): Using cache (${cached.length} results)`);
+      return cached;
+    }
+
     if (!this.isAvailable) {
       console.warn(`${MODULE_ID} | ForgeBazaarService.search: Service not available`);
       return [];
@@ -119,9 +295,12 @@ export class ForgeBazaarService {
     // 1. Call Forge search endpoint with term
     // 2. Filter results to FA content only
     // 3. Parse and normalize results
-    // 4. Cache results locally
+    // 4. Cache results using this.cacheSearch(searchTerm, results)
 
     console.warn(`${MODULE_ID} | ForgeBazaarService.search('${searchTerm}'): Not implemented - no public API`);
+
+    // Cache the empty result to avoid repeated warnings (5 min TTL)
+    this.cacheSearch(searchTerm, []);
     return [];
   }
 
@@ -150,25 +329,57 @@ export class ForgeBazaarService {
   }
 
   /**
-   * Clear local cache
+   * Clear all caches (both memory and localStorage)
    */
   clearCache() {
-    this.cache.categories = {};
-    this.cache.searchResults.clear();
-    this.cache.lastUpdate = null;
+    this.categoryCache = {};
+    this.searchCache.clear();
+    this.cacheLoaded = false;
+    localStorage.removeItem(CACHE_KEY);
     console.log(`${MODULE_ID} | ForgeBazaarService cache cleared`);
   }
 
   /**
    * Get cache statistics
-   * @returns {Object} Cache stats
+   * @returns {Object} Cache stats including TTL info
    */
   getCacheStats() {
+    const now = Date.now();
+    let validCategories = 0;
+    let expiredCategories = 0;
+
+    for (const [category, entry] of Object.entries(this.categoryCache)) {
+      if (entry.timestamp && (now - entry.timestamp) < CATEGORY_CACHE_TTL) {
+        validCategories++;
+      } else {
+        expiredCategories++;
+      }
+    }
+
+    let validSearches = 0;
+    let expiredSearches = 0;
+
+    for (const [term, entry] of this.searchCache.entries()) {
+      if (entry.timestamp && (now - entry.timestamp) < SEARCH_CACHE_TTL) {
+        validSearches++;
+      } else {
+        expiredSearches++;
+      }
+    }
+
     return {
-      categoriesCount: Object.keys(this.cache.categories).length,
-      searchResultsCount: this.cache.searchResults.size,
-      lastUpdate: this.cache.lastUpdate,
-      isAvailable: this.isAvailable
+      cacheLoaded: this.cacheLoaded,
+      isAvailable: this.isAvailable,
+      categoryCache: {
+        valid: validCategories,
+        expired: expiredCategories,
+        ttl: `${CATEGORY_CACHE_TTL / 1000 / 60 / 60}h`
+      },
+      searchCache: {
+        valid: validSearches,
+        expired: expiredSearches,
+        ttl: `${SEARCH_CACHE_TTL / 1000 / 60}min`
+      }
     };
   }
 }
