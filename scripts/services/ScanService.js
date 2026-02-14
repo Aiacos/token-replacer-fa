@@ -5,7 +5,7 @@
  */
 
 import { MODULE_ID, MAX_SCAN_DEPTH } from '../core/Constants.js';
-import { yieldToMain, isExcludedPath } from '../core/Utils.js';
+import { yieldToMain, isExcludedPath, sanitizePath } from '../core/Utils.js';
 
 /**
  * ScanService class for directory scanning operations
@@ -25,7 +25,9 @@ export class ScanService {
     // Get additional paths from settings
     const additionalPathsSetting = game.settings.get(MODULE_ID, 'additionalPaths') || '';
     if (additionalPathsSetting) {
-      const additionalPaths = additionalPathsSetting.split(',').map(p => p.trim()).filter(p => p);
+      const additionalPaths = additionalPathsSetting.split(',')
+        .map(p => sanitizePath(p))
+        .filter(p => p !== null);
       paths.push(...additionalPaths);
     }
 
