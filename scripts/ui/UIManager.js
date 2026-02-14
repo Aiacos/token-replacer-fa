@@ -421,10 +421,27 @@ export class UIManager {
 
       // Setup search filter
       const searchInput = container.querySelector('.search-filter-input');
+      const searchClearBtn = container.querySelector('.search-clear-btn');
       const visibleCountEl = container.querySelector('.visible-count');
       if (searchInput) {
         let debounceTimer = null;
+
+        // Toggle clear button visibility based on input value
+        const toggleClearButton = () => {
+          if (searchClearBtn) {
+            if (searchInput.value.trim().length > 0) {
+              searchClearBtn.classList.add('visible');
+            } else {
+              searchClearBtn.classList.remove('visible');
+            }
+          }
+        };
+
+        // Initial state - hide clear button if input is empty
+        toggleClearButton();
+
         searchInput.addEventListener('input', () => {
+          toggleClearButton();
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             const filterTerms = parseFilterTerms(searchInput.value);
@@ -455,6 +472,15 @@ export class UIManager {
             updateSelectionCount();
           }, 150);
         });
+
+        // Clear button click handler
+        if (searchClearBtn) {
+          searchClearBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.focus();
+          });
+        }
       }
 
       // Handle mode toggle buttons
@@ -649,8 +675,25 @@ export class UIManager {
 
         // Setup category filter with AND logic
         if (categorySearchInput) {
+          const categoryClearBtn = container.querySelector('.category-filter .search-clear-btn');
           let debounceTimer = null;
+
+          // Toggle clear button visibility based on input value
+          const toggleClearButton = () => {
+            if (categoryClearBtn) {
+              if (categorySearchInput.value.trim().length > 0) {
+                categoryClearBtn.classList.add('visible');
+              } else {
+                categoryClearBtn.classList.remove('visible');
+              }
+            }
+          };
+
+          // Initial state - hide clear button if input is empty
+          toggleClearButton();
+
           categorySearchInput.addEventListener('input', () => {
+            toggleClearButton();
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
               const filterTerms = parseFilterTerms(categorySearchInput.value);
@@ -681,6 +724,15 @@ export class UIManager {
               updateSelectionCount();
             }, 150);
           });
+
+          // Clear button click handler
+          if (categoryClearBtn) {
+            categoryClearBtn.addEventListener('click', () => {
+              categorySearchInput.value = '';
+              categorySearchInput.dispatchEvent(new Event('input'));
+              categorySearchInput.focus();
+            });
+          }
         }
       };
 
