@@ -220,7 +220,7 @@ export class IndexService {
   /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
-   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from SearchService
+   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
    * @returns {Promise<number>} Number of images indexed
    */
   async buildFromTVA(onProgress = null, tvaCacheImages = null) {
@@ -235,7 +235,7 @@ export class IndexService {
     // Try to read TVA cache directly (much faster than doImageSearch)
     let allPaths = [];
 
-    // Method 0 (FASTEST): Use pre-loaded cache passed from SearchService
+    // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
     if (tvaCacheImages && tvaCacheImages.length > 0) {
       console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
       allPaths = tvaCacheImages.map(img => ({
@@ -680,7 +680,7 @@ export class IndexService {
    * Build or update the index
    * @param {boolean} forceRebuild - Force full rebuild
    * @param {Function} onProgress - Progress callback
-   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from SearchService
+   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
    * @returns {Promise<boolean>} True if successful
    */
   async build(forceRebuild = false, onProgress = null, tvaCacheImages = null) {
