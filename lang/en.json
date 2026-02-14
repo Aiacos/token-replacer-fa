@@ -45,6 +45,10 @@
       "indexUpdateFrequency": {
         "name": "Index Update Frequency",
         "hint": "How often to automatically update the token image index from TVA/FA Nexus. Default: Weekly"
+      },
+      "debugMode": {
+        "name": "Debug Mode",
+        "hint": "Enable detailed console logging for troubleshooting. Logs search details, timing, and errors. Default: Off"
       }
     },
     "frequency": {
@@ -98,6 +102,38 @@
       "indexingComplete": "Index ready! {count} images indexed for fast search.",
       "fuseLoadFailed": "Failed to load search library. Check console for details.",
       "processingError": "Token Replacer FA encountered an error: {error}. Check console for details."
+    },
+    "errors": {
+      "tva_missing": "Token Variant Art module is not installed or enabled",
+      "tva_cache_empty": "Token Variant Art cache is empty",
+      "tva_cache_disabled": "Token Variant Art static cache is disabled",
+      "tva_still_caching": "Token Variant Art is still building its cache",
+      "cache_load_failed": "Failed to load Token Variant Art cache",
+      "network_error": "Network error while accessing token images",
+      "file_access_error": "Unable to access token image files",
+      "invalid_paths": "One or more search paths are invalid",
+      "fuse_load_failed": "Failed to load Fuse.js search library",
+      "index_build_failed": "Failed to build token search index",
+      "localStorage_full": "Browser storage is full, cannot cache index",
+      "worker_failed": "Background indexing worker failed",
+      "unknown": "An unexpected error occurred",
+      "no_tokens_selected": "No tokens selected",
+      "search_timeout": "Search operation timed out",
+      "invalid_search_term": "Invalid search term provided"
+    },
+    "recovery": {
+      "install_tva": "Install and enable the Token Variant Art module from Foundry VTT's module manager",
+      "rebuild_cache": "Open Token Variant Art settings and rebuild the image cache",
+      "enable_static_cache": "Enable 'Store Mappings to Cache' in Token Variant Art settings",
+      "wait_for_cache": "Wait a few minutes for Token Variant Art to finish building its cache, then try again",
+      "check_network": "Check your network connection and try again",
+      "check_file_access": "Verify that token image directories are accessible and permissions are correct",
+      "check_paths": "Verify additional search paths in module settings are valid directories",
+      "reload_module": "Try reloading the module or refreshing the page",
+      "check_console": "Check the browser console (F12) for detailed error information",
+      "clear_storage": "Clear browser localStorage or disable index caching in settings",
+      "disable_worker": "If the issue persists, the module will fallback to main thread indexing",
+      "contact_support": "If the problem continues, please report this issue on GitHub with console logs"
     }
   }
 }
