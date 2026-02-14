@@ -5,7 +5,7 @@
  * @module services/IndexService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
@@ -41,6 +41,21 @@ export class IndexService {
     this.isBuilt = false;
     this.buildPromise = null;
     this.termCategoryMap = this.buildTermCategoryMap();
+    this.worker = null;
+
+    // Initialize Web Worker if supported
+    if (typeof Worker !== 'undefined') {
+      try {
+        const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
+        this.worker = new Worker(workerPath);
+        console.log(`${MODULE_ID} | Web Worker initialized for background index building`);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
+        this.worker = null;
+      }
+    } else {
+      console.warn(`${MODULE_ID} | Web Workers not supported in this browser, using fallback method`);
+    }
   }
 
   /**
@@ -60,6 +75,18 @@ export class IndexService {
     }
 
     return map;
+  }
+
+  /**
+   * Terminate the Web Worker and clean up resources
+   * Should be called when the IndexService is no longer needed
+   */
+  terminate() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+      console.log(`${MODULE_ID} | Web Worker terminated`);
+    }
   }
 
   /**
@@ -534,7 +561,15 @@ export class IndexService {
     // If we found paths in cache, index them directly
     if (allPaths.length > 0) {
       console.log(`${MODULE_ID} | Found ${allPaths.length} paths in TVA cache, indexing...`);
-      return this.indexPathsDirectly(allPaths, onProgress);
+
+      // Use Web Worker if available, otherwise fallback to direct indexing
+      if (this.worker) {
+        console.log(`${MODULE_ID} | Using Web Worker for background index building`);
+        return this.indexPathsWithWorker(allPaths, onProgress);
+      } else {
+        console.log(`${MODULE_ID} | Using fallback method (main thread with yields)`);
+        return this.indexPathsDirectly(allPaths, onProgress);
+      }
     }
 
     // Fallback: Log available TVA API methods to find the cache
@@ -653,6 +688,72 @@ export class IndexService {
     return str.includes('/') || str.startsWith('http') || str.startsWith('forge://') ||
            str.endsWith('.webp') || str.endsWith('.png') || str.endsWith('.jpg') ||
            str.endsWith('.jpeg') || str.endsWith('.gif') || str.endsWith('.svg');
+  }
+
+  /**
+   * Index an array of paths using the Web Worker
+   * Runs in background without blocking the main thread
+   * @param {Array} paths - Array of image paths or {path, name} objects
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<number>} Number of images indexed
+   */
+  async indexPathsWithWorker(paths, onProgress = null) {
+    if (!this.worker) {
+      throw new Error('Web Worker not available');
+    }
+
+    return new Promise((resolve, reject) => {
+      // Create a unique message handler for this indexing operation
+      const messageHandler = (event) => {
+        const { type, processed, total, imagesFound, result, message, stack } = event.data;
+
+        switch (type) {
+          case 'progress':
+            // Call progress callback with worker's progress update
+            if (onProgress) {
+              onProgress(processed, total, imagesFound);
+            }
+            break;
+
+          case 'complete':
+            // Merge worker results into the index
+            this.index.categories = result.categories;
+            this.index.allPaths = result.allPaths;
+
+            // Clean up the message handler
+            this.worker.removeEventListener('message', messageHandler);
+
+            console.log(`${MODULE_ID} | Worker completed: ${imagesFound} images from ${total} paths`);
+            resolve(imagesFound);
+            break;
+
+          case 'error':
+            // Clean up and reject on error
+            this.worker.removeEventListener('message', messageHandler);
+            console.error(`${MODULE_ID} | Worker error:`, message);
+            reject(new Error(message || 'Worker error'));
+            break;
+
+          default:
+            // Ignore unknown message types (e.g., 'pong' from ping)
+            break;
+        }
+      };
+
+      // Attach message handler
+      this.worker.addEventListener('message', messageHandler);
+
+      // Post the indexing task to the worker
+      this.worker.postMessage({
+        command: 'indexPaths',
+        data: {
+          paths: paths,
+          creatureTypeMappings: CREATURE_TYPE_MAPPINGS,
+          excludedFolders: EXCLUDED_FOLDERS,
+          excludedFilenameTerms: EXCLUDED_FILENAME_TERMS
+        }
+      });
+    });
   }
 
   /**
