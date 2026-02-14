@@ -197,6 +197,15 @@ export class TokenReplacerApp {
       },
       default: 'weekly'
     });
+
+    game.settings.register(MODULE_ID, 'debugMode', {
+      name: 'TOKEN_REPLACER_FA.settings.debugMode.name',
+      hint: 'TOKEN_REPLACER_FA.settings.debugMode.hint',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: false
+    });
   }
 
   /**
