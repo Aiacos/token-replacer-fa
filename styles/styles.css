@@ -88,6 +88,26 @@
   }
 }
 
+/* Hide skeleton loader when image is loaded */
+.skeleton-loader img {
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.skeleton-loader.loaded {
+  animation: none;
+  background: transparent;
+  border: none;
+}
+
+.skeleton-loader.loaded::after {
+  display: none;
+}
+
+.skeleton-loader.loaded img {
+  opacity: 1;
+}
+
 /* ============================================
    TOKEN PREVIEW HEADER
    ============================================ */
