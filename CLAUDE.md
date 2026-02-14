@@ -156,9 +156,20 @@ const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules
 
 ## Version Management
 
-Update version in TWO places:
-1. `module.json` - `"version": "X.Y.Z"`
-2. `scripts/main.js` - Console log string in `Hooks.once('init', ...)`
+**Single Source of Truth:** The version is defined in `module.json` only. All other files are updated automatically.
+
+**Automated Synchronization:** The `sync-version.sh` script reads the version from `module.json` and automatically updates:
+1. `CLAUDE.md` - **Version:** field
+2. `scripts/main.js` - JSDoc `@version` tag
+3. `scripts/main.js` - Console log in `Hooks.once('init', ...)`
+
+**How It Works:**
+- `build.sh` automatically calls `sync-version.sh` before packaging
+- Developers only need to update `"version"` in `module.json`
+- Version sync runs as step 1 of the build process
+- All files remain consistent without manual updates
+
+**To Update Version:** Edit `module.json` and change `"version": "X.Y.Z"` - the build script handles the rest.
 
 ## Localization
 
