@@ -20,6 +20,12 @@ const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
 let FuseClass = null;
 
 /**
+ * Cancellation flag for current operation
+ * Set to true when cancel command is received
+ */
+let cancelled = false;
+
+/**
  * Main message handler for the worker
  * Receives commands from the main thread and processes them
  */
@@ -34,6 +40,12 @@ self.addEventListener('message', (event) => {
 
       case 'fuzzySearch':
         handleFuzzySearch(data);
+        break;
+
+      case 'cancel':
+        // Cancel the current operation
+        cancelled = true;
+        self.postMessage({ type: 'cancelled' });
         break;
 
       case 'ping':
@@ -74,6 +86,9 @@ function handleIndexPaths(data) {
     excludedFilenameTerms
   } = data;
 
+  // Reset cancellation flag at start of operation
+  cancelled = false;
+
   // Validate input
   if (!Array.isArray(paths)) {
     throw new Error('paths must be an array');
@@ -108,6 +123,12 @@ function handleIndexPaths(data) {
 
   // Process each path
   for (let i = 0; i < paths.length; i++) {
+    // Check for cancellation
+    if (cancelled) {
+      self.postMessage({ type: 'cancelled' });
+      return;
+    }
+
     const entry = paths[i];
 
     // Extract path and name (handle both string and {path, name} object formats)
@@ -234,6 +255,9 @@ async function loadFuse() {
 async function handleFuzzySearch(data) {
   const { searchTerms, index, options } = data;
 
+  // Reset cancellation flag at start of operation
+  cancelled = false;
+
   // Validate input
   if (!Array.isArray(searchTerms)) {
     throw new Error('searchTerms must be an array');
@@ -255,6 +279,12 @@ async function handleFuzzySearch(data) {
     return;
   }
 
+  // Check for cancellation after async operation
+  if (cancelled) {
+    self.postMessage({ type: 'cancelled' });
+    return;
+  }
+
   // Create Fuse instance
   const fuse = new Fuse(index, options);
   const results = [];
@@ -270,6 +300,12 @@ async function handleFuzzySearch(data) {
 
   // Search for each term
   for (let i = 0; i < searchTerms.length; i++) {
+    // Check for cancellation
+    if (cancelled) {
+      self.postMessage({ type: 'cancelled' });
+      return;
+    }
+
     const term = searchTerms[i];
 
     // Send progress update
