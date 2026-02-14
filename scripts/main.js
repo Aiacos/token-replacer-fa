@@ -471,8 +471,17 @@ window.TokenReplacerFA = tokenReplacerApp;
 /**
  * Module initialization
  */
-Hooks.once('init', () => {
+Hooks.once('init', async () => {
   console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.9.0`);
+
+  // Preload Handlebars templates
+  await loadTemplates([
+    // Templates will be added here as they are created
+    // 'modules/token-replacer-fa/templates/error.hbs',
+    // 'modules/token-replacer-fa/templates/tva-cache.hbs',
+    // etc.
+  ]);
+
   tokenReplacerApp.registerSettings();
 });
 
