@@ -131,6 +131,7 @@ export class TokenReplacerApp {
    * Register module settings
    */
   registerSettings() {
+    this._debugLog('Registering module settings');
     game.settings.register(MODULE_ID, 'fuzzyThreshold', {
       name: 'TOKEN_REPLACER_FA.settings.fuzzyThreshold.name',
       hint: 'TOKEN_REPLACER_FA.settings.fuzzyThreshold.hint',
@@ -242,17 +243,24 @@ export class TokenReplacerApp {
    */
   async replaceTokenImage(token, imagePath) {
     try {
+      this._debugLog(`Replacing token "${token.name}" with image: ${imagePath}`);
       if (this.hasTVA && this.tvaAPI?.updateTokenImage) {
+        this._debugLog('Using TVA API for token update');
         await this.tvaAPI.updateTokenImage(imagePath, {
           token: token,
           actor: token.actor,
           imgName: imagePath.split('/').pop()
         });
+        this._debugLog('Token updated successfully via TVA');
         return true;
       }
-      return await TokenService.replaceTokenImage(token, imagePath);
+      this._debugLog('Using direct token update (TVA not available)');
+      const result = await TokenService.replaceTokenImage(token, imagePath);
+      this._debugLog(`Token update result: ${result ? 'success' : 'failed'}`);
+      return result;
     } catch (error) {
       console.error(`${MODULE_ID} | Failed to update token:`, error);
+      this._debugLog('Token update failed with error:', error.message);
       return false;
     }
   }
@@ -430,6 +438,7 @@ export class TokenReplacerApp {
 
       // No matches - show category browser
       if (matches.length === 0) {
+        this._debugLog(`No matches found for "${creatureInfo.actorName}", showing category browser`);
         uiManager.updateDialogContent(await uiManager.createNoMatchHTML(creatureInfo, tokens.length));
         await yieldToMain(50);
 
@@ -437,6 +446,7 @@ export class TokenReplacerApp {
         let selectionResult = null;
 
         if (dialogEl) {
+          this._debugLog('Setting up no-match handlers for manual selection');
           selectionResult = await uiManager.setupNoMatchHandlers(
             dialogEl, creatureInfo, localIndex, tokens.length,
             (type, idx, term, cb) => searchService.searchByCategory(type, idx, term, cb)
@@ -444,6 +454,8 @@ export class TokenReplacerApp {
         }
 
         if (selectionResult?.paths?.length > 0) {
+          this._debugLog(`User selected ${selectionResult.paths.length} image(s) for ${tokens.length} token(s), mode: ${selectionResult.mode || 'sequential'}`);
+
           const selectedPaths = selectionResult.paths;
           const assignmentMode = selectionResult.mode || 'sequential';
           let pathIndex = 0;
@@ -469,6 +481,7 @@ export class TokenReplacerApp {
             pathIndex++;
           }
         } else {
+          this._debugLog(`No selection made for "${creatureInfo.actorName}", skipping ${tokens.length} token(s)`);
           for (const token of tokens) {
             tokenIndex++;
             await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
@@ -486,13 +499,17 @@ export class TokenReplacerApp {
       // Has matches
       const bestMatch = matches[0];
       const matchScore = bestMatch.score !== undefined ? (1 - bestMatch.score) : 0.8;
+      this._debugLog(`Found ${matches.length} match(es) for "${creatureInfo.actorName}", best score: ${matchScore.toFixed(2)}`);
 
       let selectedPaths = null;
       let assignmentMode = 'sequential';
 
       if (autoReplace && matchScore >= (1 - threshold)) {
+        this._debugLog(`Auto-replacing with best match (score ${matchScore.toFixed(2)} >= threshold ${(1 - threshold).toFixed(2)})`);
         selectedPaths = [bestMatch.path];
       } else if (confirmReplace) {
+        this._debugLog('Showing match selection dialog for user confirmation');
+
         uiManager.updateDialogContent(await uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
         await yieldToMain(50);
 
@@ -503,12 +520,16 @@ export class TokenReplacerApp {
           if (selectionResult?.paths) {
             selectedPaths = selectionResult.paths;
             assignmentMode = selectionResult.mode || 'sequential';
+            this._debugLog(`User selected ${selectedPaths.length} image(s), mode: ${assignmentMode}`);
+          } else {
+            this._debugLog('No selection made by user');
           }
         }
 
         await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
       } else {
+        this._debugLog('Using best match without confirmation (confirmReplace disabled)');
         selectedPaths = [bestMatch.path];
       }
 
@@ -517,6 +538,12 @@ export class TokenReplacerApp {
       const shuffledPaths = assignmentMode === 'random' && selectedPaths
         ? [...selectedPaths].sort(() => Math.random() - 0.5)
         : selectedPaths;
+
+      if (shuffledPaths?.length > 0) {
+        this._debugLog(`Applying ${shuffledPaths.length} path(s) to ${tokens.length} token(s) in ${assignmentMode} mode`);
+      } else {
+        this._debugLog(`Skipping ${tokens.length} token(s) - no paths selected`);
+      }
 
       for (const token of tokens) {
         if (cancelled || !uiManager.isDialogOpen()) break;
@@ -633,6 +660,7 @@ Hooks.once('init', async () => {
   console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.10.0`);
 
   // Preload Handlebars templates
+  tokenReplacerApp._debugLog('Preloading Handlebars templates');
   await loadTemplates([
     'modules/token-replacer-fa/templates/error.hbs',
     'modules/token-replacer-fa/templates/tva-cache.hbs',
@@ -643,35 +671,51 @@ Hooks.once('init', async () => {
     'modules/token-replacer-fa/templates/match-selection.hbs',
     'modules/token-replacer-fa/templates/no-match.hbs'
   ]);
+  tokenReplacerApp._debugLog('Templates preloaded successfully');
 
   tokenReplacerApp.registerSettings();
+  tokenReplacerApp._debugLog('Module initialization complete');
 });
 
 Hooks.once('ready', async () => {
   console.log(`${MODULE_ID} | Module ready`);
+  tokenReplacerApp._debugLog('Ready hook triggered, starting module initialization');
+
+  tokenReplacerApp._debugLog('Loading Fuse.js library');
   await loadFuse();
+  tokenReplacerApp._debugLog('Fuse.js library loaded');
+
   console.log(`${MODULE_ID} | Token Variant Art available: ${tokenReplacerApp.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${tokenReplacerApp.hasFANexus}`);
+  tokenReplacerApp._debugLog(`Module dependencies - TVA: ${tokenReplacerApp.hasTVA}, FA Nexus: ${tokenReplacerApp.hasFANexus}`);
 
   // Initialize search service and load TVA cache FIRST
   if (tokenReplacerApp.hasTVA) {
+    tokenReplacerApp._debugLog('Initializing search service (TVA available)');
     searchService.init();
     console.log(`${MODULE_ID} | Loading TVA cache directly...`);
+    tokenReplacerApp._debugLog('Loading TVA cache directly from file');
     const cacheLoaded = await tvaCacheService.loadTVACache();
     if (cacheLoaded) {
       const stats = tvaCacheService.getTVACacheStats();
       console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`);
+      tokenReplacerApp._debugLog(`TVA cache loaded - ${stats.totalImages} images in ${stats.categories} categories`);
     } else {
       console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`);
+      tokenReplacerApp._debugLog('TVA cache load failed, will use fallback methods');
     }
+  } else {
+    tokenReplacerApp._debugLog('TVA not available, skipping TVA cache initialization');
   }
 
   // Build image index for fast searches (runs in background)
   if (tokenReplacerApp.hasTVA) {
     console.log(`${MODULE_ID} | Building image index in background...`);
+    tokenReplacerApp._debugLog('Starting background image index build');
 
     // Check if this will be a first-time build (no cache)
     const hasCache = localStorage.getItem('token-replacer-fa-index-v3');
+    tokenReplacerApp._debugLog(`Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`);
     let notificationShown = false;
 
     // Progress callback for UI notifications during first-time build
@@ -687,6 +731,7 @@ Hooks.once('ready', async () => {
     // Show initial notification for first-time build
     if (!hasCache) {
       notificationShown = true;
+      tokenReplacerApp._debugLog('Showing first-time index build notification');
       ui.notifications.info(
         tokenReplacerApp.i18n('notifications.indexingStart') ||
         'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
@@ -696,13 +741,16 @@ Hooks.once('ready', async () => {
 
     // Pass pre-loaded TVA cache to indexService for fast indexing
     const tvaCacheImages = tvaCacheService.isTVACacheLoaded ? tvaCacheService.tvaCacheImages : null;
+    tokenReplacerApp._debugLog(`Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`);
     indexService.build(false, hasCache ? null : onProgress, tvaCacheImages).then(success => {
       if (success) {
         const stats = indexService.getStats();
         console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
+        tokenReplacerApp._debugLog(`Index build completed successfully - ${stats.totalImages} images indexed`);
 
         // Show completion notification if we showed the start notification
         if (notificationShown) {
+          tokenReplacerApp._debugLog('Showing index build completion notification');
           ui.notifications.info(
             tokenReplacerApp.i18n('notifications.indexingComplete', { count: stats.totalImages }) ||
             `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
@@ -711,25 +759,37 @@ Hooks.once('ready', async () => {
         }
       } else {
         console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
+        tokenReplacerApp._debugLog('Index build failed, will fall back to direct API calls');
       }
     }).catch(err => {
       console.warn(`${MODULE_ID} | Index build error:`, err);
+      tokenReplacerApp._debugLog('Index build error:', err.message);
     });
+  } else {
+    tokenReplacerApp._debugLog('Skipping index build (TVA not available)');
   }
 
   // Log i18n cache statistics after initialization
+  tokenReplacerApp._debugLog('Logging i18n cache statistics');
   tokenReplacerApp.logI18nCacheStats();
   logUIManagerI18nCacheStats();
+  tokenReplacerApp._debugLog('Ready hook complete');
 });
 
 /**
  * Add button to scene controls
  */
 Hooks.on('getSceneControlButtons', (controls) => {
-  if (!game.user.isGM) return;
+  if (!game.user.isGM) {
+    tokenReplacerApp._debugLog('Skipping scene control button (user is not GM)');
+    return;
+  }
+
+  tokenReplacerApp._debugLog('Adding scene control button');
 
   // Handle both v12 (array) and v13 (object) formats
   if (Array.isArray(controls)) {
+    tokenReplacerApp._debugLog('Using v12 control format (array)');
     const tokenControls = controls.find(c => c.name === 'token');
     if (tokenControls) {
       tokenControls.tools.push({
@@ -741,10 +801,17 @@ Hooks.on('getSceneControlButtons', (controls) => {
         onChange: () => tokenReplacerApp.processTokenReplacement(),  // v13+ uses onChange
         onClick: () => tokenReplacerApp.processTokenReplacement()    // v12 fallback
       });
+      tokenReplacerApp._debugLog('Scene control button added successfully');
+    } else {
+      tokenReplacerApp._debugLog('Token controls not found in array format');
     }
   } else {
+    tokenReplacerApp._debugLog('Using v13 control format (object)');
     const tokenControls = controls.tokens;
-    if (!tokenControls) return;
+    if (!tokenControls) {
+      tokenReplacerApp._debugLog('Token controls not found in object format');
+      return;
+    }
 
     const toolCount = Object.keys(tokenControls.tools || {}).length;
     tokenControls.tools.tokenReplacerFA = {
@@ -757,5 +824,6 @@ Hooks.on('getSceneControlButtons', (controls) => {
       onChange: () => tokenReplacerApp.processTokenReplacement(),  // v13+ uses onChange
       onClick: () => tokenReplacerApp.processTokenReplacement()    // v12 fallback
     };
+    tokenReplacerApp._debugLog('Scene control button added successfully');
   }
 });
