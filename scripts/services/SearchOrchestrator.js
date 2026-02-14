@@ -27,6 +27,21 @@ export class SearchOrchestrator {
     // Dependencies will be injected or accessed via imports
     this.searchService = null;
     this.tvaCacheService = null;
+    this.worker = null;
+
+    // Initialize Web Worker if supported
+    if (typeof Worker !== 'undefined') {
+      try {
+        const workerPath = `modules/${MODULE_ID}/scripts/workers/SearchWorker.js`;
+        this.worker = new Worker(workerPath);
+        console.log(`${MODULE_ID} | Web Worker initialized for background search operations`);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
+        this.worker = null;
+      }
+    } else {
+      console.warn(`${MODULE_ID} | Web Workers not supported in this browser, using fallback method`);
+    }
   }
 
   /**
@@ -44,6 +59,29 @@ export class SearchOrchestrator {
    */
   clearCache() {
     this.searchCache.clear();
+  }
+
+  /**
+   * Terminate the Web Worker and clean up resources
+   * Should be called when the SearchOrchestrator is no longer needed
+   */
+  terminate() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+      console.log(`${MODULE_ID} | Web Worker terminated`);
+    }
+  }
+
+  /**
+   * Cancel the current worker operation
+   * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
+   */
+  cancelOperation() {
+    if (this.worker) {
+      this.worker.postMessage({ command: 'cancel' });
+      console.log(`${MODULE_ID} | Cancellation requested`);
+    }
   }
 
   /**
@@ -230,6 +268,83 @@ export class SearchOrchestrator {
     }
 
     return results;
+  }
+
+  /**
+   * Search local index using Web Worker for background processing
+   * Runs fuzzy search in background without blocking the main thread
+   * @param {string[]} searchTerms - Terms to search
+   * @param {Array} index - Local image index
+   * @param {string} creatureType - Optional creature type filter
+   * @param {Function} onProgress - Optional progress callback
+   * @returns {Promise<Array>} Search results
+   */
+  async searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
+    if (!this.worker) {
+      throw new Error('Web Worker not available');
+    }
+
+    if (!index || index.length === 0) return [];
+
+    return new Promise((resolve, reject) => {
+      // Create a unique message handler for this search operation
+      const messageHandler = (event) => {
+        const { type, results, processed, total, message, stack } = event.data;
+
+        switch (type) {
+          case 'progress':
+            // Call progress callback with worker's progress update
+            if (onProgress) {
+              onProgress(processed, total);
+            }
+            break;
+
+          case 'complete':
+            // Clean up the message handler
+            this.worker.removeEventListener('message', messageHandler);
+
+            console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
+            resolve(results);
+            break;
+
+          case 'cancelled':
+            // Clean up on cancellation
+            this.worker.removeEventListener('message', messageHandler);
+            console.log(`${MODULE_ID} | Search operation cancelled by user`);
+            reject(new Error('Operation cancelled'));
+            break;
+
+          case 'error':
+            // Clean up and reject on error
+            this.worker.removeEventListener('message', messageHandler);
+            console.error(`${MODULE_ID} | Worker search error:`, message);
+            reject(new Error(message || 'Worker search error'));
+            break;
+
+          default:
+            // Ignore unknown message types
+            break;
+        }
+      };
+
+      // Attach message handler
+      this.worker.addEventListener('message', messageHandler);
+
+      // Get fuzzy threshold setting
+      const threshold = game.settings.get(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
+
+      // Post the search task to the worker
+      this.worker.postMessage({
+        command: 'searchLocalIndex',
+        data: {
+          searchTerms: searchTerms,
+          index: index,
+          creatureType: creatureType,
+          threshold: threshold,
+          creatureTypeMappings: CREATURE_TYPE_MAPPINGS
+        }
+      });
+    });
   }
 
   /**
