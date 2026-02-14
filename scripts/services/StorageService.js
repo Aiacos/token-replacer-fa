@@ -389,6 +389,43 @@ export class StorageService {
   }
 
   /**
+   * Check if migration from localStorage to IndexedDB is needed
+   * Migration is needed when:
+   * 1. Old data exists in localStorage
+   * 2. New storage location is empty
+   * @param {string} oldKey - localStorage key to check
+   * @param {string} newKey - IndexedDB/storage key to check
+   * @returns {Promise<boolean>} True if migration is needed
+   */
+  async needsMigration(oldKey, newKey) {
+    try {
+      // Check if old localStorage data exists
+      const hasLocalStorageData = localStorage.getItem(oldKey) !== null;
+
+      if (!hasLocalStorageData) {
+        console.log(`${MODULE_ID} | No migration needed: no localStorage data found for key "${oldKey}"`);
+        return false;
+      }
+
+      // Check if new storage location is empty
+      const newData = await this.load(newKey);
+      const hasNewData = newData !== null;
+
+      if (hasNewData) {
+        console.log(`${MODULE_ID} | No migration needed: data already exists in new storage for key "${newKey}"`);
+        return false;
+      }
+
+      // Migration needed: old data exists but new storage is empty
+      console.log(`${MODULE_ID} | Migration needed: localStorage data found for "${oldKey}", but "${newKey}" is empty in IndexedDB`);
+      return true;
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Error checking migration status:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Close database connection
    * Should be called when service is no longer needed
    */
