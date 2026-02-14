@@ -9,6 +9,7 @@ import { MODULE_ID } from './core/Constants.js';
 import { loadFuse, yieldToMain } from './core/Utils.js';
 import { TokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
+import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
 import { uiManager } from './ui/UIManager.js';
@@ -263,9 +264,9 @@ export class TokenReplacerApp {
 
       // NOW load TVA cache directly (after any refresh is complete)
       uiManager.updateDialogContent(uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
-      const cacheLoaded = await searchService.loadTVACache();
+      const cacheLoaded = await tvaCacheService.loadTVACache();
       if (cacheLoaded) {
-        const stats = searchService.getTVACacheStats();
+        const stats = tvaCacheService.getTVACacheStats();
         console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images`);
       } else {
         console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
@@ -485,9 +486,9 @@ Hooks.once('ready', async () => {
   if (tokenReplacerApp.hasTVA) {
     searchService.init();
     console.log(`${MODULE_ID} | Loading TVA cache directly...`);
-    const cacheLoaded = await searchService.loadTVACache();
+    const cacheLoaded = await tvaCacheService.loadTVACache();
     if (cacheLoaded) {
-      const stats = searchService.getTVACacheStats();
+      const stats = tvaCacheService.getTVACacheStats();
       console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`);
     } else {
       console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`);
@@ -523,7 +524,7 @@ Hooks.once('ready', async () => {
     }
 
     // Pass pre-loaded TVA cache to indexService for fast indexing
-    const tvaCacheImages = searchService.isTVACacheLoaded ? searchService.tvaCacheImages : null;
+    const tvaCacheImages = tvaCacheService.isTVACacheLoaded ? tvaCacheService.tvaCacheImages : null;
     indexService.build(false, hasCache ? null : onProgress, tvaCacheImages).then(success => {
       if (success) {
         const stats = indexService.getStats();
