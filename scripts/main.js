@@ -12,6 +12,7 @@ import { searchService } from './services/SearchService.js';
 import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
+import { forgeBazaarService } from './services/ForgeBazaarService.js';
 import { uiManager, logI18nCacheStats as logUIManagerI18nCacheStats } from './ui/UIManager.js';
 
 /**
@@ -525,9 +526,11 @@ Hooks.once('ready', async () => {
   console.log(`${MODULE_ID} | Token Variant Art available: ${tokenReplacerApp.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${tokenReplacerApp.hasFANexus}`);
 
-  // Initialize search service and load TVA cache FIRST
+  // Initialize search service (also initializes ForgeBazaarService)
+  searchService.init();
+
+  // Load TVA cache if TVA is available
   if (tokenReplacerApp.hasTVA) {
-    searchService.init();
     console.log(`${MODULE_ID} | Loading TVA cache directly...`);
     const cacheLoaded = await tvaCacheService.loadTVACache();
     if (cacheLoaded) {

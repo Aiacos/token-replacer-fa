@@ -6,6 +6,7 @@
 
 import { MODULE_ID } from '../core/Constants.js';
 import { tvaCacheService } from './TVACacheService.js';
+import { forgeBazaarService } from './ForgeBazaarService.js';
 import { searchOrchestrator } from './SearchOrchestrator.js';
 
 /**
@@ -23,9 +24,10 @@ export class SearchService {
    */
   init() {
     tvaCacheService.init();
+    forgeBazaarService.init();
     // Set dependencies for SearchOrchestrator to enable delegation
-    searchOrchestrator.setDependencies(this, tvaCacheService);
-    console.log(`${MODULE_ID} | SearchService initialized (delegates to TVACacheService and SearchOrchestrator)`);
+    searchOrchestrator.setDependencies(this, tvaCacheService, forgeBazaarService);
+    console.log(`${MODULE_ID} | SearchService initialized (delegates to TVACacheService, ForgeBazaarService, and SearchOrchestrator)`);
   }
 
   /**
@@ -132,11 +134,12 @@ export class SearchService {
 
   /**
    * Clear the search cache
-   * Also clears searchOrchestrator's cache
+   * Also clears searchOrchestrator's and forgeBazaarService's cache
    */
   clearCache() {
     this.searchCache.clear();
     searchOrchestrator.clearCache();
+    forgeBazaarService.clearCache();
   }
 
   /**

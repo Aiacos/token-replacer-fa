@@ -27,16 +27,19 @@ export class SearchOrchestrator {
     // Dependencies will be injected or accessed via imports
     this.searchService = null;
     this.tvaCacheService = null;
+    this.forgeBazaarService = null;
   }
 
   /**
    * Set dependencies for the orchestrator
    * @param {Object} searchService - SearchService instance
    * @param {Object} tvaCacheService - TVACacheService instance
+   * @param {Object} forgeBazaarService - ForgeBazaarService instance
    */
-  setDependencies(searchService, tvaCacheService) {
+  setDependencies(searchService, tvaCacheService, forgeBazaarService) {
     this.searchService = searchService;
     this.tvaCacheService = tvaCacheService;
+    this.forgeBazaarService = forgeBazaarService;
   }
 
   /**
@@ -248,17 +251,40 @@ export class SearchOrchestrator {
 
     // Direct search term mode
     if (directSearchTerm) {
+      // Get search priority setting
+      const priority = game.settings.get(MODULE_ID, 'searchPriority');
+
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: directSearchTerm, resultsFound: 0 });
       }
 
-      // Search TVA
-      if (this.tvaCacheService?.hasTVA) {
+      // Priority: forgeBazaar - Try ForgeBazaarService first
+      if (priority === 'forgeBazaar' && this.forgeBazaarService?.isServiceAvailable()) {
+        const bazaarResults = await this.forgeBazaarService.search(directSearchTerm);
+        for (const result of bazaarResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push({ ...result, source: 'forge-bazaar' });
+          }
+        }
+      }
+      // Search TVA (when priority is faNexus, both, or forgeBazaar unavailable)
+      else if (this.tvaCacheService?.hasTVA && (priority === 'faNexus' || priority === 'both' || !this.forgeBazaarService?.isServiceAvailable())) {
         const tvaResults = await this.searchTVA(directSearchTerm);
         for (const result of tvaResults) {
           if (!seenPaths.has(result.path)) {
             seenPaths.add(result.path);
             results.push(result);
+          }
+        }
+      }
+      // Fallback to ForgeBazaarService when TVA is not available (unless priority is faNexus only)
+      else if (priority !== 'faNexus' && this.forgeBazaarService?.isServiceAvailable()) {
+        const bazaarResults = await this.forgeBazaarService.search(directSearchTerm);
+        for (const result of bazaarResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push({ ...result, source: 'forge-bazaar' });
           }
         }
       }
@@ -293,6 +319,9 @@ export class SearchOrchestrator {
     // Category-based comprehensive search
     console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
 
+    // Get search priority setting
+    const priority = game.settings.get(MODULE_ID, 'searchPriority');
+
     // Try FAST mode using pre-built index first
     if (indexService.isBuilt) {
       console.log(`${MODULE_ID} | Using pre-built index (FAST mode)`);
@@ -318,8 +347,32 @@ export class SearchOrchestrator {
 
       console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
     }
-    // FAST PATH: Use TVA direct cache if loaded
-    else if (this.tvaCacheService?.tvaCacheLoaded) {
+    // Priority: forgeBazaar - Try ForgeBazaarService first
+    else if (priority === 'forgeBazaar' && this.forgeBazaarService?.isServiceAvailable()) {
+      console.log(`${MODULE_ID} | Using ForgeBazaarService (priority: forgeBazaar)`);
+      if (progressCallback) {
+        progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
+      }
+
+      const bazaarResults = await this.forgeBazaarService.browseCategory(categoryType);
+      for (const result of bazaarResults) {
+        if (!seenPaths.has(result.path)) {
+          seenPaths.add(result.path);
+          results.push({
+            ...result,
+            source: 'forge-bazaar'
+          });
+        }
+      }
+
+      if (progressCallback) {
+        progressCallback({ current: 1, total: 1, term: 'Forge Bazaar', resultsFound: results.length });
+      }
+
+      console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
+    }
+    // FAST PATH: Use TVA direct cache if loaded (when priority is not forgeBazaar, or when forgeBazaar unavailable)
+    else if (this.tvaCacheService?.tvaCacheLoaded && (priority === 'faNexus' || priority === 'both' || !this.forgeBazaarService?.isServiceAvailable())) {
       console.log(`${MODULE_ID} | Using TVA direct cache (FAST mode)`);
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'TVA cache lookup', resultsFound: 0 });
@@ -339,8 +392,8 @@ export class SearchOrchestrator {
 
       console.log(`${MODULE_ID} | TVA direct cache found ${results.length} results (FAST mode)`);
     }
-    // Fallback to SLOW mode - multiple TVA API calls
-    else if (this.tvaCacheService?.hasTVA) {
+    // Fallback to SLOW mode - multiple TVA API calls (when priority is not forgeBazaar, or when forgeBazaar unavailable)
+    else if (this.tvaCacheService?.hasTVA && (priority === 'faNexus' || priority === 'both' || !this.forgeBazaarService?.isServiceAvailable())) {
       const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
       if (categoryTerms) {
@@ -426,6 +479,30 @@ export class SearchOrchestrator {
         }
       }
       console.log(`${MODULE_ID} | TVA search complete, total unique results: ${results.length}`);
+    }
+    // Fallback to ForgeBazaarService when TVA is not available (unless priority is faNexus only)
+    else if (priority !== 'faNexus' && this.forgeBazaarService?.isServiceAvailable()) {
+      console.log(`${MODULE_ID} | Using ForgeBazaarService (TVA not available)`);
+      if (progressCallback) {
+        progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
+      }
+
+      const bazaarResults = await this.forgeBazaarService.browseCategory(categoryType);
+      for (const result of bazaarResults) {
+        if (!seenPaths.has(result.path)) {
+          seenPaths.add(result.path);
+          results.push({
+            ...result,
+            source: 'forge-bazaar'
+          });
+        }
+      }
+
+      if (progressCallback) {
+        progressCallback({ current: 1, total: 1, term: 'Forge Bazaar', resultsFound: results.length });
+      }
+
+      console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
     }
 
     // Search local index by category
