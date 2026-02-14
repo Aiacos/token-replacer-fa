@@ -569,20 +569,13 @@ export class UIManager {
   /**
    * Create error HTML
    * @param {string} message - Error message
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createErrorHTML(message) {
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status" style="color: #f87171;">
-          <i class="fas fa-exclamation-triangle"></i>
-          <span>${escapeHtml(message)}</span>
-        </div>
-        <p style="text-align: center; color: #888; margin-top: 15px;">
-          Install Token Variant Art or FA Nexus module, or configure additional search paths in settings.
-        </p>
-      </div>
-    `;
+  async createErrorHTML(message) {
+    const templatePath = `modules/${MODULE_ID}/templates/error.hbs`;
+    return await renderTemplate(templatePath, {
+      message
+    });
   }
 
   /**

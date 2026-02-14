@@ -280,7 +280,7 @@ export class TokenReplacerApp {
     // Check for search sources
     if (!this.hasTVA && localIndex.length === 0) {
       uiManager.updateDialogContent(
-        uiManager.createErrorHTML(this.i18n('notifications.missingDeps'))
+        await uiManager.createErrorHTML(this.i18n('notifications.missingDeps'))
       );
       this.isProcessing = false;
       return;
