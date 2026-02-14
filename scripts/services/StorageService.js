@@ -141,6 +141,77 @@ export class StorageService {
   }
 
   /**
+   * Save data to storage (IndexedDB or localStorage fallback)
+   * @param {string} key - Storage key (used as record ID)
+   * @param {*} data - Data to store (must be serializable to JSON)
+   * @returns {Promise<boolean>} True if saved successfully
+   */
+  async save(key, data) {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Prepare data with id (keyPath)
+        const record = {
+          id: key,
+          data: data,
+          timestamp: Date.now()
+        };
+
+        // Put data into object store
+        const request = objectStore.put(record);
+
+        // Wait for transaction to complete
+        await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            console.log(`${MODULE_ID} | Saved to IndexedDB: ${key}`);
+            resolve();
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to save to IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        return true;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB save failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback
+    try {
+      const json = JSON.stringify({
+        data: data,
+        timestamp: Date.now()
+      });
+
+      // Check size limit (~5MB for localStorage)
+      if (json.length > 4.5 * 1024 * 1024) {
+        console.warn(`${MODULE_ID} | Data too large for localStorage (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
+        return false;
+      }
+
+      localStorage.setItem(key, json);
+      console.log(`${MODULE_ID} | Saved to localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`);
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage save failed:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Close database connection
    * Should be called when service is no longer needed
    */
