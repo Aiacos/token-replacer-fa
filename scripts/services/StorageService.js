@@ -275,6 +275,120 @@ export class StorageService {
   }
 
   /**
+   * Remove data from storage (IndexedDB or localStorage fallback)
+   * @param {string} key - Storage key to remove
+   * @returns {Promise<boolean>} True if removed successfully
+   */
+  async remove(key) {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Delete data from object store
+        const request = objectStore.delete(key);
+
+        // Wait for transaction to complete
+        await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            console.log(`${MODULE_ID} | Removed from IndexedDB: ${key}`);
+            resolve();
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to remove from IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        return true;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB remove failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback
+    try {
+      localStorage.removeItem(key);
+      console.log(`${MODULE_ID} | Removed from localStorage: ${key}`);
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage remove failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Clear all data from storage (IndexedDB or localStorage fallback)
+   * @returns {Promise<boolean>} True if cleared successfully
+   */
+  async clear() {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Clear all data from object store
+        const request = objectStore.clear();
+
+        // Wait for transaction to complete
+        await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            console.log(`${MODULE_ID} | Cleared all data from IndexedDB`);
+            resolve();
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to clear IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        return true;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB clear failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback - only clear module-specific keys
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('token-replacer-fa')) {
+          keysToRemove.push(key);
+        }
+      }
+
+      for (const key of keysToRemove) {
+        localStorage.removeItem(key);
+      }
+
+      console.log(`${MODULE_ID} | Cleared ${keysToRemove.length} keys from localStorage`);
+      return true;
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage clear failed:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Close database connection
    * Should be called when service is no longer needed
    */
