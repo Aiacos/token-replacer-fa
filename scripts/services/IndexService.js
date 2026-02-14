@@ -39,6 +39,26 @@ export class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
+    this.termCategoryMap = this.buildTermCategoryMap();
+  }
+
+  /**
+   * Build reverse lookup Map from CREATURE_TYPE_MAPPINGS
+   * Maps each term to its category for O(1) lookups
+   * @private
+   * @returns {Map<string, Object>} Map of lowercase term → {category, originalTerm}
+   */
+  buildTermCategoryMap() {
+    const map = new Map();
+
+    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
+      for (const term of terms) {
+        const termLower = term.toLowerCase();
+        map.set(termLower, { category, originalTerm: term });
+      }
+    }
+
+    return map;
   }
 
   /**
@@ -67,31 +87,37 @@ export class IndexService {
 
   /**
    * Determine which category and subcategories an image belongs to
+   * Uses pre-built Map for O(n) lookup instead of O(n*m) nested loops
    * @param {string} path - Image path
    * @param {string} name - Image name
    * @returns {Object} { category, subcategories }
    */
   categorizeImage(path, name) {
     const searchText = `${path} ${name}`.toLowerCase();
+    const categoryMatches = new Map(); // category -> {count, terms}
+
+    // Single loop through all terms using the pre-built map
+    for (const [termLower, { category, originalTerm }] of this.termCategoryMap.entries()) {
+      if (searchText.includes(termLower)) {
+        if (!categoryMatches.has(category)) {
+          categoryMatches.set(category, { count: 0, terms: [] });
+        }
+        const match = categoryMatches.get(category);
+        match.count++;
+        match.terms.push(originalTerm);
+      }
+    }
+
+    // Find category with most matches
     let bestCategory = null;
     let subcategories = [];
     let maxMatches = 0;
 
-    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
-      let matches = 0;
-      const matchedTerms = [];
-
-      for (const term of terms) {
-        if (searchText.includes(term.toLowerCase())) {
-          matches++;
-          matchedTerms.push(term);
-        }
-      }
-
-      if (matches > maxMatches) {
-        maxMatches = matches;
+    for (const [category, { count, terms }] of categoryMatches.entries()) {
+      if (count > maxMatches) {
+        maxMatches = count;
         bestCategory = category;
-        subcategories = matchedTerms;
+        subcategories = terms;
       }
     }
 
@@ -611,6 +637,11 @@ export class IndexService {
 
     console.log(`${MODULE_ID} | Indexing ${totalPaths} paths directly...`);
 
+    // Performance tracking
+    const startTime = performance.now();
+    let batchStartTime = performance.now();
+    let batchImagesProcessed = 0;
+
     const BATCH_SIZE = 1000;
     for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
       const batch = paths.slice(i, i + BATCH_SIZE);
@@ -622,11 +653,23 @@ export class IndexService {
         if (this.addImageToIndex(path, name)) {
           imagesFound++;
         }
+        batchImagesProcessed++;
       }
+
+      // Log performance stats every 1000 images
+      const batchEndTime = performance.now();
+      const batchDuration = batchEndTime - batchStartTime;
+      const timePerImage = batchDuration / batchImagesProcessed;
+      const processed = Math.min(i + BATCH_SIZE, totalPaths);
+
+      console.log(`${MODULE_ID} | Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image, ${(1000/batchDuration*batchImagesProcessed).toFixed(0)} images/sec)`);
+
+      // Reset batch tracking
+      batchStartTime = performance.now();
+      batchImagesProcessed = 0;
 
       // Progress callback
       if (onProgress) {
-        const processed = Math.min(i + BATCH_SIZE, totalPaths);
         onProgress(processed, totalPaths, imagesFound);
       }
 
@@ -634,7 +677,14 @@ export class IndexService {
       await new Promise(r => setTimeout(r, 10));
     }
 
+    // Final performance summary
+    const totalTime = performance.now() - startTime;
+    const avgTimePerImage = totalTime / totalPaths;
+    const throughput = (totalPaths / totalTime * 1000).toFixed(0);
+
     console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
+    console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
+
     return imagesFound;
   }
 
@@ -658,6 +708,9 @@ export class IndexService {
     let processed = 0;
     let imagesFound = 0;
     let debugLogged = false;
+
+    // Performance tracking
+    const startTime = performance.now();
 
     console.log(`${MODULE_ID} | Searching ${totalTerms} terms via doImageSearch...`);
 
@@ -737,6 +790,15 @@ export class IndexService {
         onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
       }
       await new Promise(r => setTimeout(r, 50));
+    }
+
+    // Final performance summary
+    const totalTime = performance.now() - startTime;
+    const totalImages = Object.keys(this.index.allPaths).length;
+    if (totalImages > 0) {
+      const avgTimePerImage = totalTime / totalImages;
+      const throughput = (totalImages / totalTime * 1000).toFixed(0);
+      console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
     }
 
     return imagesFound;
