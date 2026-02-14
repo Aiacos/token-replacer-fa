@@ -400,64 +400,38 @@ export class UIManager {
    * @param {number} total - Total items
    * @param {string} status - Status message
    * @param {Array} results - Results array
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createProgressHTML(current, total, status, results) {
+  async createProgressHTML(current, total, status, results) {
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
     const successCount = results.filter(r => r.status === 'success').length;
     const failedCount = results.filter(r => r.status === 'failed').length;
     const skippedCount = results.filter(r => r.status === 'skipped').length;
     const safeStatus = escapeHtml(status);
 
-    let html = `
-      <div class="token-replacer-fa-progress">
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${percent}%"></div>
-        </div>
-        <div class="progress-text">${current} / ${total} - ${safeStatus}</div>
-      </div>
-    `;
+    // Transform results array with escaped values and icon classes
+    const safeResults = results.map(r => ({
+      name: escapeHtml(r.name),
+      match: r.match ? escapeHtml(r.match) : null,
+      status: r.status,
+      iconClass: r.status === 'success' ? 'fa-check' :
+                 r.status === 'failed' ? 'fa-times' : 'fa-forward'
+    }));
 
-    html += `
-      <div class="token-replacer-fa-summary">
-        <div class="summary-item success">
-          <div class="count">${successCount}</div>
-          <div class="label">Replaced</div>
-        </div>
-        <div class="summary-item failed">
-          <div class="count">${failedCount}</div>
-          <div class="label">No Match</div>
-        </div>
-        <div class="summary-item skipped">
-          <div class="count">${skippedCount}</div>
-          <div class="label">Skipped</div>
-        </div>
-      </div>
-    `;
-
-    if (results.length > 0) {
-      html += `
-        <div class="token-replacer-fa-results">
-          ${results.map(r => {
-            const safeName = escapeHtml(r.name);
-            const safeMatch = r.match ? escapeHtml(r.match) : '';
-            const iconClass = r.status === 'success' ? 'fa-check' :
-                             r.status === 'failed' ? 'fa-times' : 'fa-forward';
-            return `
-              <div class="result-item ${r.status}">
-                <div class="result-icon ${r.status}">
-                  <i class="fas ${iconClass}"></i>
-                </div>
-                <div class="result-name">${safeName}</div>
-                ${safeMatch ? `<div class="result-match">→ ${safeMatch}</div>` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `;
-    }
-
-    return html;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/progress.hbs`,
+      {
+        percent,
+        current,
+        total,
+        status: safeStatus,
+        successCount,
+        failedCount,
+        skippedCount,
+        hasResults: results.length > 0,
+        results: safeResults
+      }
+    );
   }
 
   /**

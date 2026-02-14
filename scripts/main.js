@@ -312,12 +312,12 @@ export class TokenReplacerApp {
     const confirmReplace = this.getSetting('confirmReplace');
     const threshold = this.getSetting('fuzzyThreshold');
 
-    const updateProgress = (current, total, status, result = null) => {
+    const updateProgress = async (current, total, status, result = null) => {
       if (result) results.push(result);
-      uiManager.updateDialogContent(uiManager.createProgressHTML(current, total, status, results));
+      uiManager.updateDialogContent(await uiManager.createProgressHTML(current, total, status, results));
     };
 
-    updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
+    await updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
     await yieldToMain(50);
 
     let tokenIndex = 0;
@@ -360,7 +360,7 @@ export class TokenReplacerApp {
             const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
             const success = await this.replaceTokenImage(token, pathForToken);
-            updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
+            await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: success ? 'success' : 'failed',
               match: matchName
@@ -371,14 +371,14 @@ export class TokenReplacerApp {
         } else {
           for (const token of tokens) {
             tokenIndex++;
-            updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
+            await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: 'skipped'
             });
           }
         }
 
-        updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
+        await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
         continue;
       }
@@ -406,7 +406,7 @@ export class TokenReplacerApp {
           }
         }
 
-        updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
+        await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
       } else {
         selectedPaths = [bestMatch.path];
@@ -428,7 +428,7 @@ export class TokenReplacerApp {
           const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
           const success = await this.replaceTokenImage(token, pathForToken);
-          updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
+          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: success ? 'success' : 'failed',
             match: matchName
@@ -436,7 +436,7 @@ export class TokenReplacerApp {
 
           pathIndex++;
         } else {
-          updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
+          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: 'skipped'
           });
@@ -449,7 +449,7 @@ export class TokenReplacerApp {
       const successCount = results.filter(r => r.status === 'success').length;
       const failedCount = results.filter(r => r.status === 'failed').length;
 
-      updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
+      await updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
 
       ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
