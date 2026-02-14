@@ -250,6 +250,25 @@ export class IndexService {
   }
 
   /**
+   * Try to access TVA's internal cache via getSearchCache function
+   * @param {Object} tvaAPI - TVA API instance
+   * @returns {Promise<Array>} Array of path objects or empty array
+   * @private
+   */
+  async _tryGetSearchCache(tvaAPI) {
+    if (typeof tvaAPI.getSearchCache === 'function') {
+      console.log(`${MODULE_ID} | Reading from TVA getSearchCache...`);
+      try {
+        const cache = await tvaAPI.getSearchCache();
+        return this.extractPathsFromTVACache(cache);
+      } catch (e) {
+        console.warn(`${MODULE_ID} | getSearchCache failed:`, e);
+      }
+    }
+    return [];
+  }
+
+  /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
@@ -283,14 +302,8 @@ export class IndexService {
     }
 
     // Method 2: Try TVA's internal cache via getSearchCache
-    if (allPaths.length === 0 && typeof tvaAPI.getSearchCache === 'function') {
-      console.log(`${MODULE_ID} | Reading from TVA getSearchCache...`);
-      try {
-        const cache = await tvaAPI.getSearchCache();
-        allPaths = this.extractPathsFromTVACache(cache);
-      } catch (e) {
-        console.warn(`${MODULE_ID} | getSearchCache failed:`, e);
-      }
+    if (allPaths.length === 0) {
+      allPaths = await this._tryGetSearchCache(tvaAPI);
     }
 
     // Method 3: Check TVA_CONFIG for cache info
