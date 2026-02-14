@@ -178,6 +178,12 @@ export class IndexService {
    */
   async loadFromCache() {
     try {
+      // Check for migration from localStorage to IndexedDB
+      if (await storageService.needsMigration(CACHE_KEY, CACHE_KEY)) {
+        console.log(`${MODULE_ID} | Detected localStorage cache, migrating to IndexedDB...`);
+        await storageService.migrateFromLocalStorage(CACHE_KEY, CACHE_KEY);
+      }
+
       const data = await storageService.load(CACHE_KEY);
       if (!data) return false;
 
