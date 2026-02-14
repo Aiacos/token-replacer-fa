@@ -45,6 +45,10 @@
       "indexUpdateFrequency": {
         "name": "Frequenza Aggiornamento Indice",
         "hint": "Ogni quanto aggiornare automaticamente l'indice delle immagini token da TVA/FA Nexus. Default: Settimanale"
+      },
+      "debugMode": {
+        "name": "Modalità Debug",
+        "hint": "Abilita logging dettagliato nella console per la risoluzione dei problemi. Registra dettagli della ricerca, tempistiche ed errori. Default: Spento"
       }
     },
     "frequency": {
@@ -98,6 +102,38 @@
       "indexingComplete": "Indice pronto! {count} immagini indicizzate per ricerca veloce.",
       "fuseLoadFailed": "Impossibile caricare la libreria di ricerca. Controlla la console per dettagli.",
       "processingError": "Token Replacer FA ha riscontrato un errore: {error}. Controlla la console per dettagli."
+    },
+    "errors": {
+      "tva_missing": "Il modulo Token Variant Art non è installato o abilitato",
+      "tva_cache_empty": "La cache di Token Variant Art è vuota",
+      "tva_cache_disabled": "La cache statica di Token Variant Art è disabilitata",
+      "tva_still_caching": "Token Variant Art sta ancora costruendo la cache",
+      "cache_load_failed": "Impossibile caricare la cache di Token Variant Art",
+      "network_error": "Errore di rete durante l'accesso alle immagini token",
+      "file_access_error": "Impossibile accedere ai file delle immagini token",
+      "invalid_paths": "Uno o più percorsi di ricerca non sono validi",
+      "fuse_load_failed": "Impossibile caricare la libreria di ricerca Fuse.js",
+      "index_build_failed": "Impossibile costruire l'indice di ricerca token",
+      "localStorage_full": "Lo storage del browser è pieno, impossibile salvare l'indice in cache",
+      "worker_failed": "Il worker di indicizzazione in background è fallito",
+      "unknown": "Si è verificato un errore imprevisto",
+      "no_tokens_selected": "Nessun token selezionato",
+      "search_timeout": "Operazione di ricerca scaduta",
+      "invalid_search_term": "Termine di ricerca non valido fornito"
+    },
+    "recovery": {
+      "install_tva": "Installa e abilita il modulo Token Variant Art dal gestore moduli di Foundry VTT",
+      "rebuild_cache": "Apri le impostazioni di Token Variant Art e ricostruisci la cache delle immagini",
+      "enable_static_cache": "Abilita 'Store Mappings to Cache' nelle impostazioni di Token Variant Art",
+      "wait_for_cache": "Attendi alcuni minuti che Token Variant Art completi la costruzione della cache, poi riprova",
+      "check_network": "Controlla la connessione di rete e riprova",
+      "check_file_access": "Verifica che le directory delle immagini token siano accessibili e che i permessi siano corretti",
+      "check_paths": "Verifica che i percorsi di ricerca aggiuntivi nelle impostazioni del modulo siano directory valide",
+      "reload_module": "Prova a ricaricare il modulo o aggiornare la pagina",
+      "check_console": "Controlla la console del browser (F12) per informazioni dettagliate sull'errore",
+      "clear_storage": "Cancella il localStorage del browser o disabilita il caching dell'indice nelle impostazioni",
+      "disable_worker": "Se il problema persiste, il modulo utilizzerà l'indicizzazione sul thread principale",
+      "contact_support": "Se il problema continua, segnala questo problema su GitHub con i log della console"
     }
   }
 }
