@@ -1,0 +1,19 @@
+<div class="token-replacer-fa-search-progress">
+  <div class="search-progress-header">
+    <i class="fas fa-search fa-spin"></i>
+    <span>Searching {{categoryType}} artwork...</span>
+  </div>
+  <div class="search-progress-bar-container">
+    <div class="search-progress-info">
+      <span class="search-term">Searching: <strong>{{term}}</strong></span>
+      <span class="search-percent">{{percent}}%</span>
+    </div>
+    <div class="search-progress-bar">
+      <div class="search-progress-fill" style="width: {{percent}}%"></div>
+    </div>
+    <div class="search-progress-stats">
+      <span>{{current}} / {{total}} terms</span>
+      <span>{{resultsFound}} results found</span>
+    </div>
+  </div>
+</div>

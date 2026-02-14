@@ -407,35 +407,23 @@ export class UIManager {
    * Create search progress HTML
    * @param {string} categoryType - Category being searched
    * @param {Object} progress - Progress information
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createSearchProgressHTML(categoryType, progress) {
+  async createSearchProgressHTML(categoryType, progress) {
     const { current, total, term, resultsFound } = progress;
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-    const safeTerm = escapeHtml(term || '');
-    const safeCategory = escapeHtml(categoryType || '');
 
-    return `
-      <div class="token-replacer-fa-search-progress">
-        <div class="search-progress-header">
-          <i class="fas fa-search fa-spin"></i>
-          <span>Searching ${safeCategory} artwork...</span>
-        </div>
-        <div class="search-progress-bar-container">
-          <div class="search-progress-info">
-            <span class="search-term">Searching: <strong>${safeTerm}</strong></span>
-            <span class="search-percent">${percent}%</span>
-          </div>
-          <div class="search-progress-bar">
-            <div class="search-progress-fill" style="width: ${percent}%"></div>
-          </div>
-          <div class="search-progress-stats">
-            <span>${current} / ${total} terms</span>
-            <span>${resultsFound} results found</span>
-          </div>
-        </div>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/search-progress.hbs`,
+      {
+        categoryType,
+        percent,
+        current,
+        total,
+        term: term || '',
+        resultsFound
+      }
+    );
   }
 
   /**
@@ -838,15 +826,15 @@ export class UIManager {
           if (resultsContainer) resultsContainer.style.display = 'block';
           if (loadingEl) {
             loadingEl.style.display = 'block';
-            loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, {
+            loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, {
               current: 0, total: 1, term: 'initializing...', resultsFound: 0
             });
           }
           if (matchGrid) matchGrid.innerHTML = '';
           if (selectBtn) selectBtn.disabled = true;
 
-          const results = await searchByCategory(selectedType, localIndex, null, (progress) => {
-            if (loadingEl) loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, progress);
+          const results = await searchByCategory(selectedType, localIndex, null, async (progress) => {
+            if (loadingEl) loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, progress);
           });
           displayResults(results);
         });
