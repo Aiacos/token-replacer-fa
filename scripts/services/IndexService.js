@@ -236,6 +236,20 @@ export class IndexService {
   }
 
   /**
+   * Try to access TVA's cacheImagePaths property directly
+   * @param {Object} tvaAPI - TVA API instance
+   * @returns {Array} Array of path objects or empty array
+   * @private
+   */
+  _tryCacheImagePaths(tvaAPI) {
+    if (tvaAPI.cacheImagePaths && typeof tvaAPI.cacheImagePaths === 'object') {
+      console.log(`${MODULE_ID} | Reading from TVA cacheImagePaths...`);
+      return this.extractPathsFromTVACache(tvaAPI.cacheImagePaths);
+    }
+    return [];
+  }
+
+  /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
@@ -264,9 +278,8 @@ export class IndexService {
     }
 
     // Method 1: Try TVA's cacheImagePaths (direct cache access)
-    if (allPaths.length === 0 && tvaAPI.cacheImagePaths && typeof tvaAPI.cacheImagePaths === 'object') {
-      console.log(`${MODULE_ID} | Reading from TVA cacheImagePaths...`);
-      allPaths = this.extractPathsFromTVACache(tvaAPI.cacheImagePaths);
+    if (allPaths.length === 0) {
+      allPaths = this._tryCacheImagePaths(tvaAPI);
     }
 
     // Method 2: Try TVA's internal cache via getSearchCache
