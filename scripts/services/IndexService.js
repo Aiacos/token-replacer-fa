@@ -218,6 +218,24 @@ export class IndexService {
   }
 
   /**
+   * Try to use pre-loaded TVA cache passed from TVACacheService (FASTEST method)
+   * @param {Array} tvaCacheImages - Pre-loaded TVA cache images
+   * @returns {Array} Array of path objects or empty array
+   * @private
+   */
+  _tryPreloadedCache(tvaCacheImages) {
+    if (tvaCacheImages && tvaCacheImages.length > 0) {
+      console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
+      return tvaCacheImages.map(img => ({
+        path: img.path,
+        name: img.name,
+        category: img.category
+      }));
+    }
+    return [];
+  }
+
+  /**
    * Build index from TVA API - reads cache directly for speed
    * @param {Function} onProgress - Progress callback
    * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
