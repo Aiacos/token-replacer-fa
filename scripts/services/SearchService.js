@@ -16,20 +16,15 @@ import {
   isExcludedPath
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
+import { tvaCacheService } from './TVACacheService.js';
 
 /**
  * SearchService class for handling search operations
- * Reads TVA's static cache file directly for maximum performance
+ * Delegates TVA cache operations to TVACacheService for better modularity
  */
 export class SearchService {
   constructor() {
     this.searchCache = new Map();
-    this.tvaAPI = null;
-    this.hasTVA = false;
-    // Direct TVA cache access
-    this.tvaCacheLoaded = false;
-    this.tvaCacheImages = []; // Flat array of all images for fast search
-    this.tvaCacheByCategory = {}; // Original category structure
   }
 
   /**
@@ -37,9 +32,48 @@ export class SearchService {
    * Call loadTVACache() separately after TVA has finished caching
    */
   init() {
-    this.tvaAPI = game.modules.get('token-variants')?.api;
-    this.hasTVA = !!this.tvaAPI;
-    console.log(`${MODULE_ID} | SearchService initialized. TVA available: ${this.hasTVA}`);
+    tvaCacheService.init();
+    console.log(`${MODULE_ID} | SearchService initialized (delegates to TVACacheService)`);
+  }
+
+  /**
+   * Get TVA API reference
+   * @returns {Object} TVA API
+   */
+  get tvaAPI() {
+    return tvaCacheService.tvaAPI;
+  }
+
+  /**
+   * Check if TVA is available
+   * @returns {boolean}
+   */
+  get hasTVA() {
+    return tvaCacheService.hasTVA;
+  }
+
+  /**
+   * Get TVA cache images array (for backward compatibility)
+   * @returns {Array}
+   */
+  get tvaCacheImages() {
+    return tvaCacheService.tvaCacheImages;
+  }
+
+  /**
+   * Get TVA cache by category (for backward compatibility)
+   * @returns {Object}
+   */
+  get tvaCacheByCategory() {
+    return tvaCacheService.tvaCacheByCategory;
+  }
+
+  /**
+   * Check if TVA cache is loaded (for backward compatibility)
+   * @returns {boolean}
+   */
+  get tvaCacheLoaded() {
+    return tvaCacheService.tvaCacheLoaded;
   }
 
   /**
@@ -49,104 +83,7 @@ export class SearchService {
    * @returns {Promise<boolean>} True if cache loaded successfully
    */
   async loadTVACache(maxWaitMs = 30000) {
-    if (!this.hasTVA || !this.tvaAPI) {
-      console.log(`${MODULE_ID} | TVA not available, skipping cache load`);
-      return false;
-    }
-
-    // Wait for TVA to finish caching if it's in progress
-    const isCaching = this.tvaAPI.isCaching;
-    if (typeof isCaching === 'function') {
-      const startWait = Date.now();
-      while (isCaching() && (Date.now() - startWait) < maxWaitMs) {
-        console.log(`${MODULE_ID} | Waiting for TVA to finish caching...`);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
-      if (isCaching()) {
-        console.warn(`${MODULE_ID} | TVA still caching after ${maxWaitMs}ms, proceeding anyway`);
-      } else {
-        console.log(`${MODULE_ID} | TVA caching complete, loading cache directly`);
-      }
-    }
-
-    return await this._loadTVACacheFromFile();
-  }
-
-  /**
-   * Internal: Load TVA's static cache file directly for fast access
-   * This bypasses doImageSearch and Fuse.js for maximum performance
-   * @returns {Promise<boolean>} True if loaded successfully
-   */
-  async _loadTVACacheFromFile() {
-    if (this.tvaCacheLoaded) {
-      console.log(`${MODULE_ID} | TVA cache already loaded`);
-      return true;
-    }
-
-    try {
-      const tvaConfig = this.tvaAPI?.TVA_CONFIG;
-      if (!tvaConfig) {
-        console.warn(`${MODULE_ID} | TVA_CONFIG not accessible`);
-        return false;
-      }
-
-      // Check if static cache is enabled
-      if (!tvaConfig.staticCache) {
-        console.warn(`${MODULE_ID} | TVA static cache is disabled in settings`);
-        return false;
-      }
-
-      const staticCacheFile = tvaConfig.staticCacheFile;
-      if (!staticCacheFile) {
-        console.warn(`${MODULE_ID} | No static cache file configured in TVA`);
-        return false;
-      }
-
-      console.log(`${MODULE_ID} | Loading TVA cache directly from: ${staticCacheFile}`);
-
-      const response = await fetch(staticCacheFile);
-      if (!response.ok) {
-        console.warn(`${MODULE_ID} | Failed to load TVA cache file: ${response.status}`);
-        return false;
-      }
-
-      const json = await response.json();
-      this.tvaCacheByCategory = {};
-      this.tvaCacheImages = [];
-
-      // Parse the cache file (same logic as TVA's _readCacheFromFile)
-      for (const category in json) {
-        this.tvaCacheByCategory[category] = [];
-
-        for (const img of json[category]) {
-          let imageObj;
-
-          if (Array.isArray(img)) {
-            if (img.length === 3) {
-              imageObj = { path: img[0], name: img[1], tags: img[2], category };
-            } else {
-              imageObj = { path: img[0], name: img[1], category };
-            }
-          } else {
-            // Just a path string - extract name from filename
-            const fileName = img.split('/').pop()?.replace(/\.[^/.]+$/, '') || '';
-            imageObj = { path: img, name: fileName, category };
-          }
-
-          this.tvaCacheByCategory[category].push(imageObj);
-          this.tvaCacheImages.push(imageObj);
-        }
-      }
-
-      this.tvaCacheLoaded = true;
-      console.log(`${MODULE_ID} | TVA cache loaded directly: ${this.tvaCacheImages.length} images in ${Object.keys(this.tvaCacheByCategory).length} categories`);
-      return true;
-
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Error loading TVA cache directly:`, error);
-      return false;
-    }
+    return await tvaCacheService.loadTVACache(maxWaitMs);
   }
 
   /**
@@ -154,10 +91,7 @@ export class SearchService {
    * @returns {Promise<boolean>} True if reloaded successfully
    */
   async reloadTVACache() {
-    this.tvaCacheLoaded = false;
-    this.tvaCacheImages = [];
-    this.tvaCacheByCategory = {};
-    return await this.loadTVACache();
+    return await tvaCacheService.reloadTVACache();
   }
 
   /**
@@ -166,35 +100,7 @@ export class SearchService {
    * @returns {Array} Matching images
    */
   searchTVACacheDirect(searchTerm) {
-    if (!this.tvaCacheLoaded || !searchTerm) return [];
-
-    const termLower = searchTerm.toLowerCase();
-    const results = [];
-
-    for (const img of this.tvaCacheImages) {
-      // Skip excluded paths
-      if (isExcludedPath(img.path)) continue;
-
-      // Simple string matching on name and path
-      const nameLower = (img.name || '').toLowerCase();
-      const pathLower = (img.path || '').toLowerCase();
-
-      if (nameLower.includes(termLower) || pathLower.includes(termLower)) {
-        results.push({
-          path: img.path,
-          name: img.name,
-          category: img.category,
-          tags: img.tags,
-          source: 'tva-direct',
-          score: nameLower === termLower ? 0 : nameLower.startsWith(termLower) ? 0.1 : 0.3
-        });
-      }
-    }
-
-    // Sort by score (exact matches first)
-    results.sort((a, b) => a.score - b.score);
-
-    return results;
+    return tvaCacheService.searchTVACacheDirect(searchTerm);
   }
 
   /**
@@ -204,42 +110,7 @@ export class SearchService {
    * @returns {Array} Matching images
    */
   searchTVACacheByCategory(categoryType) {
-    if (!this.tvaCacheLoaded || !categoryType) return [];
-
-    const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType.toLowerCase()] || [];
-    const results = [];
-    const seenPaths = new Set();
-
-    for (const img of this.tvaCacheImages) {
-      if (seenPaths.has(img.path)) continue;
-      if (isExcludedPath(img.path)) continue;
-
-      const nameLower = (img.name || '').toLowerCase();
-      // Extract meaningful path parts (last 2-3 folder names, excluding CDN structure)
-      const pathParts = (img.path || '').toLowerCase().split('/');
-      const meaningfulPath = pathParts.slice(-4).join('/'); // Last 4 segments
-
-      // Check if matches any category term
-      // Note: We intentionally DON'T check img.category (TVA folder name) as it's unreliable
-      const matches = categoryTerms.some(term => {
-        const termLower = term.toLowerCase();
-        return nameLower.includes(termLower) || meaningfulPath.includes(termLower);
-      });
-
-      if (matches) {
-        seenPaths.add(img.path);
-        results.push({
-          path: img.path,
-          name: img.name,
-          category: img.category,
-          tags: img.tags,
-          source: 'tva-direct',
-          score: 0.3
-        });
-      }
-    }
-
-    return results;
+    return tvaCacheService.searchTVACacheByCategory(categoryType);
   }
 
   /**
@@ -248,42 +119,7 @@ export class SearchService {
    * @returns {Array} Matching images
    */
   searchTVACacheMultiple(searchTerms) {
-    if (!this.tvaCacheLoaded || !searchTerms || searchTerms.length === 0) return [];
-
-    const termsLower = searchTerms.map(t => t.toLowerCase());
-    const results = [];
-    const seenPaths = new Set();
-
-    for (const img of this.tvaCacheImages) {
-      if (seenPaths.has(img.path)) continue;
-      if (isExcludedPath(img.path)) continue;
-
-      const nameLower = (img.name || '').toLowerCase();
-      const pathLower = (img.path || '').toLowerCase();
-
-      // Check if matches ANY term (OR logic)
-      const matchedTerm = termsLower.find(term =>
-        nameLower.includes(term) || pathLower.includes(term)
-      );
-
-      if (matchedTerm) {
-        seenPaths.add(img.path);
-        results.push({
-          path: img.path,
-          name: img.name,
-          category: img.category,
-          tags: img.tags,
-          source: 'tva-direct',
-          score: nameLower === matchedTerm ? 0 : nameLower.startsWith(matchedTerm) ? 0.1 : 0.3,
-          matchedTerm
-        });
-      }
-    }
-
-    // Sort by score
-    results.sort((a, b) => a.score - b.score);
-
-    return results;
+    return tvaCacheService.searchTVACacheMultiple(searchTerms);
   }
 
   /**
@@ -291,7 +127,7 @@ export class SearchService {
    * @returns {boolean}
    */
   get isTVACacheLoaded() {
-    return this.tvaCacheLoaded;
+    return tvaCacheService.isTVACacheLoaded;
   }
 
   /**
@@ -299,11 +135,7 @@ export class SearchService {
    * @returns {Object}
    */
   getTVACacheStats() {
-    return {
-      loaded: this.tvaCacheLoaded,
-      totalImages: this.tvaCacheImages.length,
-      categories: Object.keys(this.tvaCacheByCategory).length
-    };
+    return tvaCacheService.getTVACacheStats();
   }
 
   /**
