@@ -137,12 +137,17 @@ function handleIndexPaths(data) {
 
       // Add to each matched subcategory
       for (const subcategory of subcategories) {
-        const key = subcategory.toLowerCase().replace(/\s+/g, '_');
-        if (!categories[category][key]) {
-          categories[category][key] = [];
+        if (!categories[category][subcategory]) {
+          categories[category][subcategory] = [];
         }
-        categories[category][key].push({ path, name: imageName });
+        categories[category][subcategory].push({ path, name: imageName });
       }
+
+      // Also add to a "_all" subcategory for the category
+      if (!categories[category]._all) {
+        categories[category]._all = [];
+      }
+      categories[category]._all.push({ path, name: imageName });
     }
 
     // Report progress every 1000 items
