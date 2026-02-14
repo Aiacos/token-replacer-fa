@@ -100,6 +100,25 @@ export class IndexService {
   }
 
   /**
+   * Tokenize search text into searchable terms
+   * Splits by path separators and common delimiters, converts to lowercase
+   * @param {string} text - Text to tokenize (e.g., file path)
+   * @returns {string[]} Array of unique lowercase search terms
+   */
+  tokenizeSearchText(text) {
+    if (!text) return [];
+
+    // Split by path separators (/, \), hyphens, underscores, spaces, dots
+    const terms = text
+      .toLowerCase()
+      .split(/[\/\\\-_\s\.]+/)
+      .filter(term => term.length > 0);
+
+    // Return unique terms
+    return [...new Set(terms)];
+  }
+
+  /**
    * Load index from localStorage
    * @returns {boolean} True if loaded successfully
    */
