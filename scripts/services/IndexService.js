@@ -537,6 +537,11 @@ export class IndexService {
 
     console.log(`${MODULE_ID} | Indexing ${totalPaths} paths directly...`);
 
+    // Performance tracking
+    const startTime = performance.now();
+    let batchStartTime = performance.now();
+    let batchImagesProcessed = 0;
+
     const BATCH_SIZE = 1000;
     for (let i = 0; i < totalPaths; i += BATCH_SIZE) {
       const batch = paths.slice(i, i + BATCH_SIZE);
@@ -548,11 +553,23 @@ export class IndexService {
         if (this.addImageToIndex(path, name)) {
           imagesFound++;
         }
+        batchImagesProcessed++;
       }
+
+      // Log performance stats every 1000 images
+      const batchEndTime = performance.now();
+      const batchDuration = batchEndTime - batchStartTime;
+      const timePerImage = batchDuration / batchImagesProcessed;
+      const processed = Math.min(i + BATCH_SIZE, totalPaths);
+
+      console.log(`${MODULE_ID} | Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image, ${(1000/batchDuration*batchImagesProcessed).toFixed(0)} images/sec)`);
+
+      // Reset batch tracking
+      batchStartTime = performance.now();
+      batchImagesProcessed = 0;
 
       // Progress callback
       if (onProgress) {
-        const processed = Math.min(i + BATCH_SIZE, totalPaths);
         onProgress(processed, totalPaths, imagesFound);
       }
 
@@ -560,7 +577,14 @@ export class IndexService {
       await new Promise(r => setTimeout(r, 10));
     }
 
+    // Final performance summary
+    const totalTime = performance.now() - startTime;
+    const avgTimePerImage = totalTime / totalPaths;
+    const throughput = (totalPaths / totalTime * 1000).toFixed(0);
+
     console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
+    console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
+
     return imagesFound;
   }
 
@@ -584,6 +608,9 @@ export class IndexService {
     let processed = 0;
     let imagesFound = 0;
     let debugLogged = false;
+
+    // Performance tracking
+    const startTime = performance.now();
 
     console.log(`${MODULE_ID} | Searching ${totalTerms} terms via doImageSearch...`);
 
@@ -663,6 +690,15 @@ export class IndexService {
         onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
       }
       await new Promise(r => setTimeout(r, 50));
+    }
+
+    // Final performance summary
+    const totalTime = performance.now() - startTime;
+    const totalImages = Object.keys(this.index.allPaths).length;
+    if (totalImages > 0) {
+      const avgTimePerImage = totalTime / totalImages;
+      const throughput = (totalImages / totalTime * 1000).toFixed(0);
+      console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
     }
 
     return imagesFound;
