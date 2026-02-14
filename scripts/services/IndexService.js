@@ -199,21 +199,16 @@ export class IndexService {
   }
 
   /**
-   * Save index to localStorage
-   * @returns {boolean} True if saved successfully
+   * Save index to storage
+   * @returns {Promise<boolean>} True if saved successfully
    */
-  saveToCache() {
+  async saveToCache() {
     try {
       const json = JSON.stringify(this.index);
+      const sizeKB = (json.length / 1024).toFixed(0);
 
-      // Check size limit (~5MB for localStorage)
-      if (json.length > 4.5 * 1024 * 1024) {
-        console.warn(`${MODULE_ID} | Index too large for cache (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
-        return false;
-      }
-
-      localStorage.setItem(CACHE_KEY, json);
-      console.log(`${MODULE_ID} | Saved index to cache (${(json.length / 1024).toFixed(0)}KB)`);
+      await storageService.save(CACHE_KEY, this.index);
+      console.log(`${MODULE_ID} | Saved index to cache (${sizeKB}KB)`);
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to save cache:`, error);
@@ -1004,7 +999,7 @@ export class IndexService {
 
       if (totalImages > 0) {
         this.index.lastUpdate = Date.now();
-        this.saveToCache();
+        await this.saveToCache();
         this.isBuilt = true;
 
         const stats = this.getStats();
