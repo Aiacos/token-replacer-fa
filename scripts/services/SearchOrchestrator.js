@@ -32,7 +32,7 @@ export class SearchOrchestrator {
     // Initialize Web Worker if supported
     if (typeof Worker !== 'undefined') {
       try {
-        const workerPath = `modules/${MODULE_ID}/scripts/workers/SearchWorker.js`;
+        const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
         this.worker = new Worker(workerPath);
         console.log(`${MODULE_ID} | Web Worker initialized for background search operations`);
       } catch (error) {
@@ -311,20 +311,20 @@ export class SearchOrchestrator {
     return new Promise((resolve, reject) => {
       // Create a unique message handler for this search operation
       const messageHandler = (event) => {
-        const { type, results, processed, total, message, stack } = event.data;
+        const { type, result, current, total, term, message, stack } = event.data;
 
         switch (type) {
           case 'progress':
             // Call progress callback with worker's progress update
             if (onProgress) {
-              onProgress(processed, total);
+              onProgress(current, total);
             }
             break;
 
           case 'complete':
             // Clean up the message handler
             this.worker.removeEventListener('message', messageHandler);
-
+            const results = result || [];
             console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
             resolve(results);
             break;
@@ -357,13 +357,16 @@ export class SearchOrchestrator {
 
       // Post the search task to the worker
       this.worker.postMessage({
-        command: 'searchLocalIndex',
+        command: 'fuzzySearch',
         data: {
           searchTerms: searchTerms,
           index: index,
-          creatureType: creatureType,
-          threshold: threshold,
-          creatureTypeMappings: CREATURE_TYPE_MAPPINGS
+          options: {
+            keys: ['name', 'fileName', 'category'],
+            threshold: threshold,
+            includeScore: true,
+            minMatchCharLength: 2
+          }
         }
       });
     });
