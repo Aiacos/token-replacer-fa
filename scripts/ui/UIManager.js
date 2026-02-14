@@ -180,7 +180,6 @@ export class UIManager {
    */
   async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const safeBatch = currentBatch.map(name => escapeHtml(name));
 
     return await renderTemplate(
       `modules/${MODULE_ID}/templates/parallel-search.hbs`,
@@ -190,8 +189,8 @@ export class UIManager {
         total,
         uniqueTypes,
         totalTokens,
-        currentBatch: safeBatch,
-        hasBatch: safeBatch.length > 0
+        currentBatch,
+        hasBatch: currentBatch.length > 0
       }
     );
   }
@@ -204,24 +203,19 @@ export class UIManager {
    * @returns {Promise<string>} HTML string
    */
   async createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
-    const safeName = escapeHtml(creatureInfo.actorName);
-    const safeType = escapeHtml(creatureInfo.type || 'Unknown');
-    const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
     const showMultiSelect = tokenCount > 1;
     const totalCount = matches.length;
 
     // Transform matches array with computed fields
     const transformedMatches = matches.map((match, idx) => {
-      const safeMatchName = escapeHtml(match.name);
-      const safePath = escapeHtml(match.path);
       const scoreDisplay = match.score !== undefined
         ? `${Math.round((1 - match.score) * 100)}%`
-        : escapeHtml(match.source || '');
+        : (match.source || '');
       return {
         index: idx,
-        safePath,
-        safeMatchName,
-        safeNameLower: safeMatchName.toLowerCase(),
+        path: match.path,
+        name: match.name,
+        nameLower: match.name.toLowerCase(),
         scoreDisplay,
         isFirst: idx === 0
       };
@@ -230,10 +224,10 @@ export class UIManager {
     return await renderTemplate(
       `modules/${MODULE_ID}/templates/match-selection.hbs`,
       {
-        currentImage: escapeHtml(creatureInfo.currentImage),
-        safeName,
-        safeType,
-        safeSubtype,
+        currentImage: creatureInfo.currentImage,
+        actorName: creatureInfo.actorName,
+        type: creatureInfo.type || 'Unknown',
+        subtype: creatureInfo.subtype || '',
         tokenCount,
         showTokenCount: tokenCount > 1,
         showMultiSelect,
@@ -251,9 +245,6 @@ export class UIManager {
    * @returns {Promise<string>} HTML string
    */
   async createNoMatchHTML(creatureInfo, tokenCount = 1) {
-    const safeName = escapeHtml(creatureInfo.actorName);
-    const safeType = escapeHtml(creatureInfo.type || 'Unknown');
-    const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
     const showMultiSelect = tokenCount > 1;
 
     // Transform creature types array with display names
@@ -264,17 +255,17 @@ export class UIManager {
     return await renderTemplate(
       `modules/${MODULE_ID}/templates/no-match.hbs`,
       {
-        currentImage: escapeHtml(creatureInfo.currentImage),
-        safeName,
-        safeType,
-        safeSubtype,
+        currentImage: creatureInfo.currentImage,
+        actorName: creatureInfo.actorName,
+        type: creatureInfo.type || 'Unknown',
+        subtype: creatureInfo.subtype || '',
         tokenCount,
         showTokenCount: tokenCount > 1,
         showMultiSelect,
         noMatchMessage: i18n('dialog.noMatch', { name: creatureInfo.actorName }),
         browseByTypeLabel: i18n('dialog.browseByType'),
         searchCategoryLabel: i18n('dialog.searchCategory'),
-        typeValue: escapeHtml(creatureInfo.type || ''),
+        typeValue: creatureInfo.type || '',
         creatureTypes,
         skipLabel: i18n('dialog.skip')
       }
@@ -317,12 +308,11 @@ export class UIManager {
     const successCount = results.filter(r => r.status === 'success').length;
     const failedCount = results.filter(r => r.status === 'failed').length;
     const skippedCount = results.filter(r => r.status === 'skipped').length;
-    const safeStatus = escapeHtml(status);
 
-    // Transform results array with escaped values and icon classes
-    const safeResults = results.map(r => ({
-      name: escapeHtml(r.name),
-      match: r.match ? escapeHtml(r.match) : null,
+    // Transform results array with icon classes
+    const transformedResults = results.map(r => ({
+      name: r.name,
+      match: r.match || null,
       status: r.status,
       iconClass: r.status === 'success' ? 'fa-check' :
                  r.status === 'failed' ? 'fa-times' : 'fa-forward'
@@ -334,12 +324,12 @@ export class UIManager {
         percent,
         current,
         total,
-        status: safeStatus,
+        status,
         successCount,
         failedCount,
         skippedCount,
         hasResults: results.length > 0,
-        results: safeResults
+        results: transformedResults
       }
     );
   }
