@@ -246,12 +246,12 @@ export class TokenReplacerApp {
 
     if (this.hasTVA && useTVACache) {
       console.log(`${MODULE_ID} | Using TVA cache`);
-      uiManager.updateDialogContent(uiManager.createTVACacheHTML(false));
+      uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false));
       await yieldToMain(100);
 
       // If refresh requested, do it FIRST before loading our cache
       if (refreshTVACache && this.tvaAPI?.cacheImages) {
-        uiManager.updateDialogContent(uiManager.createTVACacheHTML(true));
+        uiManager.updateDialogContent(await uiManager.createTVACacheHTML(true));
         await yieldToMain(50);
         try {
           await this.tvaAPI.cacheImages();
@@ -263,7 +263,7 @@ export class TokenReplacerApp {
       }
 
       // NOW load TVA cache directly (after any refresh is complete)
-      uiManager.updateDialogContent(uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+      uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
       const cacheLoaded = await tvaCacheService.loadTVACache();
       if (cacheLoaded) {
         const stats = tvaCacheService.getTVACacheStats();

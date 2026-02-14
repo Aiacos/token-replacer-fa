@@ -1,0 +1,20 @@
+<div class="token-replacer-fa-scan-progress">
+  {{#if refreshing}}
+    <div class="scan-status">
+      <i class="fas fa-sync fa-spin"></i>
+      <span>Refreshing TVA cache...</span>
+    </div>
+    <p style="text-align: center; color: #888; margin-top: 10px;">
+      This may take a moment for large image libraries
+    </p>
+  {{else}}
+    <div class="scan-status">
+      <i class="fas fa-bolt"></i>
+      <span>{{statusMessage}}</span>
+    </div>
+    <div class="optimization-info">
+      <i class="fas fa-info-circle"></i>
+      <span>Leveraging TVA's pre-built image index for faster search</span>
+    </div>
+  {{/if}}
+</div>

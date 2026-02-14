@@ -535,35 +535,15 @@ export class UIManager {
    * Create TVA cache loading HTML
    * @param {boolean} refreshing - Whether refreshing cache
    * @param {string} customMessage - Optional custom status message
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createTVACacheHTML(refreshing = false, customMessage = null) {
-    if (refreshing) {
-      return `
-        <div class="token-replacer-fa-scan-progress">
-          <div class="scan-status">
-            <i class="fas fa-sync fa-spin"></i>
-            <span>Refreshing TVA cache...</span>
-          </div>
-          <p style="text-align: center; color: #888; margin-top: 10px;">
-            This may take a moment for large image libraries
-          </p>
-        </div>
-      `;
-    }
+  async createTVACacheHTML(refreshing = false, customMessage = null) {
+    const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
     const statusMessage = customMessage || 'Using Token Variant Art cache...';
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status">
-          <i class="fas fa-bolt"></i>
-          <span>${statusMessage}</span>
-        </div>
-        <div class="optimization-info">
-          <i class="fas fa-info-circle"></i>
-          <span>Leveraging TVA's pre-built image index for faster search</span>
-        </div>
-      </div>
-    `;
+    return await renderTemplate(templatePath, {
+      refreshing,
+      statusMessage
+    });
   }
 
   /**
