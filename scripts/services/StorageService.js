@@ -212,6 +212,69 @@ export class StorageService {
   }
 
   /**
+   * Load data from storage (IndexedDB or localStorage fallback)
+   * @param {string} key - Storage key (used as record ID)
+   * @returns {Promise<*>} Stored data, or null if not found
+   */
+  async load(key) {
+    // IndexedDB path
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+
+        // Create transaction and object store
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const objectStore = transaction.objectStore(STORE_NAME);
+
+        // Get data from object store
+        const request = objectStore.get(key);
+
+        // Wait for request to complete
+        const record = await new Promise((resolve, reject) => {
+          request.onsuccess = () => {
+            resolve(request.result);
+          };
+          request.onerror = () => {
+            console.error(`${MODULE_ID} | Failed to load from IndexedDB:`, request.error);
+            reject(request.error);
+          };
+          transaction.onerror = () => {
+            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
+            reject(transaction.error);
+          };
+        });
+
+        if (record) {
+          console.log(`${MODULE_ID} | Loaded from IndexedDB: ${key}`);
+          return record.data;
+        }
+
+        console.log(`${MODULE_ID} | No data found in IndexedDB: ${key}`);
+        return null;
+      } catch (error) {
+        console.warn(`${MODULE_ID} | IndexedDB load failed, falling back to localStorage:`, error);
+        // Fall through to localStorage fallback
+      }
+    }
+
+    // localStorage fallback
+    try {
+      const json = localStorage.getItem(key);
+      if (!json) {
+        console.log(`${MODULE_ID} | No data found in localStorage: ${key}`);
+        return null;
+      }
+
+      const record = JSON.parse(json);
+      console.log(`${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`);
+      return record.data;
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to load from localStorage:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Close database connection
    * Should be called when service is no longer needed
    */
