@@ -426,6 +426,51 @@ export class StorageService {
   }
 
   /**
+   * Migrate data from localStorage to IndexedDB/new storage
+   * @param {string} oldKey - localStorage key to migrate from
+   * @param {string} newKey - Storage key to migrate to
+   * @returns {Promise<boolean>} True if migration succeeded, false otherwise
+   */
+  async migrateFromLocalStorage(oldKey, newKey) {
+    try {
+      console.log(`${MODULE_ID} | Starting migration from localStorage "${oldKey}" to storage "${newKey}"`);
+
+      // Read data from localStorage
+      const json = localStorage.getItem(oldKey);
+      if (!json) {
+        console.warn(`${MODULE_ID} | Migration failed: no data found in localStorage for key "${oldKey}"`);
+        return false;
+      }
+
+      // Parse JSON wrapper {data, timestamp}
+      const record = JSON.parse(json);
+      if (!record || !record.data) {
+        console.warn(`${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`);
+        return false;
+      }
+
+      const dataSize = (json.length / 1024).toFixed(0);
+      console.log(`${MODULE_ID} | Migrating ${dataSize}KB of data from localStorage to IndexedDB...`);
+
+      // Save to new storage (IndexedDB or localStorage fallback)
+      const success = await this.save(newKey, record.data);
+
+      if (success) {
+        console.log(`${MODULE_ID} | Migration successful: ${dataSize}KB migrated from "${oldKey}" to "${newKey}"`);
+        console.log(`${MODULE_ID} | Note: Original localStorage data kept as backup`);
+        return true;
+      } else {
+        console.warn(`${MODULE_ID} | Migration failed: could not save data to new storage`);
+        return false;
+      }
+    } catch (error) {
+      console.error(`${MODULE_ID} | Migration failed with error:`, error);
+      console.log(`${MODULE_ID} | Continuing with empty cache - index will rebuild automatically`);
+      return false;
+    }
+  }
+
+  /**
    * Close database connection
    * Should be called when service is no longer needed
    */
