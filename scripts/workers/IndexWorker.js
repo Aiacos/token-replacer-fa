@@ -260,8 +260,26 @@ async function handleFuzzySearch(data) {
   const results = [];
   const seenPaths = new Set();
 
+  // Send initial progress
+  self.postMessage({
+    type: 'progress',
+    current: 0,
+    total: searchTerms.length,
+    term: ''
+  });
+
   // Search for each term
-  for (const term of searchTerms) {
+  for (let i = 0; i < searchTerms.length; i++) {
+    const term = searchTerms[i];
+
+    // Send progress update
+    self.postMessage({
+      type: 'progress',
+      current: i + 1,
+      total: searchTerms.length,
+      term: term
+    });
+
     const searchResults = fuse.search(term);
     for (const result of searchResults) {
       const item = result.item;
