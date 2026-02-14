@@ -232,7 +232,7 @@ export class TokenReplacerApp {
       uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
       () => { this.isProcessing = false; }
     );
-    dialog.render(true);
+    dialog.render();
     await yieldToMain(100);
 
     // Initialize search service (basic setup)

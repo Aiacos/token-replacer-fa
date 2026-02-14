@@ -24,6 +24,7 @@ function i18n(key, data = {}) {
 /**
  * TokenReplacerDialog - ApplicationV2-based dialog for Token Replacer FA
  * Replaces deprecated V1 Dialog API with modern ApplicationV2
+ * Compatible with Foundry VTT v12-v13
  */
 class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
   /**
@@ -33,27 +34,22 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    */
   constructor(options = {}) {
     super(options);
-    this.content = options.content || '';
-    this.onCloseCallback = options.onClose;
+    this._dialogContent = options.content || '';
+    this._onCloseCallback = options.onClose;
   }
 
-  /**
-   * Default configuration options for the dialog
-   */
   static DEFAULT_OPTIONS = {
     id: 'token-replacer-fa-dialog',
-    classes: ['token-replacer-fa'],
+    classes: ['token-replacer-fa-dialog'],
     window: {
       title: 'Token Replacer FA',
       resizable: true,
-      positioned: true,
       minimizable: false
     },
     position: {
-      width: 600,
+      width: 500,
       height: 'auto'
-    },
-    tag: 'div'
+    }
   };
 
   /**
@@ -62,30 +58,37 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @returns {Promise<Object>} Context data for template
    */
   async _prepareContext(options) {
-    const context = await super._prepareContext(options);
-    context.content = this.content;
-    return context;
+    return { content: this._dialogContent };
   }
 
   /**
-   * Render the dialog HTML template
+   * Render the dialog content as an HTMLElement
+   * ApplicationV2 requires _renderHTML to return DOM elements, not strings
    * @param {Object} context - Rendering context
    * @param {Object} options - Rendering options
-   * @returns {Promise<string>} Rendered HTML
+   * @returns {Promise<HTMLElement>} Rendered DOM element
    */
   async _renderHTML(context, options) {
-    // Wrap content in .dialog-content for compatibility with event handlers
-    return `<div class="dialog-content">${context.content}</div>`;
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('dialog-content');
+    wrapper.innerHTML = context.content;
+    return wrapper;
   }
 
   /**
-   * Actions performed after rendering
-   * @param {Object} context - Rendering context
+   * Replace the dialog content in the DOM
+   * Required by ApplicationV2 to handle both initial render and re-renders
+   * @param {HTMLElement} result - New content from _renderHTML
+   * @param {HTMLElement} content - The application's content element
    * @param {Object} options - Rendering options
    */
-  async _onRender(context, options) {
-    await super._onRender(context, options);
-    // Post-render setup can be done here if needed
+  _replaceHTML(result, content, options) {
+    const existing = content.querySelector('.dialog-content');
+    if (existing) {
+      existing.replaceWith(result);
+    } else {
+      content.appendChild(result);
+    }
   }
 
   /**
@@ -94,31 +97,33 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    */
   async _onClose(options) {
     await super._onClose(options);
-    if (this.onCloseCallback) {
-      this.onCloseCallback();
+    this._onCloseCallback?.();
+  }
+
+  /**
+   * Update dialog content directly via DOM manipulation
+   * Avoids full re-render cycle for better performance during frequent updates
+   * @param {string} html - New HTML content
+   */
+  updateContent(html) {
+    this._dialogContent = html;
+    if (!this.rendered) return;
+    const el = this.element?.querySelector('.dialog-content');
+    if (el) {
+      el.innerHTML = html;
     }
   }
 
   /**
-   * Update dialog content dynamically using partial rendering
-   * @param {string} html - New HTML content
-   */
-  updateContent(html) {
-    this.content = html;
-    // Use partial rendering to update just the content
-    this.render({ parts: ['content'] });
-  }
-
-  /**
-   * Get the dialog element (compatibility method)
-   * @returns {HTMLElement} The dialog element
+   * Get the dialog's root element
+   * @returns {HTMLElement|null} The dialog element
    */
   getDialogElement() {
     return this.element;
   }
 
   /**
-   * Check if dialog is currently open
+   * Check if dialog is currently rendered and open
    * @returns {boolean} True if dialog is rendered
    */
   isOpen() {
