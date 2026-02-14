@@ -1,9 +1,32 @@
-<div class="token-replacer-fa-scan-progress">
-  <div class="scan-status" style="color: #f87171;">
+<div class="token-replacer-fa-error">
+  <div class="error-status {{errorType}}">
     <i class="fas fa-exclamation-triangle"></i>
     <span>{{message}}</span>
   </div>
-  <p style="text-align: center; color: #888; margin-top: 15px;">
-    Install Token Variant Art or FA Nexus module, or configure additional search paths in settings.
-  </p>
+
+  {{#if details}}
+    <div class="error-details">
+      <button class="error-details-toggle" type="button">
+        <i class="fas fa-chevron-down"></i>
+        <span>Show Details</span>
+      </button>
+      <div class="error-details-content" style="display: none;">
+        <pre>{{details}}</pre>
+      </div>
+    </div>
+  {{/if}}
+
+  {{#if recoverySuggestions}}
+    <div class="error-recovery">
+      <div class="recovery-title">
+        <i class="fas fa-lightbulb"></i>
+        <span>How to fix this:</span>
+      </div>
+      <ul class="recovery-suggestions">
+        {{#each recoverySuggestions}}
+          <li>{{this}}</li>
+        {{/each}}
+      </ul>
+    </div>
+  {{/if}}
 </div>
