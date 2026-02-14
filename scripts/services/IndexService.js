@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 13;  // v2.9.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
+const INDEX_VERSION = 13;  // v2.10.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
