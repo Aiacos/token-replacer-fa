@@ -248,93 +248,37 @@ export class UIManager {
    * Create no-match HTML with category browser
    * @param {Object} creatureInfo - Creature information
    * @param {number} tokenCount - Number of tokens
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createNoMatchHTML(creatureInfo, tokenCount = 1) {
+  async createNoMatchHTML(creatureInfo, tokenCount = 1) {
     const safeName = escapeHtml(creatureInfo.actorName);
     const safeType = escapeHtml(creatureInfo.type || 'Unknown');
     const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+    const showMultiSelect = tokenCount > 1;
 
-    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort();
+    // Transform creature types array with display names
+    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort().map(type => ({
+      displayName: type.charAt(0).toUpperCase() + type.slice(1)
+    }));
 
-    return `
-      <div class="token-replacer-fa-token-preview">
-        <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
-        <div class="token-info">
-          <div class="token-name">${safeName}</div>
-          <div class="token-type">${safeType} ${safeSubtype}</div>
-          ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
-        </div>
-      </div>
-
-      <div class="token-replacer-fa-no-match">
-        <div class="no-match-message">
-          <i class="fas fa-search-minus"></i>
-          <span>${i18n('dialog.noMatch', { name: creatureInfo.actorName })}</span>
-        </div>
-
-        <div class="category-search">
-          <label>${i18n('dialog.browseByType')}</label>
-          <div class="search-input-wrapper category-type-search">
-            <i class="fas fa-search"></i>
-            <input type="text"
-                   class="category-type-input"
-                   placeholder="Search creature type or name..."
-                   value="${escapeHtml(creatureInfo.type || '')}"
-                   autocomplete="off"
-                   list="creature-type-suggestions">
-            <datalist id="creature-type-suggestions">
-              ${creatureTypes.map(type => {
-                const displayName = type.charAt(0).toUpperCase() + type.slice(1);
-                return `<option value="${displayName}">`;
-              }).join('')}
-            </datalist>
-          </div>
-          <button type="button" class="search-category-btn">
-            <i class="fas fa-search"></i> ${i18n('dialog.searchCategory')}
-          </button>
-        </div>
-
-        <div class="category-results" style="display: none;">
-          <div class="category-results-loading" style="display: none;"></div>
-          <div class="token-replacer-fa-search-filter category-filter" style="display: none;">
-            <div class="search-input-wrapper">
-              <i class="fas fa-search"></i>
-              <input type="text" class="category-search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
-            </div>
-            <div class="result-count">Showing <span class="category-visible-count">0</span> of <span class="category-total-count">0</span> results</div>
-          </div>
-          <div class="token-replacer-fa-match-select" data-multiselect="${tokenCount > 1}">
-          </div>
-        </div>
-      </div>
-
-      ${tokenCount > 1 ? `
-      <div class="token-replacer-fa-mode-toggle" style="display: none;">
-        <span class="mode-label">Variant assignment:</span>
-        <div class="mode-buttons">
-          <button type="button" class="mode-btn active" data-mode="sequential">
-            <i class="fas fa-arrow-right"></i> Sequential
-          </button>
-          <button type="button" class="mode-btn" data-mode="random">
-            <i class="fas fa-random"></i> Random
-          </button>
-        </div>
-      </div>
-      <div class="token-replacer-fa-selection-info" style="display: none;">
-        <span class="selection-count">0 selected</span>
-      </div>
-      ` : ''}
-
-      <div class="token-replacer-fa-selection-buttons">
-        <button type="button" class="select-btn" data-action="select" disabled>
-          <i class="fas fa-check"></i> Apply
-        </button>
-        <button type="button" class="skip-btn" data-action="skip">
-          <i class="fas fa-forward"></i> ${i18n('dialog.skip')}
-        </button>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/no-match.hbs`,
+      {
+        currentImage: escapeHtml(creatureInfo.currentImage),
+        safeName,
+        safeType,
+        safeSubtype,
+        tokenCount,
+        showTokenCount: tokenCount > 1,
+        showMultiSelect,
+        noMatchMessage: i18n('dialog.noMatch', { name: creatureInfo.actorName }),
+        browseByTypeLabel: i18n('dialog.browseByType'),
+        searchCategoryLabel: i18n('dialog.searchCategory'),
+        typeValue: escapeHtml(creatureInfo.type || ''),
+        creatureTypes,
+        skipLabel: i18n('dialog.skip')
+      }
+    );
   }
 
   /**

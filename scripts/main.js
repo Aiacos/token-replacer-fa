@@ -330,7 +330,7 @@ export class TokenReplacerApp {
 
       // No matches - show category browser
       if (matches.length === 0) {
-        uiManager.updateDialogContent(uiManager.createNoMatchHTML(creatureInfo, tokens.length));
+        uiManager.updateDialogContent(await uiManager.createNoMatchHTML(creatureInfo, tokens.length));
         await yieldToMain(50);
 
         const dialogEl = uiManager.getDialogElement();
