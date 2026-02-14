@@ -39,6 +39,26 @@ export class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
+    this.termCategoryMap = this.buildTermCategoryMap();
+  }
+
+  /**
+   * Build reverse lookup Map from CREATURE_TYPE_MAPPINGS
+   * Maps each term to its category for O(1) lookups
+   * @private
+   * @returns {Map<string, string>} Map of lowercase term → category
+   */
+  buildTermCategoryMap() {
+    const map = new Map();
+
+    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
+      for (const term of terms) {
+        const termLower = term.toLowerCase();
+        map.set(termLower, category);
+      }
+    }
+
+    return map;
   }
 
   /**
