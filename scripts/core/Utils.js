@@ -13,7 +13,7 @@ let FuseClass = null;
  * Created once at module load time for 10-50x faster path filtering
  * compared to creating new RegExp objects on every isExcludedPath() call
  */
-const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(term => new RegExp(`\\b${term}`, 'i'));
+const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(term => new RegExp(`\\b${term}\\b`, 'i'));
 
 /**
  * Load Fuse.js library from CDN
