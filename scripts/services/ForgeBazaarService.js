@@ -429,3 +429,6 @@ export class ForgeBazaarService {
  *    - E2E tests with TVA disabled
  *    - Performance tests for large result sets
  */
+
+// Export singleton instance
+export const forgeBazaarService = new ForgeBazaarService();

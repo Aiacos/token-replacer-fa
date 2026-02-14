@@ -27,16 +27,19 @@ export class SearchOrchestrator {
     // Dependencies will be injected or accessed via imports
     this.searchService = null;
     this.tvaCacheService = null;
+    this.forgeBazaarService = null;
   }
 
   /**
    * Set dependencies for the orchestrator
    * @param {Object} searchService - SearchService instance
    * @param {Object} tvaCacheService - TVACacheService instance
+   * @param {Object} forgeBazaarService - ForgeBazaarService instance
    */
-  setDependencies(searchService, tvaCacheService) {
+  setDependencies(searchService, tvaCacheService, forgeBazaarService) {
     this.searchService = searchService;
     this.tvaCacheService = tvaCacheService;
+    this.forgeBazaarService = forgeBazaarService;
   }
 
   /**
@@ -262,6 +265,16 @@ export class SearchOrchestrator {
           }
         }
       }
+      // Fallback to ForgeBazaarService when TVA is not available
+      else if (this.forgeBazaarService?.isServiceAvailable()) {
+        const bazaarResults = await this.forgeBazaarService.search(directSearchTerm);
+        for (const result of bazaarResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push({ ...result, source: 'forge-bazaar' });
+          }
+        }
+      }
 
       // Search local index
       if (localIndex?.length > 0) {
@@ -426,6 +439,30 @@ export class SearchOrchestrator {
         }
       }
       console.log(`${MODULE_ID} | TVA search complete, total unique results: ${results.length}`);
+    }
+    // Fallback to ForgeBazaarService when TVA is not available
+    else if (this.forgeBazaarService?.isServiceAvailable()) {
+      console.log(`${MODULE_ID} | Using ForgeBazaarService (TVA not available)`);
+      if (progressCallback) {
+        progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
+      }
+
+      const bazaarResults = await this.forgeBazaarService.browseCategory(categoryType);
+      for (const result of bazaarResults) {
+        if (!seenPaths.has(result.path)) {
+          seenPaths.add(result.path);
+          results.push({
+            ...result,
+            source: 'forge-bazaar'
+          });
+        }
+      }
+
+      if (progressCallback) {
+        progressCallback({ current: 1, total: 1, term: 'Forge Bazaar', resultsFound: results.length });
+      }
+
+      console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
     }
 
     // Search local index by category
