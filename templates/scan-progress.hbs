@@ -1,0 +1,34 @@
+<div class="token-replacer-fa-scan-progress">
+  <div class="scan-status">
+    <i class="fas fa-search fa-spin"></i>
+    <span>Scanning token artwork...</span>
+  </div>
+
+  <div class="scan-stats">
+    <div class="stat-item">
+      <div class="stat-value">{{dirsScanned}}</div>
+      <div class="stat-label">Directories</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">{{imagesFound}}</div>
+      <div class="stat-label">Images Found</div>
+    </div>
+  </div>
+
+  <div class="scan-current">
+    <div class="current-label">Current directory:</div>
+    <div class="current-path" title="{{currentDir}}">{{shortDir}}</div>
+    {{#if currentFile}}
+      <div class="current-file">
+        <i class="fas fa-image"></i> {{currentFile}}
+      </div>
+    {{/if}}
+  </div>
+
+  {{#if showDirInfo}}
+    <div class="dir-info">
+      <span><i class="fas fa-file-image"></i> {{filesInDir}} files</span>
+      <span><i class="fas fa-folder"></i> {{subDirs}} subdirectories</span>
+    </div>
+  {{/if}}
+</div>

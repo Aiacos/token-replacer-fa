@@ -1,0 +1,77 @@
+<div class="token-replacer-fa-token-preview">
+  <img src="{{currentImage}}" alt="{{actorName}}">
+  <div class="token-info">
+    <div class="token-name">{{actorName}}</div>
+    <div class="token-type">{{type}} {{subtype}}</div>
+    {{#if showTokenCount}}
+      <div class="token-count">{{tokenCount}} tokens</div>
+    {{/if}}
+  </div>
+</div>
+
+<div class="token-replacer-fa-no-match">
+  <div class="no-match-message">
+    <i class="fas fa-search-minus"></i>
+    <span>{{noMatchMessage}}</span>
+  </div>
+
+  <div class="category-search">
+    <label>{{browseByTypeLabel}}</label>
+    <div class="search-input-wrapper category-type-search">
+      <i class="fas fa-search"></i>
+      <input type="text"
+             class="category-type-input"
+             placeholder="Search creature type or name..."
+             value="{{typeValue}}"
+             autocomplete="off"
+             list="creature-type-suggestions">
+      <datalist id="creature-type-suggestions">
+        {{#each creatureTypes}}
+          <option value="{{displayName}}">
+        {{/each}}
+      </datalist>
+    </div>
+    <button type="button" class="search-category-btn">
+      <i class="fas fa-search"></i> {{searchCategoryLabel}}
+    </button>
+  </div>
+
+  <div class="category-results" style="display: none;">
+    <div class="category-results-loading" style="display: none;"></div>
+    <div class="token-replacer-fa-search-filter category-filter" style="display: none;">
+      <div class="search-input-wrapper">
+        <i class="fas fa-search"></i>
+        <input type="text" class="category-search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
+      </div>
+      <div class="result-count">Showing <span class="category-visible-count">0</span> of <span class="category-total-count">0</span> results</div>
+    </div>
+    <div class="token-replacer-fa-match-select" data-multiselect="{{showMultiSelect}}">
+    </div>
+  </div>
+</div>
+
+{{#if showMultiSelect}}
+<div class="token-replacer-fa-mode-toggle" style="display: none;">
+  <span class="mode-label">Variant assignment:</span>
+  <div class="mode-buttons">
+    <button type="button" class="mode-btn active" data-mode="sequential">
+      <i class="fas fa-arrow-right"></i> Sequential
+    </button>
+    <button type="button" class="mode-btn" data-mode="random">
+      <i class="fas fa-random"></i> Random
+    </button>
+  </div>
+</div>
+<div class="token-replacer-fa-selection-info" style="display: none;">
+  <span class="selection-count">0 selected</span>
+</div>
+{{/if}}
+
+<div class="token-replacer-fa-selection-buttons">
+  <button type="button" class="select-btn" data-action="select" disabled>
+    <i class="fas fa-check"></i> Apply
+  </button>
+  <button type="button" class="skip-btn" data-action="skip">
+    <i class="fas fa-forward"></i> {{skipLabel}}
+  </button>
+</div>

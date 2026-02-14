@@ -74,6 +74,15 @@ scripts/
 │   └── IndexWorker.js   # Web Worker for background index building (non-blocking)
 └── ui/
     └── UIManager.js     # Dialog generation, match selection UI, progress tracking
+templates/
+├── error.hbs            # Error message dialog
+├── tva-cache.hbs        # TVA cache loading progress
+├── scan-progress.hbs    # Directory scanning progress
+├── search-progress.hbs  # Category search progress
+├── parallel-search.hbs  # Parallel token search progress
+├── progress.hbs         # Final results summary
+├── match-selection.hbs  # Token variant selection dialog
+└── no-match.hbs         # No match found with category browser
 ```
 
 ### Key Data Flow
@@ -83,6 +92,27 @@ scripts/
 3. `SearchService.loadTVACache()` reads TVA's static cache file directly
 4. `IndexService.build()` creates hierarchical category index from cache
 5. `UIManager` displays matches for user selection
+
+### Template System
+
+The module uses Handlebars templates (preloaded in `main.js` init hook) to separate presentation from logic:
+
+**Template Rendering:**
+- All UI generation methods in `UIManager.js` use `renderTemplate(path, data)`
+- Methods are async and return `Promise<string>`
+- Templates are preloaded via `loadTemplates()` in the init hook for performance
+
+**XSS Protection:**
+- Handlebars auto-escapes all variables by default (e.g., `{{name}}`)
+- No manual escaping needed in template methods - just pass raw data
+- `escapeHtml()` utility is only used for dynamic HTML generation outside templates (e.g., `innerHTML` assignments in event handlers)
+
+**Template Conventions:**
+- Template files are in `/templates` directory with `.hbs` extension
+- Use `{{variable}}` for auto-escaped output
+- Use `{{#if condition}}...{{/if}}` for conditionals
+- Use `{{#each array}}...{{/each}}` for iteration
+- All CSS classes and structure must match original inline HTML
 
 ### TVA Integration
 

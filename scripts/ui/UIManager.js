@@ -179,53 +179,26 @@ export class UIManager {
    * @param {number} filesInDir - Files in current directory
    * @param {number} subDirs - Subdirectories count
    * @param {string} currentFile - Current file being processed
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir, subDirs, currentFile = null) {
-    const safeDir = escapeHtml(currentDir);
-    const safeFile = currentFile ? escapeHtml(currentFile) : '';
-
+  async createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir, subDirs, currentFile = null) {
     const shortDir = currentDir.length > 50
       ? '...' + currentDir.substring(currentDir.length - 47)
       : currentDir;
-    const safeShortDir = escapeHtml(shortDir);
 
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status">
-          <i class="fas fa-search fa-spin"></i>
-          <span>Scanning token artwork...</span>
-        </div>
-
-        <div class="scan-stats">
-          <div class="stat-item">
-            <div class="stat-value">${dirsScanned}</div>
-            <div class="stat-label">Directories</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${imagesFound}</div>
-            <div class="stat-label">Images Found</div>
-          </div>
-        </div>
-
-        <div class="scan-current">
-          <div class="current-label">Current directory:</div>
-          <div class="current-path" title="${safeDir}">${safeShortDir}</div>
-          ${currentFile ? `
-            <div class="current-file">
-              <i class="fas fa-image"></i> ${safeFile}
-            </div>
-          ` : ''}
-        </div>
-
-        ${filesInDir > 0 ? `
-          <div class="dir-info">
-            <span><i class="fas fa-file-image"></i> ${filesInDir} files</span>
-            <span><i class="fas fa-folder"></i> ${subDirs} subdirectories</span>
-          </div>
-        ` : ''}
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/scan-progress.hbs`,
+      {
+        currentDir,
+        shortDir,
+        dirsScanned,
+        imagesFound,
+        filesInDir,
+        subDirs,
+        currentFile,
+        showDirInfo: filesInDir > 0
+      }
+    );
   }
 
   /**
@@ -235,56 +208,23 @@ export class UIManager {
    * @param {number} uniqueTypes - Unique creature types
    * @param {number} totalTokens - Total tokens
    * @param {string[]} currentBatch - Currently searching batch
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
+  async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const safeBatch = currentBatch.map(name => escapeHtml(name));
 
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status">
-          <i class="fas fa-bolt"></i>
-          <span>Parallel Search in Progress...</span>
-        </div>
-
-        <div class="scan-stats">
-          <div class="stat-item">
-            <div class="stat-value">${uniqueTypes}</div>
-            <div class="stat-label">Unique Creatures</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-value">${totalTokens}</div>
-            <div class="stat-label">Total Tokens</div>
-          </div>
-        </div>
-
-        <div class="token-replacer-fa-progress">
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: ${percent}%"></div>
-          </div>
-          <div class="progress-text">${completed} / ${total} creature types searched</div>
-        </div>
-
-        ${currentBatch.length > 0 ? `
-          <div class="scan-current">
-            <div class="current-label">Currently searching (parallel):</div>
-            <div class="parallel-batch">
-              ${safeBatch.map(name => `
-                <span class="batch-item">
-                  <i class="fas fa-search fa-spin"></i> ${name}
-                </span>
-              `).join('')}
-            </div>
-          </div>
-        ` : ''}
-
-        <div class="optimization-info">
-          <i class="fas fa-info-circle"></i>
-          <span>Identical creatures share search results for faster processing</span>
-        </div>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/parallel-search.hbs`,
+      {
+        percent,
+        completed,
+        total,
+        uniqueTypes,
+        totalTokens,
+        currentBatch,
+        hasBatch: currentBatch.length > 0
+      }
+    );
   }
 
   /**
@@ -292,209 +232,99 @@ export class UIManager {
    * @param {Object} creatureInfo - Creature information
    * @param {Array} matches - Match results
    * @param {number} tokenCount - Number of tokens
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
-    const safeName = escapeHtml(creatureInfo.actorName);
-    const safeType = escapeHtml(creatureInfo.type || 'Unknown');
-    const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+  async createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
     const showMultiSelect = tokenCount > 1;
     const totalCount = matches.length;
 
-    return `
-      <div class="token-replacer-fa-token-preview">
-        <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
-        <div class="token-info">
-          <div class="token-name">${safeName}</div>
-          <div class="token-type">${safeType} ${safeSubtype}</div>
-          ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
-        </div>
-      </div>
+    // Transform matches array with computed fields
+    const transformedMatches = matches.map((match, idx) => {
+      const scoreDisplay = match.score !== undefined
+        ? `${Math.round((1 - match.score) * 100)}%`
+        : (match.source || '');
+      return {
+        index: idx,
+        path: match.path,
+        name: match.name,
+        nameLower: match.name.toLowerCase(),
+        scoreDisplay,
+        isFirst: idx === 0
+      };
+    });
 
-      <div class="token-replacer-fa-search-filter">
-        <div class="search-input-wrapper">
-          <i class="fas fa-search"></i>
-          <input type="text" class="search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
-        </div>
-        <div class="result-count">Showing <span class="visible-count">${totalCount}</span> of <span class="total-count">${totalCount}</span> results</div>
-      </div>
-
-      ${showMultiSelect ? `
-      <div class="token-replacer-fa-mode-toggle">
-        <span class="mode-label">Variant assignment:</span>
-        <div class="mode-buttons">
-          <button type="button" class="mode-btn active" data-mode="sequential">
-            <i class="fas fa-arrow-right"></i> Sequential
-          </button>
-          <button type="button" class="mode-btn" data-mode="random">
-            <i class="fas fa-random"></i> Random
-          </button>
-        </div>
-        <span class="mode-hint">Click to select multiple variants</span>
-      </div>
-      ` : ''}
-
-      <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}" data-total="${totalCount}">
-        ${matches.map((match, idx) => {
-          const safeMatchName = escapeHtml(match.name);
-          const safePath = escapeHtml(match.path);
-          const scoreDisplay = match.score !== undefined
-            ? `${Math.round((1 - match.score) * 100)}%`
-            : escapeHtml(match.source || '');
-          return `
-            <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
-              <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
-              <div class="match-name">${safeMatchName}</div>
-              <div class="match-score">${scoreDisplay}</div>
-              <div class="match-check"><i class="fas fa-check"></i></div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-
-      ${showMultiSelect ? `
-      <div class="token-replacer-fa-selection-info">
-        <span class="selection-count">1 selected</span>
-      </div>
-      ` : ''}
-
-      <div class="token-replacer-fa-selection-buttons">
-        <button type="button" class="select-btn" data-action="select">
-          <i class="fas fa-check"></i> Apply
-        </button>
-        <button type="button" class="skip-btn" data-action="skip">
-          <i class="fas fa-forward"></i> ${i18n('dialog.skip')}
-        </button>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/match-selection.hbs`,
+      {
+        currentImage: creatureInfo.currentImage,
+        actorName: creatureInfo.actorName,
+        type: creatureInfo.type || 'Unknown',
+        subtype: creatureInfo.subtype || '',
+        tokenCount,
+        showTokenCount: tokenCount > 1,
+        showMultiSelect,
+        totalCount,
+        matches: transformedMatches,
+        skipLabel: i18n('dialog.skip')
+      }
+    );
   }
 
   /**
    * Create no-match HTML with category browser
    * @param {Object} creatureInfo - Creature information
    * @param {number} tokenCount - Number of tokens
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createNoMatchHTML(creatureInfo, tokenCount = 1) {
-    const safeName = escapeHtml(creatureInfo.actorName);
-    const safeType = escapeHtml(creatureInfo.type || 'Unknown');
-    const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
+  async createNoMatchHTML(creatureInfo, tokenCount = 1) {
+    const showMultiSelect = tokenCount > 1;
 
-    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort();
+    // Transform creature types array with display names
+    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort().map(type => ({
+      displayName: type.charAt(0).toUpperCase() + type.slice(1)
+    }));
 
-    return `
-      <div class="token-replacer-fa-token-preview">
-        <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
-        <div class="token-info">
-          <div class="token-name">${safeName}</div>
-          <div class="token-type">${safeType} ${safeSubtype}</div>
-          ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
-        </div>
-      </div>
-
-      <div class="token-replacer-fa-no-match">
-        <div class="no-match-message">
-          <i class="fas fa-search-minus"></i>
-          <span>${i18n('dialog.noMatch', { name: creatureInfo.actorName })}</span>
-        </div>
-
-        <div class="category-search">
-          <label>${i18n('dialog.browseByType')}</label>
-          <div class="search-input-wrapper category-type-search">
-            <i class="fas fa-search"></i>
-            <input type="text"
-                   class="category-type-input"
-                   placeholder="Search creature type or name..."
-                   value="${escapeHtml(creatureInfo.type || '')}"
-                   autocomplete="off"
-                   list="creature-type-suggestions">
-            <datalist id="creature-type-suggestions">
-              ${creatureTypes.map(type => {
-                const displayName = type.charAt(0).toUpperCase() + type.slice(1);
-                return `<option value="${displayName}">`;
-              }).join('')}
-            </datalist>
-          </div>
-          <button type="button" class="search-category-btn">
-            <i class="fas fa-search"></i> ${i18n('dialog.searchCategory')}
-          </button>
-        </div>
-
-        <div class="category-results" style="display: none;">
-          <div class="category-results-loading" style="display: none;"></div>
-          <div class="token-replacer-fa-search-filter category-filter" style="display: none;">
-            <div class="search-input-wrapper">
-              <i class="fas fa-search"></i>
-              <input type="text" class="category-search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
-            </div>
-            <div class="result-count">Showing <span class="category-visible-count">0</span> of <span class="category-total-count">0</span> results</div>
-          </div>
-          <div class="token-replacer-fa-match-select" data-multiselect="${tokenCount > 1}">
-          </div>
-        </div>
-      </div>
-
-      ${tokenCount > 1 ? `
-      <div class="token-replacer-fa-mode-toggle" style="display: none;">
-        <span class="mode-label">Variant assignment:</span>
-        <div class="mode-buttons">
-          <button type="button" class="mode-btn active" data-mode="sequential">
-            <i class="fas fa-arrow-right"></i> Sequential
-          </button>
-          <button type="button" class="mode-btn" data-mode="random">
-            <i class="fas fa-random"></i> Random
-          </button>
-        </div>
-      </div>
-      <div class="token-replacer-fa-selection-info" style="display: none;">
-        <span class="selection-count">0 selected</span>
-      </div>
-      ` : ''}
-
-      <div class="token-replacer-fa-selection-buttons">
-        <button type="button" class="select-btn" data-action="select" disabled>
-          <i class="fas fa-check"></i> Apply
-        </button>
-        <button type="button" class="skip-btn" data-action="skip">
-          <i class="fas fa-forward"></i> ${i18n('dialog.skip')}
-        </button>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/no-match.hbs`,
+      {
+        currentImage: creatureInfo.currentImage,
+        actorName: creatureInfo.actorName,
+        type: creatureInfo.type || 'Unknown',
+        subtype: creatureInfo.subtype || '',
+        tokenCount,
+        showTokenCount: tokenCount > 1,
+        showMultiSelect,
+        noMatchMessage: i18n('dialog.noMatch', { name: creatureInfo.actorName }),
+        browseByTypeLabel: i18n('dialog.browseByType'),
+        searchCategoryLabel: i18n('dialog.searchCategory'),
+        typeValue: creatureInfo.type || '',
+        creatureTypes,
+        skipLabel: i18n('dialog.skip')
+      }
+    );
   }
 
   /**
    * Create search progress HTML
    * @param {string} categoryType - Category being searched
    * @param {Object} progress - Progress information
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createSearchProgressHTML(categoryType, progress) {
+  async createSearchProgressHTML(categoryType, progress) {
     const { current, total, term, resultsFound } = progress;
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-    const safeTerm = escapeHtml(term || '');
-    const safeCategory = escapeHtml(categoryType || '');
 
-    return `
-      <div class="token-replacer-fa-search-progress">
-        <div class="search-progress-header">
-          <i class="fas fa-search fa-spin"></i>
-          <span>Searching ${safeCategory} artwork...</span>
-        </div>
-        <div class="search-progress-bar-container">
-          <div class="search-progress-info">
-            <span class="search-term">Searching: <strong>${safeTerm}</strong></span>
-            <span class="search-percent">${percent}%</span>
-          </div>
-          <div class="search-progress-bar">
-            <div class="search-progress-fill" style="width: ${percent}%"></div>
-          </div>
-          <div class="search-progress-stats">
-            <span>${current} / ${total} terms</span>
-            <span>${resultsFound} results found</span>
-          </div>
-        </div>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/search-progress.hbs`,
+      {
+        categoryType,
+        percent,
+        current,
+        total,
+        term: term || '',
+        resultsFound
+      }
+    );
   }
 
   /**
@@ -503,118 +333,64 @@ export class UIManager {
    * @param {number} total - Total items
    * @param {string} status - Status message
    * @param {Array} results - Results array
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createProgressHTML(current, total, status, results) {
+  async createProgressHTML(current, total, status, results) {
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
     const successCount = results.filter(r => r.status === 'success').length;
     const failedCount = results.filter(r => r.status === 'failed').length;
     const skippedCount = results.filter(r => r.status === 'skipped').length;
-    const safeStatus = escapeHtml(status);
 
-    let html = `
-      <div class="token-replacer-fa-progress">
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${percent}%"></div>
-        </div>
-        <div class="progress-text">${current} / ${total} - ${safeStatus}</div>
-      </div>
-    `;
+    // Transform results array with icon classes
+    const transformedResults = results.map(r => ({
+      name: r.name,
+      match: r.match || null,
+      status: r.status,
+      iconClass: r.status === 'success' ? 'fa-check' :
+                 r.status === 'failed' ? 'fa-times' : 'fa-forward'
+    }));
 
-    html += `
-      <div class="token-replacer-fa-summary">
-        <div class="summary-item success">
-          <div class="count">${successCount}</div>
-          <div class="label">Replaced</div>
-        </div>
-        <div class="summary-item failed">
-          <div class="count">${failedCount}</div>
-          <div class="label">No Match</div>
-        </div>
-        <div class="summary-item skipped">
-          <div class="count">${skippedCount}</div>
-          <div class="label">Skipped</div>
-        </div>
-      </div>
-    `;
-
-    if (results.length > 0) {
-      html += `
-        <div class="token-replacer-fa-results">
-          ${results.map(r => {
-            const safeName = escapeHtml(r.name);
-            const safeMatch = r.match ? escapeHtml(r.match) : '';
-            const iconClass = r.status === 'success' ? 'fa-check' :
-                             r.status === 'failed' ? 'fa-times' : 'fa-forward';
-            return `
-              <div class="result-item ${r.status}">
-                <div class="result-icon ${r.status}">
-                  <i class="fas ${iconClass}"></i>
-                </div>
-                <div class="result-name">${safeName}</div>
-                ${safeMatch ? `<div class="result-match">→ ${safeMatch}</div>` : ''}
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `;
-    }
-
-    return html;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/progress.hbs`,
+      {
+        percent,
+        current,
+        total,
+        status,
+        successCount,
+        failedCount,
+        skippedCount,
+        hasResults: results.length > 0,
+        results: transformedResults
+      }
+    );
   }
 
   /**
    * Create TVA cache loading HTML
    * @param {boolean} refreshing - Whether refreshing cache
    * @param {string} customMessage - Optional custom status message
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createTVACacheHTML(refreshing = false, customMessage = null) {
-    if (refreshing) {
-      return `
-        <div class="token-replacer-fa-scan-progress">
-          <div class="scan-status">
-            <i class="fas fa-sync fa-spin"></i>
-            <span>Refreshing TVA cache...</span>
-          </div>
-          <p style="text-align: center; color: #888; margin-top: 10px;">
-            This may take a moment for large image libraries
-          </p>
-        </div>
-      `;
-    }
+  async createTVACacheHTML(refreshing = false, customMessage = null) {
+    const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
     const statusMessage = customMessage || 'Using Token Variant Art cache...';
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status">
-          <i class="fas fa-bolt"></i>
-          <span>${statusMessage}</span>
-        </div>
-        <div class="optimization-info">
-          <i class="fas fa-info-circle"></i>
-          <span>Leveraging TVA's pre-built image index for faster search</span>
-        </div>
-      </div>
-    `;
+    return await renderTemplate(templatePath, {
+      refreshing,
+      statusMessage
+    });
   }
 
   /**
    * Create error HTML
    * @param {string} message - Error message
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createErrorHTML(message) {
-    return `
-      <div class="token-replacer-fa-scan-progress">
-        <div class="scan-status" style="color: #f87171;">
-          <i class="fas fa-exclamation-triangle"></i>
-          <span>${escapeHtml(message)}</span>
-        </div>
-        <p style="text-align: center; color: #888; margin-top: 15px;">
-          Install Token Variant Art or FA Nexus module, or configure additional search paths in settings.
-        </p>
-      </div>
-    `;
+  async createErrorHTML(message) {
+    const templatePath = `modules/${MODULE_ID}/templates/error.hbs`;
+    return await renderTemplate(templatePath, {
+      message
+    });
   }
 
   /**
@@ -924,15 +700,15 @@ export class UIManager {
           if (resultsContainer) resultsContainer.style.display = 'block';
           if (loadingEl) {
             loadingEl.style.display = 'block';
-            loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, {
+            loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, {
               current: 0, total: 1, term: 'initializing...', resultsFound: 0
             });
           }
           if (matchGrid) matchGrid.innerHTML = '';
           if (selectBtn) selectBtn.disabled = true;
 
-          const results = await searchByCategory(selectedType, localIndex, null, (progress) => {
-            if (loadingEl) loadingEl.innerHTML = this.createSearchProgressHTML(selectedType, progress);
+          const results = await searchByCategory(selectedType, localIndex, null, async (progress) => {
+            if (loadingEl) loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, progress);
           });
           displayResults(results);
         });

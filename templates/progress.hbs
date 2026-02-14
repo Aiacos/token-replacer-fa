@@ -1,0 +1,37 @@
+<div class="token-replacer-fa-progress">
+  <div class="progress-bar">
+    <div class="progress-fill" style="width: {{percent}}%"></div>
+  </div>
+  <div class="progress-text">{{current}} / {{total}} - {{status}}</div>
+</div>
+
+<div class="token-replacer-fa-summary">
+  <div class="summary-item success">
+    <div class="count">{{successCount}}</div>
+    <div class="label">Replaced</div>
+  </div>
+  <div class="summary-item failed">
+    <div class="count">{{failedCount}}</div>
+    <div class="label">No Match</div>
+  </div>
+  <div class="summary-item skipped">
+    <div class="count">{{skippedCount}}</div>
+    <div class="label">Skipped</div>
+  </div>
+</div>
+
+{{#if hasResults}}
+  <div class="token-replacer-fa-results">
+    {{#each results}}
+      <div class="result-item {{this.status}}">
+        <div class="result-icon {{this.status}}">
+          <i class="fas {{this.iconClass}}"></i>
+        </div>
+        <div class="result-name">{{this.name}}</div>
+        {{#if this.match}}
+          <div class="result-match">→ {{this.match}}</div>
+        {{/if}}
+      </div>
+    {{/each}}
+  </div>
+{{/if}}

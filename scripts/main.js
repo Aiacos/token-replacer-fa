@@ -260,7 +260,7 @@ export class TokenReplacerApp {
 
     // Create main dialog
     const dialog = uiManager.createMainDialog(
-      uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+      await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
       () => { this.isProcessing = false; }
     );
     dialog.render();
@@ -276,12 +276,12 @@ export class TokenReplacerApp {
 
     if (this.hasTVA && useTVACache) {
       console.log(`${MODULE_ID} | Using TVA cache`);
-      uiManager.updateDialogContent(uiManager.createTVACacheHTML(false));
+      uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false));
       await yieldToMain(100);
 
       // If refresh requested, do it FIRST before loading our cache
       if (refreshTVACache && this.tvaAPI?.cacheImages) {
-        uiManager.updateDialogContent(uiManager.createTVACacheHTML(true));
+        uiManager.updateDialogContent(await uiManager.createTVACacheHTML(true));
         await yieldToMain(50);
         try {
           await this.tvaAPI.cacheImages();
@@ -293,7 +293,7 @@ export class TokenReplacerApp {
       }
 
       // NOW load TVA cache directly (after any refresh is complete)
-      uiManager.updateDialogContent(uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+      uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
       const cacheLoaded = await tvaCacheService.loadTVACache();
       if (cacheLoaded) {
         const stats = tvaCacheService.getTVACacheStats();
@@ -310,7 +310,7 @@ export class TokenReplacerApp {
     // Check for search sources
     if (!this.hasTVA && localIndex.length === 0) {
       uiManager.updateDialogContent(
-        uiManager.createErrorHTML(this.i18n('notifications.missingDeps'))
+        await uiManager.createErrorHTML(this.i18n('notifications.missingDeps'))
       );
       this.isProcessing = false;
       return;
@@ -324,14 +324,14 @@ export class TokenReplacerApp {
 
     // PHASE 2: Parallel search
     uiManager.updateDialogContent(
-      uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
+      await uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
     );
     await yieldToMain(50);
 
-    const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, (info) => {
+    const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, async (info) => {
       if (info.type === 'batch' && uiManager.isDialogOpen()) {
         uiManager.updateDialogContent(
-          uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
+          await uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
         );
       }
     });
@@ -342,12 +342,12 @@ export class TokenReplacerApp {
     const confirmReplace = this.getSetting('confirmReplace');
     const threshold = this.getSetting('fuzzyThreshold');
 
-    const updateProgress = (current, total, status, result = null) => {
+    const updateProgress = async (current, total, status, result = null) => {
       if (result) results.push(result);
-      uiManager.updateDialogContent(uiManager.createProgressHTML(current, total, status, results));
+      uiManager.updateDialogContent(await uiManager.createProgressHTML(current, total, status, results));
     };
 
-    updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
+    await updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
     await yieldToMain(50);
 
     let tokenIndex = 0;
@@ -360,7 +360,7 @@ export class TokenReplacerApp {
 
       // No matches - show category browser
       if (matches.length === 0) {
-        uiManager.updateDialogContent(uiManager.createNoMatchHTML(creatureInfo, tokens.length));
+        uiManager.updateDialogContent(await uiManager.createNoMatchHTML(creatureInfo, tokens.length));
         await yieldToMain(50);
 
         const dialogEl = uiManager.getDialogElement();
@@ -390,7 +390,7 @@ export class TokenReplacerApp {
             const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
             const success = await this.replaceTokenImage(token, pathForToken);
-            updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
+            await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: success ? 'success' : 'failed',
               match: matchName
@@ -401,14 +401,14 @@ export class TokenReplacerApp {
         } else {
           for (const token of tokens) {
             tokenIndex++;
-            updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
+            await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: 'skipped'
             });
           }
         }
 
-        updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
+        await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
         continue;
       }
@@ -423,7 +423,7 @@ export class TokenReplacerApp {
       if (autoReplace && matchScore >= (1 - threshold)) {
         selectedPaths = [bestMatch.path];
       } else if (confirmReplace) {
-        uiManager.updateDialogContent(uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
+        uiManager.updateDialogContent(await uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
         await yieldToMain(50);
 
         const dialogEl = uiManager.getDialogElement();
@@ -436,7 +436,7 @@ export class TokenReplacerApp {
           }
         }
 
-        updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
+        await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
         await yieldToMain(50);
       } else {
         selectedPaths = [bestMatch.path];
@@ -458,7 +458,7 @@ export class TokenReplacerApp {
           const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
 
           const success = await this.replaceTokenImage(token, pathForToken);
-          updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
+          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: success ? 'success' : 'failed',
             match: matchName
@@ -466,7 +466,7 @@ export class TokenReplacerApp {
 
           pathIndex++;
         } else {
-          updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
+          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
             name: `${creatureInfo.actorName} (${token.name})`,
             status: 'skipped'
           });
@@ -479,7 +479,7 @@ export class TokenReplacerApp {
       const successCount = results.filter(r => r.status === 'success').length;
       const failedCount = results.filter(r => r.status === 'failed').length;
 
-      updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
+      await updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
 
       ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
@@ -501,8 +501,21 @@ window.TokenReplacerFA = tokenReplacerApp;
 /**
  * Module initialization
  */
-Hooks.once('init', () => {
+Hooks.once('init', async () => {
   console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.10.0`);
+
+  // Preload Handlebars templates
+  await loadTemplates([
+    'modules/token-replacer-fa/templates/error.hbs',
+    'modules/token-replacer-fa/templates/tva-cache.hbs',
+    'modules/token-replacer-fa/templates/scan-progress.hbs',
+    'modules/token-replacer-fa/templates/search-progress.hbs',
+    'modules/token-replacer-fa/templates/parallel-search.hbs',
+    'modules/token-replacer-fa/templates/progress.hbs',
+    'modules/token-replacer-fa/templates/match-selection.hbs',
+    'modules/token-replacer-fa/templates/no-match.hbs'
+  ]);
+
   tokenReplacerApp.registerSettings();
 });
 
