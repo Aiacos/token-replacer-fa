@@ -9,7 +9,7 @@ import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
 import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 13;  // v2.10.0: Enhanced filtering with EXCLUDED_FILENAME_TERMS
+const INDEX_VERSION = 14;  // v2.10.0: Added termIndex for O(1) search term lookups
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -31,7 +31,8 @@ const UPDATE_FREQUENCIES = {
  *     beast: { wolf: [...], bear: [...] },
  *     ...
  *   },
- *   allPaths: { "path": { name, category, subcategories: [] } }
+ *   allPaths: { "path": { name, category, subcategories: [] } },
+ *   termIndex: { "term": ["path1", "path2", ...] }
  * }
  */
 export class IndexService {
@@ -125,6 +126,25 @@ export class IndexService {
   }
 
   /**
+   * Tokenize search text into searchable terms
+   * Splits by path separators and common delimiters, converts to lowercase
+   * @param {string} text - Text to tokenize (e.g., file path)
+   * @returns {string[]} Array of unique lowercase search terms
+   */
+  tokenizeSearchText(text) {
+    if (!text) return [];
+
+    // Split by path separators (/, \), hyphens, underscores, spaces, dots
+    const terms = text
+      .toLowerCase()
+      .split(/[\/\\\-_\s\.]+/)
+      .filter(term => term.length > 0);
+
+    // Return unique terms
+    return [...new Set(terms)];
+  }
+
+  /**
    * Load index from localStorage
    * @returns {boolean} True if loaded successfully
    */
@@ -190,7 +210,8 @@ export class IndexService {
       timestamp: Date.now(),
       lastUpdate: Date.now(),
       categories,
-      allPaths: {}
+      allPaths: {},
+      termIndex: {}
     };
   }
 
@@ -217,6 +238,15 @@ export class IndexService {
       category: category || null,
       subcategories: subcategories || []
     };
+
+    // Populate termIndex for O(1) search term lookups
+    const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
+    for (const term of searchTerms) {
+      if (!this.index.termIndex[term]) {
+        this.index.termIndex[term] = [];
+      }
+      this.index.termIndex[term].push(path);
+    }
 
     // If categorized, also add to category structure for fast category lookups
     if (category) {
@@ -967,25 +997,36 @@ export class IndexService {
   }
 
   /**
-   * Search by term across all categories
+   * Search by term across all categories using O(1) termIndex lookup
    * @param {string} term - Search term
    * @returns {Array} Matching images
    */
   search(term) {
-    if (!this.isBuilt || !this.index?.allPaths) return [];
+    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) return [];
 
     const termLower = term.toLowerCase();
+    const tokens = this.tokenizeSearchText(termLower);
+    const seenPaths = new Set();
     const results = [];
 
-    for (const [path, data] of Object.entries(this.index.allPaths)) {
-      const searchText = `${path} ${data.name} ${data.subcategories?.join(' ') || ''}`.toLowerCase();
-      if (searchText.includes(termLower)) {
-        results.push({
-          path,
-          name: data.name,
-          source: 'index',
-          category: data.category
-        });
+    // O(1) lookup in termIndex for each token
+    for (const token of tokens) {
+      const paths = this.index.termIndex[token];
+      if (paths) {
+        for (const path of paths) {
+          if (!seenPaths.has(path)) {
+            seenPaths.add(path);
+            const data = this.index.allPaths[path];
+            if (data) {
+              results.push({
+                path,
+                name: data.name,
+                source: 'index',
+                category: data.category
+              });
+            }
+          }
+        }
       }
     }
 
@@ -993,21 +1034,43 @@ export class IndexService {
   }
 
   /**
-   * Search multiple terms (OR logic)
+   * Search multiple terms (OR logic) - optimized to use termIndex directly
    * @param {string[]} terms - Search terms
    * @returns {Array} Combined results
    */
   searchMultiple(terms) {
     if (!terms?.length) return [];
+    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) return [];
 
     const seenPaths = new Set();
     const results = [];
 
+    // Tokenize all terms once and collect unique tokens
+    const allTokens = new Set();
     for (const term of terms) {
-      for (const result of this.search(term)) {
-        if (!seenPaths.has(result.path)) {
-          seenPaths.add(result.path);
-          results.push(result);
+      const tokens = this.tokenizeSearchText(term.toLowerCase());
+      for (const token of tokens) {
+        allTokens.add(token);
+      }
+    }
+
+    // O(1) lookup in termIndex for each unique token
+    for (const token of allTokens) {
+      const paths = this.index.termIndex[token];
+      if (paths) {
+        for (const path of paths) {
+          if (!seenPaths.has(path)) {
+            seenPaths.add(path);
+            const data = this.index.allPaths[path];
+            if (data) {
+              results.push({
+                path,
+                name: data.name,
+                source: 'index',
+                category: data.category
+              });
+            }
+          }
         }
       }
     }
