@@ -61,9 +61,24 @@ echo -e "  Module:  ${GREEN}${MODULE_ID}${NC}"
 echo -e "  Version: ${GREEN}${VERSION}${NC}"
 echo ""
 
+# ─── Sync version to other files ─────────────────────────────────────
+
+echo -e "${BLUE}[1/7]${NC} Syncing version to CLAUDE.md and main.js..."
+
+if [ -f "sync-version.sh" ]; then
+    ./sync-version.sh
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}ERROR: Version sync failed!${NC}"
+        exit 1
+    fi
+    echo -e "  ${GREEN}OK${NC}"
+else
+    echo -e "${YELLOW}WARNING: sync-version.sh not found, skipping version sync${NC}"
+fi
+
 # ─── Check required files ────────────────────────────────────────────
 
-echo -e "${BLUE}[1/6]${NC} Checking project files..."
+echo -e "${BLUE}[2/7]${NC} Checking project files..."
 
 REQUIRED_FILES=("module.json")
 OPTIONAL_FILES=("README.md" "LICENSE" "CHANGELOG.md")
@@ -103,20 +118,20 @@ echo -e "  ${GREEN}OK${NC}"
 
 # ─── Create releases directory ───────────────────────────────────────
 
-echo -e "${BLUE}[2/6]${NC} Creating releases directory..."
+echo -e "${BLUE}[3/7]${NC} Creating releases directory..."
 mkdir -p releases
 echo -e "  ${GREEN}OK${NC}"
 
 # ─── Create temporary staging directory ──────────────────────────────
 
-echo -e "${BLUE}[3/6]${NC} Creating temporary staging directory..."
+echo -e "${BLUE}[4/7]${NC} Creating temporary staging directory..."
 TEMP_DIR=$(mktemp -d)
 trap "rm -rf '$TEMP_DIR'" EXIT
 echo -e "  ${GREEN}OK${NC}"
 
 # ─── Stage files ─────────────────────────────────────────────────────
 
-echo -e "${BLUE}[4/6]${NC} Staging files for packaging..."
+echo -e "${BLUE}[5/7]${NC} Staging files for packaging..."
 
 for file in "${INCLUDE_FILES[@]}"; do
     cp "$file" "$TEMP_DIR/"
@@ -130,7 +145,7 @@ done
 
 # ─── Update download URL in staged module.json ──────────────────────
 
-echo -e "${BLUE}[5/6]${NC} Updating module.json download URL..."
+echo -e "${BLUE}[6/7]${NC} Updating module.json download URL..."
 
 if [ -n "$GITHUB_URL" ] && [ "$GITHUB_URL" != "null" ]; then
     # Extract GitHub owner/repo from URL (supports https://github.com/owner/repo)
@@ -147,7 +162,7 @@ fi
 
 # ─── Create ZIP archive ─────────────────────────────────────────────
 
-echo -e "${BLUE}[6/6]${NC} Creating ZIP archive..."
+echo -e "${BLUE}[7/7]${NC} Creating ZIP archive..."
 
 # Remove existing release file if it exists
 if [ -f "releases/${OUTPUT_FILE}" ]; then
