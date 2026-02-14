@@ -10,6 +10,16 @@
  */
 
 /**
+ * Fuse.js CDN URL - loaded dynamically when needed
+ */
+const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
+
+/**
+ * Cached Fuse.js constructor
+ */
+let FuseClass = null;
+
+/**
  * Main message handler for the worker
  * Receives commands from the main thread and processes them
  */
@@ -20,6 +30,10 @@ self.addEventListener('message', (event) => {
     switch (command) {
       case 'indexPaths':
         handleIndexPaths(data);
+        break;
+
+      case 'fuzzySearch':
+        handleFuzzySearch(data);
         break;
 
       case 'ping':
@@ -184,6 +198,90 @@ function reportProgress(processed, total, imagesFound) {
     processed,
     total,
     imagesFound
+  });
+}
+
+/**
+ * Load Fuse.js library from CDN
+ * @returns {Promise<Function|null>} Fuse constructor or null
+ */
+async function loadFuse() {
+  if (FuseClass) return FuseClass;
+
+  try {
+    const module = await import(FUSE_CDN);
+    FuseClass = module.default;
+    return FuseClass;
+  } catch (error) {
+    self.postMessage({
+      type: 'error',
+      message: `Failed to load Fuse.js: ${error.message}`,
+      stack: error.stack
+    });
+    return null;
+  }
+}
+
+/**
+ * Handle the fuzzySearch command
+ * Performs fuzzy search on an index using Fuse.js
+ *
+ * @param {Object} data - Input data from main thread
+ * @param {Array} data.searchTerms - Array of search terms
+ * @param {Array} data.index - Array of items to search
+ * @param {Object} data.options - Fuse.js options (keys, threshold, etc.)
+ */
+async function handleFuzzySearch(data) {
+  const { searchTerms, index, options } = data;
+
+  // Validate input
+  if (!Array.isArray(searchTerms)) {
+    throw new Error('searchTerms must be an array');
+  }
+  if (!Array.isArray(index)) {
+    throw new Error('index must be an array');
+  }
+  if (!options || typeof options !== 'object') {
+    throw new Error('options must be an object');
+  }
+
+  // Load Fuse.js
+  const Fuse = await loadFuse();
+  if (!Fuse) {
+    self.postMessage({
+      type: 'complete',
+      result: []
+    });
+    return;
+  }
+
+  // Create Fuse instance
+  const fuse = new Fuse(index, options);
+  const results = [];
+  const seenPaths = new Set();
+
+  // Search for each term
+  for (const term of searchTerms) {
+    const searchResults = fuse.search(term);
+    for (const result of searchResults) {
+      const item = result.item;
+      // Skip if already seen
+      if (item.path && seenPaths.has(item.path)) continue;
+
+      if (item.path) {
+        seenPaths.add(item.path);
+      }
+      results.push({
+        ...item,
+        score: result.score
+      });
+    }
+  }
+
+  // Send completion message with results
+  self.postMessage({
+    type: 'complete',
+    result: results
   });
 }
 
