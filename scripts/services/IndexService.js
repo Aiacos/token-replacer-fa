@@ -213,6 +213,15 @@ export class IndexService {
       subcategories: subcategories || []
     };
 
+    // Populate termIndex for O(1) search term lookups
+    const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
+    for (const term of searchTerms) {
+      if (!this.index.termIndex[term]) {
+        this.index.termIndex[term] = [];
+      }
+      this.index.termIndex[term].push(path);
+    }
+
     // If categorized, also add to category structure for fast category lookups
     if (category) {
       // Ensure category exists
