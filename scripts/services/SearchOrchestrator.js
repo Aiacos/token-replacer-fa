@@ -672,7 +672,7 @@ export class SearchOrchestrator {
 
     if (this.searchService?.hasTVA && (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')) {
       for (const term of searchTerms) {
-        const tvaResults = await this.searchService.searchTVA(term);
+        const tvaResults = await this.searchTVA(term);
         for (const result of tvaResults) {
           if (!seenPaths.has(result.path)) {
             seenPaths.add(result.path);
