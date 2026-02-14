@@ -3,7 +3,7 @@
 ## Specifications & Requirements Document
 
 **Module ID:** `token-replacer-fa`
-**Version:** 2.9.0
+**Version:** 2.10.0
 **Last Updated:** 2026-01-10
 
 ---
