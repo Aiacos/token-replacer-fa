@@ -21,16 +21,28 @@ import { uiManager } from './ui/UIManager.js';
 export class TokenReplacerApp {
   constructor() {
     this.isProcessing = false;
+    // i18n cache to avoid repeated localization lookups
+    this.i18nCache = new Map();
   }
 
   /**
    * Get localized string
+   * Caches base strings to avoid repeated game.i18n.localize() calls
    * @param {string} key - Localization key (without namespace prefix)
    * @param {Object} data - Replacement data for placeholders
    * @returns {string} Localized string
    */
   i18n(key, data = {}) {
-    let str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
+    // Check cache first
+    let str = this.i18nCache.get(key);
+
+    if (!str) {
+      // Cache miss - localize and store
+      str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
+      this.i18nCache.set(key, str);
+    }
+
+    // Apply placeholder replacements
     for (const [k, v] of Object.entries(data)) {
       str = str.replace(`{${k}}`, v);
     }
