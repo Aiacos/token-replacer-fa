@@ -302,10 +302,7 @@ export function isExcludedPath(path) {
   // Remove extension and convert separators to spaces for word matching
   const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
 
-  // Check if filename contains excluded terms (as whole words or prefixes)
-  return EXCLUDED_FILENAME_TERMS.some(term => {
-    // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-    const regex = new RegExp(`\\b${term}`, 'i');
-    return regex.test(filenameClean);
-  });
+  // Check if filename contains excluded terms using precompiled patterns
+  // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
+  return EXCLUDED_FILENAME_PATTERNS.some(pattern => pattern.test(filenameClean));
 }
