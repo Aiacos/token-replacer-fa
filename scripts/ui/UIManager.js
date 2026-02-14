@@ -74,8 +74,8 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @returns {Promise<string>} Rendered HTML
    */
   async _renderHTML(context, options) {
-    // Simple HTML template - just wrap content in a div
-    return `<div class="token-replacer-fa-content">${context.content}</div>`;
+    // Wrap content in .dialog-content for compatibility with event handlers
+    return `<div class="dialog-content">${context.content}</div>`;
   }
 
   /**
