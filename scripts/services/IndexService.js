@@ -872,21 +872,43 @@ export class IndexService {
   }
 
   /**
-   * Search multiple terms (OR logic)
+   * Search multiple terms (OR logic) - optimized to use termIndex directly
    * @param {string[]} terms - Search terms
    * @returns {Array} Combined results
    */
   searchMultiple(terms) {
     if (!terms?.length) return [];
+    if (!this.isBuilt || !this.index?.allPaths || !this.index?.termIndex) return [];
 
     const seenPaths = new Set();
     const results = [];
 
+    // Tokenize all terms once and collect unique tokens
+    const allTokens = new Set();
     for (const term of terms) {
-      for (const result of this.search(term)) {
-        if (!seenPaths.has(result.path)) {
-          seenPaths.add(result.path);
-          results.push(result);
+      const tokens = this.tokenizeSearchText(term.toLowerCase());
+      for (const token of tokens) {
+        allTokens.add(token);
+      }
+    }
+
+    // O(1) lookup in termIndex for each unique token
+    for (const token of allTokens) {
+      const paths = this.index.termIndex[token];
+      if (paths) {
+        for (const path of paths) {
+          if (!seenPaths.has(path)) {
+            seenPaths.add(path);
+            const data = this.index.allPaths[path];
+            if (data) {
+              results.push({
+                path,
+                name: data.name,
+                source: 'index',
+                category: data.category
+              });
+            }
+          }
         }
       }
     }
