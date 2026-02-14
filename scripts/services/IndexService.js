@@ -269,45 +269,17 @@ export class IndexService {
   }
 
   /**
-   * Build index from TVA API - reads cache directly for speed
-   * @param {Function} onProgress - Progress callback
-   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
-   * @returns {Promise<number>} Number of images indexed
+   * Attempt to inspect TVA_CONFIG and globalThis for cache data (Method 3)
+   * Tries multiple sub-strategies: TVA_CONFIG inspection, searchPaths, globalThis variables
+   * @param {Object} tvaAPI - TVA API object
+   * @returns {Array} Array of path objects or empty array
+   * @private
    */
-  async buildFromTVA(onProgress = null, tvaCacheImages = null) {
-    const tvaAPI = game.modules.get('token-variants')?.api;
-    if (!tvaAPI) {
-      console.warn(`${MODULE_ID} | TVA API not available`);
-      return 0;
-    }
-
-    console.log(`${MODULE_ID} | Building index from TVA cache...`);
-
-    // Try to read TVA cache directly (much faster than doImageSearch)
+  _tryTVAConfig(tvaAPI) {
     let allPaths = [];
 
-    // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
-    if (tvaCacheImages && tvaCacheImages.length > 0) {
-      console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
-      allPaths = tvaCacheImages.map(img => ({
-        path: img.path,
-        name: img.name,
-        category: img.category
-      }));
-    }
-
-    // Method 1: Try TVA's cacheImagePaths (direct cache access)
-    if (allPaths.length === 0) {
-      allPaths = this._tryCacheImagePaths(tvaAPI);
-    }
-
-    // Method 2: Try TVA's internal cache via getSearchCache
-    if (allPaths.length === 0) {
-      allPaths = await this._tryGetSearchCache(tvaAPI);
-    }
-
-    // Method 3: Check TVA_CONFIG for cache info
-    if (allPaths.length === 0 && tvaAPI.TVA_CONFIG) {
+    // Method 3a: Check TVA_CONFIG for cache info
+    if (tvaAPI.TVA_CONFIG) {
       console.log(`${MODULE_ID} | Checking TVA_CONFIG...`);
       const config = tvaAPI.TVA_CONFIG;
       const configKeys = Object.keys(config);
@@ -346,6 +318,52 @@ export class IndexService {
           if (allPaths.length > 0) break;
         }
       }
+    }
+
+    return allPaths;
+  }
+
+  /**
+   * Build index from TVA API - reads cache directly for speed
+   * @param {Function} onProgress - Progress callback
+   * @param {Array} tvaCacheImages - Optional pre-loaded TVA cache images from TVACacheService
+   * @returns {Promise<number>} Number of images indexed
+   */
+  async buildFromTVA(onProgress = null, tvaCacheImages = null) {
+    const tvaAPI = game.modules.get('token-variants')?.api;
+    if (!tvaAPI) {
+      console.warn(`${MODULE_ID} | TVA API not available`);
+      return 0;
+    }
+
+    console.log(`${MODULE_ID} | Building index from TVA cache...`);
+
+    // Try to read TVA cache directly (much faster than doImageSearch)
+    let allPaths = [];
+
+    // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
+    if (tvaCacheImages && tvaCacheImages.length > 0) {
+      console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
+      allPaths = tvaCacheImages.map(img => ({
+        path: img.path,
+        name: img.name,
+        category: img.category
+      }));
+    }
+
+    // Method 1: Try TVA's cacheImagePaths (direct cache access)
+    if (allPaths.length === 0) {
+      allPaths = this._tryCacheImagePaths(tvaAPI);
+    }
+
+    // Method 2: Try TVA's internal cache via getSearchCache
+    if (allPaths.length === 0) {
+      allPaths = await this._tryGetSearchCache(tvaAPI);
+    }
+
+    // Method 3: Check TVA_CONFIG for cache info
+    if (allPaths.length === 0) {
+      allPaths = this._tryTVAConfig(tvaAPI);
     }
 
     // Method 4: Try Foundry game settings for TVA static cache
