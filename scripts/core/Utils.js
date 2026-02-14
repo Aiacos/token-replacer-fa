@@ -53,6 +53,51 @@ export function escapeHtml(text) {
 }
 
 /**
+ * Sanitize file path to prevent path traversal attacks
+ * @param {string} path - The file path to sanitize
+ * @returns {string|null} Sanitized path or null if invalid
+ */
+export function sanitizePath(path) {
+  // Return null for empty or non-string inputs
+  if (!path || typeof path !== 'string') return null;
+
+  // Trim whitespace
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+
+  // Check for null bytes (could be used to bypass validation)
+  if (trimmed.includes('\0')) {
+    console.warn('token-replacer-fa | Rejected path with null byte:', path);
+    return null;
+  }
+
+  // Check for absolute paths (starting with / or \)
+  if (/^[/\\]/.test(trimmed)) {
+    console.warn('token-replacer-fa | Rejected absolute path:', path);
+    return null;
+  }
+
+  // Check for path traversal sequences (../ or ..\)
+  if (/\.\.[/\\]/.test(trimmed) || /[/\\]\.\./.test(trimmed) || trimmed === '..') {
+    console.warn('token-replacer-fa | Rejected path with traversal sequence:', path);
+    return null;
+  }
+
+  // Check for other dangerous patterns (backslash paths on non-Windows, etc.)
+  // Allow forward slashes as they're standard in web paths
+  // Normalize path separators to forward slash
+  const normalized = trimmed.replace(/\\/g, '/');
+
+  // Final check: ensure no traversal sequences were created during normalization
+  if (/\.\.\//.test(normalized) || /\/\.\./.test(normalized) || normalized === '..') {
+    console.warn('token-replacer-fa | Rejected path after normalization:', path);
+    return null;
+  }
+
+  return normalized;
+}
+
+/**
  * Parse filter text into individual terms for AND logic filtering
  * Supports comma, space, and colon as delimiters
  * @param {string} filterText - The raw filter input text
