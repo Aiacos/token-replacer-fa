@@ -476,10 +476,14 @@ Hooks.once('init', async () => {
 
   // Preload Handlebars templates
   await loadTemplates([
-    // Templates will be added here as they are created
-    // 'modules/token-replacer-fa/templates/error.hbs',
-    // 'modules/token-replacer-fa/templates/tva-cache.hbs',
-    // etc.
+    'modules/token-replacer-fa/templates/error.hbs',
+    'modules/token-replacer-fa/templates/tva-cache.hbs',
+    'modules/token-replacer-fa/templates/scan-progress.hbs',
+    'modules/token-replacer-fa/templates/search-progress.hbs',
+    'modules/token-replacer-fa/templates/parallel-search.hbs',
+    'modules/token-replacer-fa/templates/progress.hbs',
+    'modules/token-replacer-fa/templates/match-selection.hbs',
+    'modules/token-replacer-fa/templates/no-match.hbs'
   ]);
 
   tokenReplacerApp.registerSettings();
