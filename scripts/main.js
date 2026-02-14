@@ -68,6 +68,32 @@ export class TokenReplacerApp {
   }
 
   /**
+   * Create structured error object with localized message
+   * @param {string} errorType - Error type key (e.g., 'tva_missing', 'cache_load_failed')
+   * @param {string} details - Technical error details
+   * @param {Array<string>} recoverySuggestions - Array of recovery suggestion keys
+   * @returns {Object} Structured error object
+   */
+  _createError(errorType, details, recoverySuggestions = []) {
+    return {
+      errorType,
+      message: this.i18n(`errors.${errorType}`),
+      details,
+      recoverySuggestions: recoverySuggestions.map(key => this.i18n(`recovery.${key}`))
+    };
+  }
+
+  /**
+   * Log debug message if debug mode is enabled
+   * @param {...any} args - Arguments to log
+   */
+  _debugLog(...args) {
+    if (this.getSetting('debugMode')) {
+      console.log(`${MODULE_ID} |`, ...args);
+    }
+  }
+
+  /**
    * Get module setting
    * @param {string} key - Setting key
    * @returns {*} Setting value
@@ -241,115 +267,150 @@ export class TokenReplacerApp {
     }
 
     this.isProcessing = true;
-    searchService.clearCache();
+    this._debugLog('Starting token replacement process');
 
-    // Load Fuse.js
-    const Fuse = await loadFuse();
-    if (!Fuse) {
-      this.isProcessing = false;
-      return;
-    }
+    let dialog = null;
 
-    // Check for active scene
-    if (!canvas?.scene) {
-      ui.notifications.warn(this.i18n('notifications.noScene'));
-      this.isProcessing = false;
-      return;
-    }
+    try {
+      searchService.clearCache();
 
-    // Get NPC tokens
-    const npcTokens = TokenService.getSceneNPCTokens();
-    if (npcTokens.length === 0) {
-      ui.notifications.info(this.i18n('notifications.noTokens'));
-      this.isProcessing = false;
-      return;
-    }
+      // Load Fuse.js
+      this._debugLog('Loading Fuse.js library');
+      const Fuse = await loadFuse();
+      if (!Fuse) {
+        const error = this._createError(
+          'fuse_load_failed',
+          'Fuse.js library failed to load',
+          ['reload_module', 'check_network']
+        );
+        throw error;
+      }
+      this._debugLog('Fuse.js loaded successfully');
 
-    ui.notifications.info(this.i18n('notifications.started'));
+      // Check for active scene
+      if (!canvas?.scene) {
+        const error = this._createError(
+          'no_tokens_selected',
+          'No active scene found',
+          ['check_console']
+        );
+        ui.notifications.warn(this.i18n('notifications.noScene'));
+        throw error;
+      }
+      this._debugLog('Active scene found:', canvas.scene.name);
 
-    // Create main dialog
-    const dialog = uiManager.createMainDialog(
-      await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
-      () => { this.isProcessing = false; }
-    );
-    dialog.render();
-    await yieldToMain(100);
+      // Get NPC tokens
+      const npcTokens = TokenService.getSceneNPCTokens();
+      if (npcTokens.length === 0) {
+        ui.notifications.info(this.i18n('notifications.noTokens'));
+        this._debugLog('No NPC tokens found on scene');
+        return; // Not an error, just nothing to do
+      }
+      this._debugLog('Found', npcTokens.length, 'NPC tokens');
 
-    // Initialize search service (basic setup)
-    searchService.init();
+      ui.notifications.info(this.i18n('notifications.started'));
 
-    // PHASE 1: Build token index
-    const useTVACache = this.getSetting('useTVACache');
-    const refreshTVACache = this.getSetting('refreshTVACache');
-    let localIndex = [];
-
-    if (this.hasTVA && useTVACache) {
-      console.log(`${MODULE_ID} | Using TVA cache`);
-      uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false));
+      // Create main dialog
+      dialog = uiManager.createMainDialog(
+        await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+        () => {
+          this._debugLog('Dialog closed by user');
+          this.isProcessing = false;
+        }
+      );
+      dialog.render();
+      this._debugLog('Dialog rendered, starting token index build');
       await yieldToMain(100);
 
-      // If refresh requested, do it FIRST before loading our cache
-      if (refreshTVACache && this.tvaAPI?.cacheImages) {
-        uiManager.updateDialogContent(await uiManager.createTVACacheHTML(true));
-        await yieldToMain(50);
-        try {
-          await this.tvaAPI.cacheImages();
-          console.log(`${MODULE_ID} | TVA cache refreshed`);
-        } catch (e) {
-          console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
+      // Initialize search service (basic setup)
+      this._debugLog('Initializing search service');
+      searchService.init();
+
+      // PHASE 1: Build token index
+      const useTVACache = this.getSetting('useTVACache');
+      const refreshTVACache = this.getSetting('refreshTVACache');
+      let localIndex = [];
+
+      if (this.hasTVA && useTVACache) {
+        this._debugLog('Using TVA cache');
+        uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false));
+        await yieldToMain(100);
+
+        // If refresh requested, do it FIRST before loading our cache
+        if (refreshTVACache && this.tvaAPI?.cacheImages) {
+          this._debugLog('Refreshing TVA cache');
+          uiManager.updateDialogContent(await uiManager.createTVACacheHTML(true));
+          await yieldToMain(50);
+          try {
+            await this.tvaAPI.cacheImages();
+            this._debugLog('TVA cache refreshed successfully');
+          } catch (e) {
+            console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
+            this._debugLog('TVA cache refresh failed, continuing with existing cache');
+          }
+          await yieldToMain(100);
+        }
+
+        // NOW load TVA cache directly (after any refresh is complete)
+        uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+        this._debugLog('Loading TVA cache');
+        const cacheLoaded = await tvaCacheService.loadTVACache();
+        if (cacheLoaded) {
+          const stats = tvaCacheService.getTVACacheStats();
+          this._debugLog('TVA direct cache ready:', stats.totalImages, 'images');
+        } else {
+          console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
+          this._debugLog('TVA cache load failed, using API fallback');
         }
         await yieldToMain(100);
-      }
-
-      // NOW load TVA cache directly (after any refresh is complete)
-      uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
-      const cacheLoaded = await tvaCacheService.loadTVACache();
-      if (cacheLoaded) {
-        const stats = tvaCacheService.getTVACacheStats();
-        console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images`);
       } else {
-        console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
+        this._debugLog('Building local token index');
+        localIndex = await scanService.buildLocalTokenIndex();
+        this._debugLog('Local index built:', localIndex.length, 'images');
       }
-      await yieldToMain(100);
-    } else {
-      console.log(`${MODULE_ID} | Building local token index`);
-      localIndex = await scanService.buildLocalTokenIndex();
-    }
 
-    // Check for search sources
-    if (!this.hasTVA && localIndex.length === 0) {
-      uiManager.updateDialogContent(
-        await uiManager.createErrorHTML(this.i18n('notifications.missingDeps'))
-      );
-      this.isProcessing = false;
-      return;
-    }
-
-    // Group tokens by creature type
-    const creatureGroups = TokenService.groupTokensByCreature(npcTokens);
-    const uniqueCreatures = creatureGroups.size;
-
-    console.log(`${MODULE_ID} | Found ${uniqueCreatures} unique creature types among ${npcTokens.length} tokens`);
-
-    // PHASE 2: Parallel search
-    uiManager.updateDialogContent(
-      await uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
-    );
-    await yieldToMain(50);
-
-    const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, async (info) => {
-      if (info.type === 'batch' && uiManager.isDialogOpen()) {
-        uiManager.updateDialogContent(
-          await uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
+      // Check for search sources
+      if (!this.hasTVA && localIndex.length === 0) {
+        const error = this._createError(
+          'tva_missing',
+          'No search sources available (TVA not active and local index empty)',
+          ['install_tva']
         );
+        const errorHTML = await uiManager.createErrorHTML(error);
+        uiManager.updateDialogContent(errorHTML);
+        throw error;
       }
-    });
 
-    // PHASE 3: Process tokens
-    const results = [];
-    const autoReplace = this.getSetting('autoReplace');
-    const confirmReplace = this.getSetting('confirmReplace');
-    const threshold = this.getSetting('fuzzyThreshold');
+      // Group tokens by creature type
+      const creatureGroups = TokenService.groupTokensByCreature(npcTokens);
+      const uniqueCreatures = creatureGroups.size;
+
+      this._debugLog('Found', uniqueCreatures, 'unique creature types among', npcTokens.length, 'tokens');
+
+      // PHASE 2: Parallel search
+      this._debugLog('Starting parallel search for', uniqueCreatures, 'creature types');
+      uiManager.updateDialogContent(
+        await uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
+      );
+      await yieldToMain(50);
+
+      const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, async (info) => {
+        if (info.type === 'batch' && uiManager.isDialogOpen()) {
+          uiManager.updateDialogContent(
+            await uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
+          );
+        }
+      });
+
+      this._debugLog('Parallel search completed, found matches for', searchResults.size, 'creature types');
+
+      // PHASE 3: Process tokens
+      this._debugLog('Starting token replacement phase');
+      const results = [];
+      const autoReplace = this.getSetting('autoReplace');
+      const confirmReplace = this.getSetting('confirmReplace');
+      const threshold = this.getSetting('fuzzyThreshold');
+      this._debugLog('Settings: autoReplace =', autoReplace, ', confirmReplace =', confirmReplace, ', threshold =', threshold);
 
     const updateProgress = async (current, total, status, result = null) => {
       if (result) results.push(result);
@@ -483,21 +544,79 @@ export class TokenReplacerApp {
       }
     }
 
-    // Final update
-    if (!cancelled && uiManager.isDialogOpen()) {
-      const successCount = results.filter(r => r.status === 'success').length;
-      const failedCount = results.filter(r => r.status === 'failed').length;
+      // Final update
+      if (!cancelled && uiManager.isDialogOpen()) {
+        const successCount = results.filter(r => r.status === 'success').length;
+        const failedCount = results.filter(r => r.status === 'failed').length;
 
-      await updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
+        await updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
 
-      ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
+        ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
-      if (failedCount > 0) {
-        console.log(`${MODULE_ID} | ${failedCount} tokens had no matching art found`);
+        if (failedCount > 0) {
+          this._debugLog(`${failedCount} tokens had no matching art found`);
+        }
       }
-    }
 
-    this.isProcessing = false;
+      this._debugLog('Token replacement process completed successfully');
+
+    } catch (error) {
+      // Handle errors gracefully with user-friendly messages
+      console.error(`${MODULE_ID} | Error during token replacement:`, error);
+
+      let errorDisplay;
+
+      // Check if error is already a structured error object from services
+      if (error.errorType && error.message && error.recoverySuggestions) {
+        this._debugLog('Caught structured error:', error.errorType, error.details);
+        errorDisplay = error;
+      } else {
+        // Create structured error for unexpected errors
+        this._debugLog('Caught unexpected error:', error.message);
+
+        // Determine error type based on error message patterns
+        let errorType = 'unknown';
+        let recoverySuggestions = ['check_console', 'reload_module', 'contact_support'];
+
+        if (error.message?.includes('TVA') || error.message?.includes('token-variants')) {
+          errorType = 'tva_missing';
+          recoverySuggestions = ['install_tva', 'check_console'];
+        } else if (error.message?.includes('cache')) {
+          errorType = 'cache_load_failed';
+          recoverySuggestions = ['rebuild_cache', 'reload_module'];
+        } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+          errorType = 'network_error';
+          recoverySuggestions = ['check_network', 'check_file_access'];
+        } else if (error.message?.includes('Fuse')) {
+          errorType = 'fuse_load_failed';
+          recoverySuggestions = ['reload_module', 'check_network'];
+        }
+
+        errorDisplay = this._createError(
+          errorType,
+          error.stack || error.message || String(error),
+          recoverySuggestions
+        );
+      }
+
+      // Display error in dialog if it's open, otherwise use notification
+      if (uiManager.isDialogOpen()) {
+        const errorHTML = await uiManager.createErrorHTML(errorDisplay);
+        uiManager.updateDialogContent(errorHTML);
+        this._debugLog('Error displayed in dialog');
+      } else {
+        // Fallback to notification if dialog isn't available
+        ui.notifications.error(
+          this.i18n('notifications.processingError', { error: errorDisplay.message })
+        );
+        this._debugLog('Error displayed via notification');
+      }
+
+    } finally {
+      // Always reset processing flag, even on errors
+      this.isProcessing = false;
+      this._debugLog('Token replacement process ended, isProcessing reset to false');
+    }
   }
 }
 
