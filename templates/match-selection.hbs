@@ -1,0 +1,59 @@
+<div class="token-replacer-fa-token-preview">
+  <img src="{{currentImage}}" alt="{{safeName}}">
+  <div class="token-info">
+    <div class="token-name">{{safeName}}</div>
+    <div class="token-type">{{safeType}} {{safeSubtype}}</div>
+    {{#if showTokenCount}}
+      <div class="token-count">{{tokenCount}} tokens</div>
+    {{/if}}
+  </div>
+</div>
+
+<div class="token-replacer-fa-search-filter">
+  <div class="search-input-wrapper">
+    <i class="fas fa-search"></i>
+    <input type="text" class="search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
+  </div>
+  <div class="result-count">Showing <span class="visible-count">{{totalCount}}</span> of <span class="total-count">{{totalCount}}</span> results</div>
+</div>
+
+{{#if showMultiSelect}}
+  <div class="token-replacer-fa-mode-toggle">
+    <span class="mode-label">Variant assignment:</span>
+    <div class="mode-buttons">
+      <button type="button" class="mode-btn active" data-mode="sequential">
+        <i class="fas fa-arrow-right"></i> Sequential
+      </button>
+      <button type="button" class="mode-btn" data-mode="random">
+        <i class="fas fa-random"></i> Random
+      </button>
+    </div>
+    <span class="mode-hint">Click to select multiple variants</span>
+  </div>
+{{/if}}
+
+<div class="token-replacer-fa-match-select" data-multiselect="{{showMultiSelect}}" data-total="{{totalCount}}">
+  {{#each matches}}
+    <div class="match-option{{#if isFirst}} selected{{/if}}" data-index="{{index}}" data-path="{{safePath}}" data-name="{{safeNameLower}}">
+      <img src="{{safePath}}" alt="{{safeMatchName}}" onerror="this.src='icons/svg/mystery-man.svg'">
+      <div class="match-name">{{safeMatchName}}</div>
+      <div class="match-score">{{scoreDisplay}}</div>
+      <div class="match-check"><i class="fas fa-check"></i></div>
+    </div>
+  {{/each}}
+</div>
+
+{{#if showMultiSelect}}
+  <div class="token-replacer-fa-selection-info">
+    <span class="selection-count">1 selected</span>
+  </div>
+{{/if}}
+
+<div class="token-replacer-fa-selection-buttons">
+  <button type="button" class="select-btn" data-action="select">
+    <i class="fas fa-check"></i> Apply
+  </button>
+  <button type="button" class="skip-btn" data-action="skip">
+    <i class="fas fa-forward"></i> {{skipLabel}}
+  </button>
+</div>

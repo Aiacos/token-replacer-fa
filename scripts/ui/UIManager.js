@@ -201,81 +201,47 @@ export class UIManager {
    * @param {Object} creatureInfo - Creature information
    * @param {Array} matches - Match results
    * @param {number} tokenCount - Number of tokens
-   * @returns {string} HTML string
+   * @returns {Promise<string>} HTML string
    */
-  createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
+  async createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
     const safeName = escapeHtml(creatureInfo.actorName);
     const safeType = escapeHtml(creatureInfo.type || 'Unknown');
     const safeSubtype = creatureInfo.subtype ? `(${escapeHtml(creatureInfo.subtype)})` : '';
     const showMultiSelect = tokenCount > 1;
     const totalCount = matches.length;
 
-    return `
-      <div class="token-replacer-fa-token-preview">
-        <img src="${escapeHtml(creatureInfo.currentImage)}" alt="${safeName}">
-        <div class="token-info">
-          <div class="token-name">${safeName}</div>
-          <div class="token-type">${safeType} ${safeSubtype}</div>
-          ${tokenCount > 1 ? `<div class="token-count">${tokenCount} tokens</div>` : ''}
-        </div>
-      </div>
+    // Transform matches array with computed fields
+    const transformedMatches = matches.map((match, idx) => {
+      const safeMatchName = escapeHtml(match.name);
+      const safePath = escapeHtml(match.path);
+      const scoreDisplay = match.score !== undefined
+        ? `${Math.round((1 - match.score) * 100)}%`
+        : escapeHtml(match.source || '');
+      return {
+        index: idx,
+        safePath,
+        safeMatchName,
+        safeNameLower: safeMatchName.toLowerCase(),
+        scoreDisplay,
+        isFirst: idx === 0
+      };
+    });
 
-      <div class="token-replacer-fa-search-filter">
-        <div class="search-input-wrapper">
-          <i class="fas fa-search"></i>
-          <input type="text" class="search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off">
-        </div>
-        <div class="result-count">Showing <span class="visible-count">${totalCount}</span> of <span class="total-count">${totalCount}</span> results</div>
-      </div>
-
-      ${showMultiSelect ? `
-      <div class="token-replacer-fa-mode-toggle">
-        <span class="mode-label">Variant assignment:</span>
-        <div class="mode-buttons">
-          <button type="button" class="mode-btn active" data-mode="sequential">
-            <i class="fas fa-arrow-right"></i> Sequential
-          </button>
-          <button type="button" class="mode-btn" data-mode="random">
-            <i class="fas fa-random"></i> Random
-          </button>
-        </div>
-        <span class="mode-hint">Click to select multiple variants</span>
-      </div>
-      ` : ''}
-
-      <div class="token-replacer-fa-match-select" data-multiselect="${showMultiSelect}" data-total="${totalCount}">
-        ${matches.map((match, idx) => {
-          const safeMatchName = escapeHtml(match.name);
-          const safePath = escapeHtml(match.path);
-          const scoreDisplay = match.score !== undefined
-            ? `${Math.round((1 - match.score) * 100)}%`
-            : escapeHtml(match.source || '');
-          return `
-            <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
-              <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'">
-              <div class="match-name">${safeMatchName}</div>
-              <div class="match-score">${scoreDisplay}</div>
-              <div class="match-check"><i class="fas fa-check"></i></div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-
-      ${showMultiSelect ? `
-      <div class="token-replacer-fa-selection-info">
-        <span class="selection-count">1 selected</span>
-      </div>
-      ` : ''}
-
-      <div class="token-replacer-fa-selection-buttons">
-        <button type="button" class="select-btn" data-action="select">
-          <i class="fas fa-check"></i> Apply
-        </button>
-        <button type="button" class="skip-btn" data-action="skip">
-          <i class="fas fa-forward"></i> ${i18n('dialog.skip')}
-        </button>
-      </div>
-    `;
+    return await renderTemplate(
+      `modules/${MODULE_ID}/templates/match-selection.hbs`,
+      {
+        currentImage: escapeHtml(creatureInfo.currentImage),
+        safeName,
+        safeType,
+        safeSubtype,
+        tokenCount,
+        showTokenCount: tokenCount > 1,
+        showMultiSelect,
+        totalCount,
+        matches: transformedMatches,
+        skipLabel: i18n('dialog.skip')
+      }
+    );
   }
 
   /**

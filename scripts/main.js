@@ -393,7 +393,7 @@ export class TokenReplacerApp {
       if (autoReplace && matchScore >= (1 - threshold)) {
         selectedPaths = [bestMatch.path];
       } else if (confirmReplace) {
-        uiManager.updateDialogContent(uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
+        uiManager.updateDialogContent(await uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
         await yieldToMain(50);
 
         const dialogEl = uiManager.getDialogElement();
