@@ -2,7 +2,7 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.11.0
+ * @version 2.11.1
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -90,8 +90,12 @@ export class TokenReplacerApp {
    * @param {...any} args - Arguments to log
    */
   _debugLog(...args) {
-    if (this.getSetting('debugMode')) {
-      console.log(`${MODULE_ID} |`, ...args);
+    try {
+      if (this.getSetting('debugMode')) {
+        console.log(`${MODULE_ID} |`, ...args);
+      }
+    } catch {
+      // Settings not registered yet - silently ignore
     }
   }
 
@@ -675,7 +679,10 @@ window.TokenReplacerFA = tokenReplacerApp;
  * Module initialization
  */
 Hooks.once('init', async () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.11.0`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.11.1`);
+
+  // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
+  tokenReplacerApp.registerSettings();
 
   // Preload Handlebars templates
   tokenReplacerApp._debugLog('Preloading Handlebars templates');
@@ -690,8 +697,6 @@ Hooks.once('init', async () => {
     'modules/token-replacer-fa/templates/no-match.hbs'
   ]);
   tokenReplacerApp._debugLog('Templates preloaded successfully');
-
-  tokenReplacerApp.registerSettings();
   tokenReplacerApp._debugLog('Module initialization complete');
 });
 

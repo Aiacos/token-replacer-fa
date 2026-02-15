@@ -406,8 +406,12 @@ export function createModuleError(errorType, details, recoveryKeys = []) {
  */
 export function createDebugLogger(servicePrefix) {
   return function(message, ...args) {
-    if (game.settings.get(MODULE_ID, 'debugMode')) {
-      console.log(`${MODULE_ID} | [${servicePrefix}] ${message}`, ...args);
+    try {
+      if (game.settings.get(MODULE_ID, 'debugMode')) {
+        console.log(`${MODULE_ID} | [${servicePrefix}] ${message}`, ...args);
+      }
+    } catch {
+      // Settings not registered yet - silently ignore
     }
   };
 }
