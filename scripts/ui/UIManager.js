@@ -888,6 +888,18 @@ export class UIManager {
    * @returns {TokenReplacerDialog} TokenReplacerDialog instance
    */
   createMainDialog(initialContent, onClose) {
+    // Close existing dialog if still in DOM (prevents duplicate ID conflicts in ApplicationV2)
+    if (this.mainDialog) {
+      try {
+        if (this.mainDialog.rendered) {
+          this.mainDialog.close();
+        }
+      } catch (e) {
+        console.warn('token-replacer-fa | Failed to close existing dialog:', e);
+      }
+      this.mainDialog = null;
+    }
+
     this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
       onClose: () => {

@@ -2,7 +2,7 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.11.3
+ * @version 2.11.4
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -332,7 +332,9 @@ export class TokenReplacerApp {
           this.isProcessing = false;
         }
       );
+      console.log(`${MODULE_ID} | Rendering dialog (force: true)...`);
       await dialog.render({ force: true });
+      console.log(`${MODULE_ID} | Dialog render complete, rendered: ${dialog.rendered}`);
       this._debugLog('Dialog rendered, starting token index build');
 
       // Initialize search service (basic setup)
@@ -678,7 +680,7 @@ window.TokenReplacerFA = tokenReplacerApp;
  * Module initialization
  */
 Hooks.once('init', async () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.11.3`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.11.4`);
 
   // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
   tokenReplacerApp.registerSettings();
