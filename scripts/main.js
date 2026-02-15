@@ -2,7 +2,7 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.10.2
+ * @version 2.11.0
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -13,6 +13,7 @@ import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
 import { forgeBazaarService } from './services/ForgeBazaarService.js';
+import { storageService } from './services/StorageService.js';
 import { uiManager, logI18nCacheStats as logUIManagerI18nCacheStats } from './ui/UIManager.js';
 
 /**
@@ -345,7 +346,8 @@ export class TokenReplacerApp {
         uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false));
         await yieldToMain(100);
 
-        // If refresh requested, do it FIRST before loading our cache
+        // If refresh requested, do it FIRST, then force reload our cache
+        let cacheLoaded = false;
         if (refreshTVACache && this.tvaAPI?.cacheImages) {
           this._debugLog('Refreshing TVA cache');
           uiManager.updateDialogContent(await uiManager.createTVACacheHTML(true));
@@ -358,12 +360,16 @@ export class TokenReplacerApp {
             this._debugLog('TVA cache refresh failed, continuing with existing cache');
           }
           await yieldToMain(100);
+          // Force reload: clears in-memory + IndexedDB cache, then re-fetches
+          uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+          this._debugLog('Force reloading TVA cache after refresh');
+          cacheLoaded = await tvaCacheService.reloadTVACache();
+        } else {
+          // Normal load (may restore from IndexedDB)
+          uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+          this._debugLog('Loading TVA cache');
+          cacheLoaded = await tvaCacheService.loadTVACache();
         }
-
-        // NOW load TVA cache directly (after any refresh is complete)
-        uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
-        this._debugLog('Loading TVA cache');
-        const cacheLoaded = await tvaCacheService.loadTVACache();
         if (cacheLoaded) {
           const stats = tvaCacheService.getTVACacheStats();
           this._debugLog('TVA direct cache ready:', stats.totalImages, 'images');
@@ -669,7 +675,7 @@ window.TokenReplacerFA = tokenReplacerApp;
  * Module initialization
  */
 Hooks.once('init', async () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.10.2`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.11.0`);
 
   // Preload Handlebars templates
   tokenReplacerApp._debugLog('Preloading Handlebars templates');
@@ -731,7 +737,7 @@ Hooks.once('ready', async () => {
         console.log(`${MODULE_ID} | Building image index in background...`);
         tokenReplacerApp._debugLog('Starting background image index build');
 
-        const hasCache = localStorage.getItem('token-replacer-fa-index-v3');
+        const hasCache = await storageService.has('token-replacer-fa-index-v3');
         tokenReplacerApp._debugLog(`Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`);
 
         const onProgress = (current, total, images) => {

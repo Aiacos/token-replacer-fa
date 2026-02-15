@@ -141,6 +141,34 @@ export class StorageService {
   }
 
   /**
+   * Check if a key exists in storage without loading full data
+   * Uses IDBObjectStore.count() for lightweight check
+   * @param {string} key - Storage key to check
+   * @returns {Promise<boolean>} True if key exists
+   */
+  async has(key) {
+    if (this.isIndexedDBSupported) {
+      try {
+        const db = await this.openDatabase();
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const objectStore = transaction.objectStore(STORE_NAME);
+        const request = objectStore.count(IDBKeyRange.only(key));
+
+        const count = await new Promise((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+
+        return count > 0;
+      } catch (error) {
+        // Fall through to localStorage
+      }
+    }
+
+    return localStorage.getItem(key) !== null;
+  }
+
+  /**
    * Save data to storage (IndexedDB or localStorage fallback)
    * @param {string} key - Storage key (used as record ID)
    * @param {*} data - Data to store (must be serializable to JSON)

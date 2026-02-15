@@ -6,6 +6,9 @@
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
 import { isExcludedPath, clearExcludedPathCache, yieldToMain, createModuleError, createDebugLogger } from '../core/Utils.js';
+import { storageService } from './StorageService.js';
+
+const TVA_CACHE_KEY = 'tva-cache-v1';
 
 /**
  * TVACacheService - Direct access to TVA's static cache for maximum performance
@@ -130,7 +133,20 @@ export class TVACacheService {
         );
       }
 
-      this._debugLog(`Loading TVA cache directly from: ${staticCacheFile}`);
+      // Try restoring from IndexedDB first (skips fetch + parse entirely)
+      const cached = await this._tryRestoreFromIndexedDB(staticCacheFile);
+      if (cached) {
+        this.tvaCacheByCategory = cached.tvaCacheByCategory;
+        this.tvaCacheImages = cached.tvaCacheImages;
+        this.tvaCacheLoaded = true;
+        const categories = Object.keys(this.tvaCacheByCategory).length;
+        this._debugLog(`TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images in ${categories} categories`);
+        console.log(`${MODULE_ID} | TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images in ${categories} categories`);
+        return true;
+      }
+
+      // IndexedDB miss — full fetch + parse
+      this._debugLog(`Loading TVA cache from file: ${staticCacheFile}`);
 
       const response = await fetch(staticCacheFile);
       if (!response.ok) {
@@ -141,6 +157,10 @@ export class TVACacheService {
           ['check_network', 'rebuild_cache', 'check_file_access']
         );
       }
+
+      // Capture headers for IndexedDB invalidation metadata
+      const lastModified = response.headers.get('Last-Modified') || '';
+      const contentLength = parseInt(response.headers.get('Content-Length') || '0');
 
       let json;
       try {
@@ -205,8 +225,13 @@ export class TVACacheService {
       }
 
       this.tvaCacheLoaded = true;
-      this._debugLog(`TVA cache loaded successfully: ${this.tvaCacheImages.length} images in ${Object.keys(this.tvaCacheByCategory).length} categories`);
-      console.log(`${MODULE_ID} | TVA cache loaded: ${this.tvaCacheImages.length} images in ${Object.keys(this.tvaCacheByCategory).length} categories`);
+      const categories = Object.keys(this.tvaCacheByCategory).length;
+      this._debugLog(`TVA cache parsed from file: ${this.tvaCacheImages.length} images in ${categories} categories`);
+      console.log(`${MODULE_ID} | TVA cache parsed from file: ${this.tvaCacheImages.length} images in ${categories} categories`);
+
+      // Save to IndexedDB for next startup (fire-and-forget)
+      this._persistToIndexedDB(staticCacheFile, lastModified, contentLength);
+
       return true;
 
     } catch (error) {
@@ -226,6 +251,89 @@ export class TVACacheService {
   }
 
   /**
+   * Try to restore TVA cache from IndexedDB
+   * Validates freshness by comparing Content-Length with a HEAD request
+   * @param {string} cacheFilePath - TVA cache file path
+   * @returns {Promise<Object|null>} Cached data or null if miss/stale
+   * @private
+   */
+  async _tryRestoreFromIndexedDB(cacheFilePath) {
+    try {
+      const cached = await storageService.load(TVA_CACHE_KEY);
+      if (!cached?.tvaCacheImages?.length || !cached?.tvaCacheByCategory) {
+        this._debugLog('No valid TVA cache in IndexedDB');
+        return null;
+      }
+
+      // Verify same cache file path
+      if (cached.cacheFilePath !== cacheFilePath) {
+        this._debugLog('IndexedDB cache is for a different file, invalidating');
+        return null;
+      }
+
+      // Check freshness: HEAD request to compare Content-Length
+      try {
+        const headResponse = await fetch(cacheFilePath, { method: 'HEAD' });
+        if (headResponse.ok) {
+          const serverLength = parseInt(headResponse.headers.get('Content-Length') || '0');
+          const serverModified = headResponse.headers.get('Last-Modified') || '';
+
+          // If server provides Last-Modified and it differs → stale
+          if (serverModified && cached.lastModified && serverModified !== cached.lastModified) {
+            this._debugLog(`Last-Modified changed: "${cached.lastModified}" → "${serverModified}"`);
+            return null;
+          }
+
+          // If server provides Content-Length and it differs → stale
+          if (serverLength > 0 && cached.contentLength > 0 && serverLength !== cached.contentLength) {
+            this._debugLog(`Content-Length changed: ${cached.contentLength} → ${serverLength}`);
+            return null;
+          }
+        }
+        // If HEAD fails (e.g., CORS), use cached data anyway
+      } catch (headError) {
+        this._debugLog('HEAD request failed, using cached data:', headError.message);
+      }
+
+      this._debugLog(`IndexedDB cache hit: ${cached.tvaCacheImages.length} images`);
+      return cached;
+    } catch (error) {
+      this._debugLog('Error restoring from IndexedDB:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Persist parsed TVA cache to IndexedDB for fast restore on next startup
+   * Fire-and-forget — does not block the caller
+   * @param {string} cacheFilePath - TVA cache file path
+   * @param {string} lastModified - Last-Modified response header
+   * @param {number} contentLength - Content-Length response header
+   * @private
+   */
+  _persistToIndexedDB(cacheFilePath, lastModified, contentLength) {
+    const data = {
+      tvaCacheImages: this.tvaCacheImages,
+      tvaCacheByCategory: this.tvaCacheByCategory,
+      imageCount: this.tvaCacheImages.length,
+      cacheFilePath,
+      lastModified,
+      contentLength,
+      timestamp: Date.now()
+    };
+
+    storageService.save(TVA_CACHE_KEY, data).then(success => {
+      if (success) {
+        this._debugLog(`TVA cache persisted to IndexedDB: ${data.imageCount} images`);
+      } else {
+        this._debugLog('Failed to persist TVA cache to IndexedDB');
+      }
+    }).catch(error => {
+      this._debugLog('Error persisting TVA cache to IndexedDB:', error);
+    });
+  }
+
+  /**
    * Force reload of TVA cache (use after TVA cache refresh)
    * @returns {Promise<boolean>} True if reloaded successfully
    * @throws {Object} Structured error if reload fails
@@ -236,6 +344,8 @@ export class TVACacheService {
     this.tvaCacheImages = [];
     this.tvaCacheByCategory = {};
     clearExcludedPathCache();
+    // Clear IndexedDB cache to force fresh fetch
+    await storageService.remove(TVA_CACHE_KEY).catch(() => {});
 
     try {
       const result = await this.loadTVACache();
