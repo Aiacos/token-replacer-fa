@@ -19,6 +19,7 @@ export class TVACacheService {
     this.tvaCacheLoaded = false;
     this.tvaCacheImages = []; // Flat array of all images for fast search
     this.tvaCacheByCategory = {}; // Original category structure
+    this._loadPromise = null; // Promise deduplication for concurrent loads
     // Shared utilities
     this._createError = createModuleError;
     this._debugLog = createDebugLogger('TVACacheService');
@@ -42,6 +43,15 @@ export class TVACacheService {
    * @throws {Object} Structured error if TVA not available or cache load fails
    */
   async loadTVACache(maxWaitMs = 30000) {
+    // Fast path: already loaded
+    if (this.tvaCacheLoaded) return true;
+
+    // Promise deduplication: join in-progress load
+    if (this._loadPromise) {
+      this._debugLog('Cache load already in progress, joining existing promise');
+      return this._loadPromise;
+    }
+
     if (!this.hasTVA || !this.tvaAPI) {
       this._debugLog('TVA not available, cannot load cache');
       throw this._createError(
@@ -73,7 +83,8 @@ export class TVACacheService {
       }
     }
 
-    return await this._loadTVACacheFromFile();
+    this._loadPromise = this._loadTVACacheFromFile().finally(() => { this._loadPromise = null; });
+    return this._loadPromise;
   }
 
   /**
@@ -157,6 +168,8 @@ export class TVACacheService {
       this.tvaCacheImages = [];
 
       // Parse the cache file (same logic as TVA's _readCacheFromFile)
+      // Yields every 5000 images to prevent main thread freeze with large caches
+      let parseCount = 0;
       for (const category in json) {
         this.tvaCacheByCategory[category] = [];
 
@@ -177,6 +190,7 @@ export class TVACacheService {
 
           this.tvaCacheByCategory[category].push(imageObj);
           this.tvaCacheImages.push(imageObj);
+          if (++parseCount % 5000 === 0) await yieldToMain(0);
         }
       }
 
