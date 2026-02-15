@@ -2,11 +2,11 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.11.4
+ * @version 2.12.0
  */
 
 import { MODULE_ID } from './core/Constants.js';
-import { loadFuse, yieldToMain } from './core/Utils.js';
+import { loadFuse, yieldToMain, loadModuleTemplates } from './core/Utils.js';
 import { TokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { tvaCacheService } from './services/TVACacheService.js';
@@ -332,9 +332,7 @@ export class TokenReplacerApp {
           this.isProcessing = false;
         }
       );
-      console.log(`${MODULE_ID} | Rendering dialog (force: true)...`);
       await dialog.render({ force: true });
-      console.log(`${MODULE_ID} | Dialog render complete, rendered: ${dialog.rendered}`);
       this._debugLog('Dialog rendered, starting token index build');
 
       // Initialize search service (basic setup)
@@ -680,14 +678,14 @@ window.TokenReplacerFA = tokenReplacerApp;
  * Module initialization
  */
 Hooks.once('init', async () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.11.4`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.0`);
 
   // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
   tokenReplacerApp.registerSettings();
 
   // Preload Handlebars templates
   tokenReplacerApp._debugLog('Preloading Handlebars templates');
-  await loadTemplates([
+  await loadModuleTemplates([
     'modules/token-replacer-fa/templates/error.hbs',
     'modules/token-replacer-fa/templates/tva-cache.hbs',
     'modules/token-replacer-fa/templates/scan-progress.hbs',

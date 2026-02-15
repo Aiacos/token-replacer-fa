@@ -17,7 +17,11 @@
     <input type="text" class="search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off" value="{{savedFilterTerm}}">
     <i class="fas fa-times search-clear-btn"></i>
   </div>
-  <div class="result-count">Showing <span class="visible-count">{{totalCount}}</span> of <span class="total-count">{{totalCount}}</span> results</div>
+  {{#if isCapped}}
+    <div class="result-count">Showing <span class="visible-count">{{displayCount}}</span> of <span class="total-count">{{totalCount}}</span> results — use filter to narrow down</div>
+  {{else}}
+    <div class="result-count">Showing <span class="visible-count">{{totalCount}}</span> of <span class="total-count">{{totalCount}}</span> results</div>
+  {{/if}}
 </div>
 
 {{#if showMultiSelect}}
@@ -39,7 +43,7 @@
   {{#each matches}}
     <div class="match-option{{#if isFirst}} selected{{/if}}" data-index="{{index}}" data-path="{{path}}" data-name="{{nameLower}}">
       <div class="skeleton-loader skeleton-72">
-        <img src="{{path}}" alt="{{name}}" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+        <img src="{{path}}" alt="{{name}}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
       </div>
       <div class="match-name">{{name}}</div>
       <div class="match-score">{{scoreDisplay}}</div>

@@ -380,6 +380,32 @@ export function isExcludedPath(path) {
 }
 
 /**
+ * Render a Handlebars template (v12/v13 compatible)
+ * Foundry v13 deprecated global renderTemplate in favor of foundry.applications.handlebars.renderTemplate
+ * @param {string} path - Template path
+ * @param {Object} data - Template data
+ * @returns {Promise<string>} Rendered HTML
+ */
+export async function renderModuleTemplate(path, data) {
+  if (foundry?.applications?.handlebars?.renderTemplate) {
+    return foundry.applications.handlebars.renderTemplate(path, data);
+  }
+  return renderTemplate(path, data);
+}
+
+/**
+ * Preload Handlebars templates (v12/v13 compatible)
+ * @param {string[]} paths - Template paths to preload
+ * @returns {Promise<void>}
+ */
+export async function loadModuleTemplates(paths) {
+  if (foundry?.applications?.handlebars?.loadTemplates) {
+    return foundry.applications.handlebars.loadTemplates(paths);
+  }
+  return loadTemplates(paths);
+}
+
+/**
  * Create a structured error object with localized messages
  * Shared utility used by all services
  * @param {string} errorType - Error type key (e.g., 'search_failed')

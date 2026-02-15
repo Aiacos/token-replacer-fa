@@ -14,6 +14,7 @@ export const PARALLEL_BATCH_SIZE = 4;      // Max concurrent creature searches
 export const SLOW_MODE_BATCH_SIZE = 6;     // Parallel batch size for SLOW mode TVA API calls
 export const INDEX_BATCH_SIZE = 1000;      // Batch size for index building
 export const MAX_SCAN_DEPTH = 5;           // Maximum directory scan depth
+export const MAX_DISPLAY_RESULTS = 200;    // Max results to render in match selection UI
 
 /**
  * Folders to exclude from token search (assets, props, textures, etc.)

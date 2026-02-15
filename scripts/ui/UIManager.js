@@ -4,8 +4,8 @@
  * @module ui/UIManager
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
-import { escapeHtml, parseFilterTerms, matchesAllTerms } from '../core/Utils.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, MAX_DISPLAY_RESULTS } from '../core/Constants.js';
+import { escapeHtml, parseFilterTerms, matchesAllTerms, renderModuleTemplate } from '../core/Utils.js';
 
 // i18n cache to avoid repeated localization lookups
 const I18N_CACHE = new Map();
@@ -230,7 +230,7 @@ export class UIManager {
       ? '...' + currentDir.substring(currentDir.length - 47)
       : currentDir;
 
-    return await renderTemplate(
+    return await renderModuleTemplate(
       `modules/${MODULE_ID}/templates/scan-progress.hbs`,
       {
         currentDir,
@@ -257,7 +257,7 @@ export class UIManager {
   async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    return await renderTemplate(
+    return await renderModuleTemplate(
       `modules/${MODULE_ID}/templates/parallel-search.hbs`,
       {
         percent,
@@ -282,8 +282,14 @@ export class UIManager {
     const showMultiSelect = tokenCount > 1;
     const totalCount = matches.length;
 
+    // Cap displayed results to prevent UI freeze (12K+ results = DOM + image loading storm)
+    const displayMatches = matches.length > MAX_DISPLAY_RESULTS
+      ? matches.slice(0, MAX_DISPLAY_RESULTS)
+      : matches;
+    const isCapped = matches.length > MAX_DISPLAY_RESULTS;
+
     // Transform matches array with computed fields
-    const transformedMatches = matches.map((match, idx) => {
+    const transformedMatches = displayMatches.map((match, idx) => {
       const scoreDisplay = match.score !== undefined
         ? `${Math.round((1 - match.score) * 100)}%`
         : (match.source || '');
@@ -300,7 +306,7 @@ export class UIManager {
     // Restore filter term from localStorage for session persistence
     const savedFilterTerm = loadFilterTerm();
 
-    return await renderTemplate(
+    return await renderModuleTemplate(
       `modules/${MODULE_ID}/templates/match-selection.hbs`,
       {
         currentImage: creatureInfo.currentImage,
@@ -311,6 +317,8 @@ export class UIManager {
         showTokenCount: tokenCount > 1,
         showMultiSelect,
         totalCount,
+        displayCount: displayMatches.length,
+        isCapped,
         matches: transformedMatches,
         skipLabel: i18n('dialog.skip'),
         savedFilterTerm
@@ -335,7 +343,7 @@ export class UIManager {
     // Restore filter term from localStorage for session persistence
     const savedFilterTerm = loadFilterTerm();
 
-    return await renderTemplate(
+    return await renderModuleTemplate(
       `modules/${MODULE_ID}/templates/no-match.hbs`,
       {
         currentImage: creatureInfo.currentImage,
@@ -366,7 +374,7 @@ export class UIManager {
     const { current, total, term, resultsFound } = progress;
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
 
-    return await renderTemplate(
+    return await renderModuleTemplate(
       `modules/${MODULE_ID}/templates/search-progress.hbs`,
       {
         categoryType,
@@ -402,7 +410,7 @@ export class UIManager {
                  r.status === 'failed' ? 'fa-times' : 'fa-forward'
     }));
 
-    return await renderTemplate(
+    return await renderModuleTemplate(
       `modules/${MODULE_ID}/templates/progress.hbs`,
       {
         percent,
@@ -427,7 +435,7 @@ export class UIManager {
   async createTVACacheHTML(refreshing = false, customMessage = null) {
     const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
     const statusMessage = customMessage || 'Using Token Variant Art cache...';
-    return await renderTemplate(templatePath, {
+    return await renderModuleTemplate(templatePath, {
       refreshing,
       statusMessage
     });
@@ -450,7 +458,7 @@ export class UIManager {
       ? { errorType: 'error', message: errorData }
       : errorData;
 
-    return await renderTemplate(templatePath, {
+    return await renderModuleTemplate(templatePath, {
       errorType: data.errorType || 'error',
       message: data.message,
       details: data.details,
@@ -713,15 +721,20 @@ export class UIManager {
           return;
         }
 
+        // Cap displayed results to prevent UI freeze
+        const displayItems = results.length > MAX_DISPLAY_RESULTS
+          ? results.slice(0, MAX_DISPLAY_RESULTS)
+          : results;
+
         if (categoryFilter) {
           categoryFilter.style.display = 'block';
-          if (categoryVisibleCount) categoryVisibleCount.textContent = results.length;
+          if (categoryVisibleCount) categoryVisibleCount.textContent = displayItems.length;
           if (categoryTotalCount) categoryTotalCount.textContent = results.length;
           if (categorySearchInput) categorySearchInput.value = '';
         }
 
         if (!matchGrid) return;
-        matchGrid.innerHTML = results.map((match, idx) => {
+        matchGrid.innerHTML = displayItems.map((match, idx) => {
           const safeMatchName = escapeHtml(match.name);
           const safePath = escapeHtml(match.path);
           const scoreDisplay = match.score !== undefined
@@ -730,7 +743,7 @@ export class UIManager {
           return `
             <div class="match-option" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
               <div class="skeleton-loader skeleton-72">
-                <img src="${safePath}" alt="${safeMatchName}" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+                <img src="${safePath}" alt="${safeMatchName}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
               </div>
               <div class="match-name">${safeMatchName}</div>
               <div class="match-score">${scoreDisplay}</div>
