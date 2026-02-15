@@ -39,7 +39,13 @@ self.addEventListener('message', (event) => {
         break;
 
       case 'fuzzySearch':
-        handleFuzzySearch(data);
+        handleFuzzySearch(data).catch(error => {
+          self.postMessage({
+            type: 'error',
+            message: error.message,
+            stack: error.stack
+          });
+        });
         break;
 
       case 'cancel':
@@ -123,9 +129,8 @@ function handleIndexPaths(data) {
 
   // Process each path
   for (let i = 0; i < paths.length; i++) {
-    // Check for cancellation
+    // Check for cancellation (cancel handler already sent 'cancelled' message)
     if (cancelled) {
-      self.postMessage({ type: 'cancelled' });
       return;
     }
 
@@ -279,9 +284,8 @@ async function handleFuzzySearch(data) {
     return;
   }
 
-  // Check for cancellation after async operation
+  // Check for cancellation after async operation (cancel handler already sent message)
   if (cancelled) {
-    self.postMessage({ type: 'cancelled' });
     return;
   }
 
@@ -300,9 +304,8 @@ async function handleFuzzySearch(data) {
 
   // Search for each term
   for (let i = 0; i < searchTerms.length; i++) {
-    // Check for cancellation
+    // Check for cancellation (cancel handler already sent message)
     if (cancelled) {
-      self.postMessage({ type: 'cancelled' });
       return;
     }
 
@@ -386,6 +389,18 @@ const CDN_SEGMENTS = new Set([
 ]);
 
 /**
+ * Precompiled RegExp patterns for excluded filename terms
+ * Built once on first call, reused across all isExcludedPath() invocations
+ * Matches Utils.js behavior: \b${term}\b (full word boundary on both sides)
+ */
+let compiledExcludedPatterns = null;
+
+/**
+ * Precompiled Set for excluded folders (O(1) lookup instead of O(N) array scan)
+ */
+let compiledExcludedFolders = null;
+
+/**
  * Check if a path should be excluded from indexing
  * Checks both folder names and filename for environmental/prop terms
  *
@@ -396,28 +411,33 @@ const CDN_SEGMENTS = new Set([
  */
 function isExcludedPath(path, excludedFolders, excludedFilenameTerms) {
   if (!path) return true;
+
+  // Precompile patterns on first call (once per worker lifetime)
+  if (!compiledExcludedPatterns) {
+    compiledExcludedPatterns = excludedFilenameTerms.map(term => new RegExp(`\\b${term}\\b`, 'i'));
+  }
+  if (!compiledExcludedFolders) {
+    compiledExcludedFolders = new Set(excludedFolders);
+  }
+
   const pathLower = path.toLowerCase();
   const segments = pathLower.split('/');
 
   // Filter out CDN segments and check remaining folder names
   const folderSegments = segments.filter(s => !CDN_SEGMENTS.has(s) && s.length > 0);
 
-  // Check folder names against exclusion list
-  const folderExcluded = excludedFolders.some(folder =>
-    folderSegments.some(segment => segment === folder)
-  );
-  if (folderExcluded) return true;
+  // Check folder names against exclusion Set (O(1) per segment)
+  if (folderSegments.some(segment => compiledExcludedFolders.has(segment))) {
+    return true;
+  }
 
   // Also check filename for environmental/prop terms
   const filename = segments[segments.length - 1] || '';
   // Remove extension and convert separators to spaces for word matching
   const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
 
-  // Check if filename contains excluded terms (as whole words or prefixes)
-  return excludedFilenameTerms.some(term => {
-    // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-    const regex = new RegExp(`\\b${term}`, 'i');
-    return regex.test(filenameClean);
-  });
+  // Check if filename contains excluded terms using precompiled patterns
+  // Match as word boundary on both sides: "cliff_entrance" matches "cliff", but "clifford" doesn't
+  return compiledExcludedPatterns.some(pattern => pattern.test(filenameClean));
 }
 

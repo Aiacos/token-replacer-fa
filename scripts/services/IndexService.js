@@ -844,6 +844,18 @@ export class IndexService {
             this.index.categories = result.categories;
             this.index.allPaths = result.allPaths;
 
+            // Build termIndex from allPaths (worker doesn't build it)
+            this.index.termIndex = {};
+            for (const [path, data] of Object.entries(this.index.allPaths)) {
+              const searchTerms = this.tokenizeSearchText(`${path} ${data.name}`);
+              for (const term of searchTerms) {
+                if (!this.index.termIndex[term]) {
+                  this.index.termIndex[term] = [];
+                }
+                this.index.termIndex[term].push(path);
+              }
+            }
+
             // Clean up the message handler
             this.worker.removeEventListener('message', messageHandler);
 
