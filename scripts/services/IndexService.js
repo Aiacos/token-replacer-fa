@@ -221,6 +221,27 @@ export class IndexService {
       const imageCount = Object.keys(data.allPaths || {}).length;
       this._debugLog(`Loaded index from cache: ${imageCount} images`);
       console.log(`${MODULE_ID} | Loaded index from cache: ${imageCount} images`);
+
+      // Rebuild termIndex if missing or empty (cached before v2.11.3)
+      const termIndexSize = Object.keys(this.index.termIndex || {}).length;
+      if (imageCount > 0 && termIndexSize === 0) {
+        console.log(`${MODULE_ID} | Rebuilding termIndex from cached allPaths...`);
+        this.index.termIndex = {};
+        for (const [path, pathData] of Object.entries(this.index.allPaths)) {
+          const searchTerms = this.tokenizeSearchText(`${path} ${pathData.name}`);
+          for (const term of searchTerms) {
+            if (!this.index.termIndex[term]) {
+              this.index.termIndex[term] = [];
+            }
+            this.index.termIndex[term].push(path);
+          }
+        }
+        const rebuiltSize = Object.keys(this.index.termIndex).length;
+        console.log(`${MODULE_ID} | termIndex rebuilt: ${rebuiltSize} unique terms from ${imageCount} images`);
+        // Save updated index back to cache so this only happens once
+        await this.saveToCache();
+      }
+
       return true;
     } catch (error) {
       this._debugLog('Failed to load cache:', error);
