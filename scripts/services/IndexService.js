@@ -6,7 +6,7 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
-import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath } from '../core/Utils.js';
+import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath, createModuleError, createDebugLogger } from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
@@ -43,6 +43,9 @@ export class IndexService {
     this.buildPromise = null;
     this.termCategoryMap = this.buildTermCategoryMap();
     this.worker = null;
+    // Shared utilities
+    this._createError = createModuleError;
+    this._debugLog = createDebugLogger('IndexService');
 
     // Initialize Web Worker if supported
     if (typeof Worker !== 'undefined') {
@@ -56,37 +59,6 @@ export class IndexService {
       }
     } else {
       console.warn(`${MODULE_ID} | Web Workers not supported in this browser, using fallback method`);
-    }
-  }
-
-  /**
-   * Create a structured error object with localized messages
-   * @private
-   * @param {string} errorType - Error type key (e.g., 'index_build_failed')
-   * @param {string} details - Technical details about the error
-   * @param {string[]} recoveryKeys - Array of recovery suggestion keys
-   * @returns {Object} Structured error object
-   */
-  _createError(errorType, details, recoveryKeys = []) {
-    return {
-      errorType,
-      message: game.i18n.localize(`TOKEN_REPLACER_FA.errors.${errorType}`),
-      details,
-      recoverySuggestions: recoveryKeys.map(key =>
-        game.i18n.localize(`TOKEN_REPLACER_FA.recovery.${key}`)
-      )
-    };
-  }
-
-  /**
-   * Log a debug message if debug mode is enabled
-   * @private
-   * @param {string} message - Debug message to log
-   * @param {...any} args - Additional arguments to log
-   */
-  _debugLog(message, ...args) {
-    if (game.settings.get(MODULE_ID, 'debugMode')) {
-      console.log(`${MODULE_ID} | [IndexService] ${message}`, ...args);
     }
   }
 

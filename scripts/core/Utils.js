@@ -3,7 +3,7 @@
  * @module core/Utils
  */
 
-import { FUSE_CDN, GENERIC_SUBTYPE_INDICATORS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from './Constants.js';
+import { MODULE_ID, FUSE_CDN, GENERIC_SUBTYPE_INDICATORS, EXCLUDED_FOLDERS_SET, EXCLUDED_FILENAME_TERMS } from './Constants.js';
 
 // Fuse.js instance cache
 let FuseClass = null;
@@ -47,9 +47,12 @@ export async function loadFuse() {
  */
 export function escapeHtml(text) {
   if (!text) return '';
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 /**
@@ -323,24 +326,44 @@ const CDN_SEGMENTS = new Set([
 ]);
 
 /**
+ * Memoization cache for isExcludedPath() results
+ * Avoids recomputing the same path exclusion across 50K+ calls per search
+ */
+const excludedPathCache = new Map();
+const MAX_CACHE_SIZE = 20000;
+
+/**
+ * Clear the excluded path cache (call when TVA cache is reloaded)
+ */
+export function clearExcludedPathCache() {
+  excludedPathCache.clear();
+}
+
+/**
  * Check if a path should be excluded from token search
  * Checks both folder names and filename for environmental/prop terms
+ * Results are memoized for performance (50K+ calls per search)
  * @param {string} path - Image path to check
  * @returns {boolean} True if path should be excluded
  */
 export function isExcludedPath(path) {
   if (!path) return true;
+
+  const cached = excludedPathCache.get(path);
+  if (cached !== undefined) return cached;
+
   const pathLower = path.toLowerCase();
   const segments = pathLower.split('/');
 
   // Filter out CDN segments and check remaining folder names
   const folderSegments = segments.filter(s => !CDN_SEGMENTS.has(s) && s.length > 0);
 
-  // Check folder names against exclusion list
-  const folderExcluded = EXCLUDED_FOLDERS.some(folder =>
-    folderSegments.some(segment => segment === folder)
-  );
-  if (folderExcluded) return true;
+  // Check folder names against exclusion Set (O(1) per segment instead of O(N) array scan)
+  if (folderSegments.some(segment => EXCLUDED_FOLDERS_SET.has(segment))) {
+    if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
+    excludedPathCache.set(path, true);
+    return true;
+  }
 
   // Also check filename for environmental/prop terms
   const filename = segments[segments.length - 1] || '';
@@ -349,5 +372,42 @@ export function isExcludedPath(path) {
 
   // Check if filename contains excluded terms using precompiled patterns
   // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-  return EXCLUDED_FILENAME_PATTERNS.some(pattern => pattern.test(filenameClean));
+  const result = EXCLUDED_FILENAME_PATTERNS.some(pattern => pattern.test(filenameClean));
+
+  if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
+  excludedPathCache.set(path, result);
+  return result;
+}
+
+/**
+ * Create a structured error object with localized messages
+ * Shared utility used by all services
+ * @param {string} errorType - Error type key (e.g., 'search_failed')
+ * @param {string} details - Technical details about the error
+ * @param {string[]} recoveryKeys - Array of recovery suggestion keys
+ * @returns {Object} Structured error object
+ */
+export function createModuleError(errorType, details, recoveryKeys = []) {
+  return {
+    errorType,
+    message: game.i18n.localize(`TOKEN_REPLACER_FA.errors.${errorType}`),
+    details,
+    recoverySuggestions: recoveryKeys.map(key =>
+      game.i18n.localize(`TOKEN_REPLACER_FA.recovery.${key}`)
+    )
+  };
+}
+
+/**
+ * Create a debug logger function for a specific service
+ * Returns a function(message, ...args) that logs with service prefix
+ * @param {string} servicePrefix - Service name for log prefix
+ * @returns {Function} Logger function
+ */
+export function createDebugLogger(servicePrefix) {
+  return function(message, ...args) {
+    if (game.settings.get(MODULE_ID, 'debugMode')) {
+      console.log(`${MODULE_ID} | [${servicePrefix}] ${message}`, ...args);
+    }
+  };
 }

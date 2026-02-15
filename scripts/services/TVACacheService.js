@@ -5,7 +5,7 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
-import { isExcludedPath } from '../core/Utils.js';
+import { isExcludedPath, clearExcludedPathCache, yieldToMain, createModuleError, createDebugLogger } from '../core/Utils.js';
 
 /**
  * TVACacheService - Direct access to TVA's static cache for maximum performance
@@ -19,37 +19,9 @@ export class TVACacheService {
     this.tvaCacheLoaded = false;
     this.tvaCacheImages = []; // Flat array of all images for fast search
     this.tvaCacheByCategory = {}; // Original category structure
-  }
-
-  /**
-   * Create a structured error object with localized messages
-   * @private
-   * @param {string} errorType - Error type key (e.g., 'tva_missing')
-   * @param {string} details - Technical details about the error
-   * @param {string[]} recoveryKeys - Array of recovery suggestion keys
-   * @returns {Object} Structured error object
-   */
-  _createError(errorType, details, recoveryKeys = []) {
-    return {
-      errorType,
-      message: game.i18n.localize(`TOKEN_REPLACER_FA.errors.${errorType}`),
-      details,
-      recoverySuggestions: recoveryKeys.map(key =>
-        game.i18n.localize(`TOKEN_REPLACER_FA.recovery.${key}`)
-      )
-    };
-  }
-
-  /**
-   * Log a debug message if debug mode is enabled
-   * @private
-   * @param {string} message - Debug message to log
-   * @param {...any} args - Additional arguments to log
-   */
-  _debugLog(message, ...args) {
-    if (game.settings.get(MODULE_ID, 'debugMode')) {
-      console.log(`${MODULE_ID} | [TVACacheService] ${message}`, ...args);
-    }
+    // Shared utilities
+    this._createError = createModuleError;
+    this._debugLog = createDebugLogger('TVACacheService');
   }
 
   /**
@@ -249,6 +221,7 @@ export class TVACacheService {
     this.tvaCacheLoaded = false;
     this.tvaCacheImages = [];
     this.tvaCacheByCategory = {};
+    clearExcludedPathCache();
 
     try {
       const result = await this.loadTVACache();
@@ -265,7 +238,7 @@ export class TVACacheService {
    * @param {string} searchTerm - Term to search
    * @returns {Array} Matching images
    */
-  searchTVACacheDirect(searchTerm) {
+  async searchTVACacheDirect(searchTerm) {
     if (!this.tvaCacheLoaded) {
       this._debugLog('Cannot search: TVA cache not loaded');
       return [];
@@ -281,8 +254,11 @@ export class TVACacheService {
 
     const termLower = searchTerm.toLowerCase();
     const results = [];
+    let count = 0;
 
     for (const img of this.tvaCacheImages) {
+      if (++count % 5000 === 0) await yieldToMain(0);
+
       // Skip excluded paths
       if (isExcludedPath(img.path)) continue;
 
@@ -317,7 +293,7 @@ export class TVACacheService {
    * @param {string} categoryType - Creature type category
    * @returns {Array} Matching images
    */
-  searchTVACacheByCategory(categoryType) {
+  async searchTVACacheByCategory(categoryType) {
     if (!this.tvaCacheLoaded) {
       this._debugLog('Cannot search by category: TVA cache not loaded');
       return [];
@@ -339,8 +315,11 @@ export class TVACacheService {
 
     const results = [];
     const seenPaths = new Set();
+    let count = 0;
 
     for (const img of this.tvaCacheImages) {
+      if (++count % 5000 === 0) await yieldToMain(0);
+
       if (seenPaths.has(img.path)) continue;
       if (isExcludedPath(img.path)) continue;
 
@@ -380,7 +359,7 @@ export class TVACacheService {
    * @param {string[]} searchTerms - Terms to search (any match)
    * @returns {Array} Matching images
    */
-  searchTVACacheMultiple(searchTerms) {
+  async searchTVACacheMultiple(searchTerms) {
     if (!this.tvaCacheLoaded) {
       this._debugLog('Cannot search multiple terms: TVA cache not loaded');
       return [];
@@ -397,8 +376,11 @@ export class TVACacheService {
     const termsLower = searchTerms.map(t => t.toLowerCase());
     const results = [];
     const seenPaths = new Set();
+    let count = 0;
 
     for (const img of this.tvaCacheImages) {
+      if (++count % 5000 === 0) await yieldToMain(0);
+
       if (seenPaths.has(img.path)) continue;
       if (isExcludedPath(img.path)) continue;
 

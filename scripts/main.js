@@ -2,7 +2,7 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.10.0
+ * @version 2.10.1
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -442,10 +442,9 @@ export class TokenReplacerApp {
     await yieldToMain(50);
 
     let tokenIndex = 0;
-    let cancelled = false;
 
     for (const [key, data] of searchResults) {
-      if (cancelled || !uiManager.isDialogOpen()) break;
+      if (!uiManager.isDialogOpen()) break;
 
       const { matches, tokens, creatureInfo } = data;
 
@@ -478,7 +477,7 @@ export class TokenReplacerApp {
             : selectedPaths;
 
           for (const token of tokens) {
-            if (cancelled || !uiManager.isDialogOpen()) break;
+            if (!uiManager.isDialogOpen()) break;
             tokenIndex++;
 
             const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
@@ -559,7 +558,7 @@ export class TokenReplacerApp {
       }
 
       for (const token of tokens) {
-        if (cancelled || !uiManager.isDialogOpen()) break;
+        if (!uiManager.isDialogOpen()) break;
 
         tokenIndex++;
 
@@ -585,7 +584,7 @@ export class TokenReplacerApp {
     }
 
       // Final update
-      if (!cancelled && uiManager.isDialogOpen()) {
+      if (uiManager.isDialogOpen()) {
         const successCount = results.filter(r => r.status === 'success').length;
         const failedCount = results.filter(r => r.status === 'failed').length;
 
@@ -670,7 +669,7 @@ window.TokenReplacerFA = tokenReplacerApp;
  * Module initialization
  */
 Hooks.once('init', async () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.10.0`);
+  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.10.1`);
 
   // Preload Handlebars templates
   tokenReplacerApp._debugLog('Preloading Handlebars templates');

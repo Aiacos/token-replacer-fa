@@ -13,7 +13,8 @@ import {
   loadFuse,
   extractPathFromTVAResult,
   extractNameFromTVAResult,
-  yieldToMain
+  yieldToMain,
+  createDebugLogger
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -24,11 +25,11 @@ import { indexService } from './IndexService.js';
 export class SearchOrchestrator {
   constructor() {
     this.searchCache = new Map();
-    // Dependencies will be injected or accessed via imports
-    this.searchService = null;
+    // Dependencies will be injected via setDependencies()
     this.tvaCacheService = null;
     this.forgeBazaarService = null;
     this.worker = null;
+    this._debugLog = createDebugLogger('SearchOrchestrator');
 
     // Initialize Web Worker if supported
     if (typeof Worker !== 'undefined') {
@@ -47,12 +48,10 @@ export class SearchOrchestrator {
 
   /**
    * Set dependencies for the orchestrator
-   * @param {Object} searchService - SearchService instance
    * @param {Object} tvaCacheService - TVACacheService instance
    * @param {Object} forgeBazaarService - ForgeBazaarService instance
    */
-  setDependencies(searchService, tvaCacheService, forgeBazaarService) {
-    this.searchService = searchService;
+  setDependencies(tvaCacheService, forgeBazaarService) {
     this.tvaCacheService = tvaCacheService;
     this.forgeBazaarService = forgeBazaarService;
   }
@@ -121,7 +120,7 @@ export class SearchOrchestrator {
 
     // FAST PATH: Use direct cache access if available
     if (this.tvaCacheService.tvaCacheLoaded) {
-      const directResults = this.tvaCacheService.searchTVACacheDirect(searchTerm);
+      const directResults = await this.tvaCacheService.searchTVACacheDirect(searchTerm);
       if (directResults.length > 0) {
         return directResults;
       }
@@ -146,12 +145,7 @@ export class SearchOrchestrator {
         searchResults = await this.tvaCacheService.tvaAPI.doImageSearch(searchTerm);
       }
 
-      // Debug: Log raw results for first few searches
-      if (!this._debugLogged) {
-        this._debugLogged = true;
-        console.log(`${MODULE_ID} | DEBUG TVA raw results for "${searchTerm}":`, searchResults);
-        console.log(`${MODULE_ID} | DEBUG TVA result type:`, typeof searchResults, searchResults?.constructor?.name);
-      }
+      this._debugLog(`TVA raw results for "${searchTerm}":`, searchResults);
 
       if (!searchResults) return [];
 
@@ -518,7 +512,7 @@ export class SearchOrchestrator {
         progressCallback({ current: 0, total: 1, term: 'TVA cache lookup', resultsFound: 0 });
       }
 
-      const tvaCacheResults = this.tvaCacheService.searchTVACacheByCategory(categoryType);
+      const tvaCacheResults = await this.tvaCacheService.searchTVACacheByCategory(categoryType);
       for (const result of tvaCacheResults) {
         if (!seenPaths.has(result.path)) {
           seenPaths.add(result.path);
@@ -686,7 +680,7 @@ export class SearchOrchestrator {
     const priority = game.settings.get(MODULE_ID, 'searchPriority');
     const useTVACache = game.settings.get(MODULE_ID, 'useTVACache');
     const results = [];
-    const useTVAForAll = this.searchService?.hasTVA && useTVACache;
+    const useTVAForAll = this.tvaCacheService?.hasTVA && useTVACache;
 
     // Check for specific subtypes
     const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
@@ -742,7 +736,7 @@ export class SearchOrchestrator {
 
         // First search for actor name (highest priority)
         if (creatureInfo.actorName) {
-          const nameResults = this.tvaCacheService.searchTVACacheDirect(creatureInfo.actorName);
+          const nameResults = await this.tvaCacheService.searchTVACacheDirect(creatureInfo.actorName);
           console.log(`${MODULE_ID} | TVA direct cache returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`);
 
           for (const result of nameResults) {
@@ -758,7 +752,7 @@ export class SearchOrchestrator {
         }
 
         // Then search for all subtypes at once (more efficient)
-        const subtypeResults = this.tvaCacheService.searchTVACacheMultiple(subtypeTerms);
+        const subtypeResults = await this.tvaCacheService.searchTVACacheMultiple(subtypeTerms);
         console.log(`${MODULE_ID} | TVA direct cache returned ${subtypeResults.length} results for subtypes (${subtypeTerms.join(', ')})`);
 
         for (const result of subtypeResults) {
@@ -773,7 +767,7 @@ export class SearchOrchestrator {
         }
       }
       // Fallback to SLOW mode - TVA API calls (only if cache not loaded)
-      else if (this.searchService?.hasTVA) {
+      else if (this.tvaCacheService?.hasTVA) {
         console.log(`${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode - cache not loaded)`);
 
         // First search for actor name (highest priority)
@@ -887,7 +881,7 @@ export class SearchOrchestrator {
       results.push(...localResults);
     }
 
-    if (this.searchService?.hasTVA && (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')) {
+    if (this.tvaCacheService?.hasTVA && (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')) {
       for (const term of searchTerms) {
         const tvaResults = await this.searchTVA(term);
         for (const result of tvaResults) {

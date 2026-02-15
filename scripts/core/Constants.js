@@ -140,6 +140,12 @@ export const EXCLUDED_FOLDERS = [
 ];
 
 /**
+ * Pre-built Set of EXCLUDED_FOLDERS for O(1) lookups in isExcludedPath()
+ * Used instead of Array.some() to avoid O(N) scanning on every call
+ */
+export const EXCLUDED_FOLDERS_SET = new Set(EXCLUDED_FOLDERS);
+
+/**
  * Terms that indicate environmental/prop assets when found in filenames
  * Used as additional filter beyond folder exclusion
  * These terms strongly suggest non-creature assets
