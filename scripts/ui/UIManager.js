@@ -213,6 +213,7 @@ export class UIManager {
   constructor() {
     this.mainDialog = null;
     this.cancelCallback = null;
+    this._currentMatches = null;
   }
 
   /**
@@ -281,6 +282,9 @@ export class UIManager {
   async createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
     const showMultiSelect = tokenCount > 1;
     const totalCount = matches.length;
+
+    // Store full dataset for filtering (filter searches all, not just rendered subset)
+    this._currentMatches = matches;
 
     // Cap displayed results to prevent UI freeze (12K+ results = DOM + image loading storm)
     const displayMatches = matches.length > MAX_DISPLAY_RESULTS
@@ -467,6 +471,60 @@ export class UIManager {
   }
 
   /**
+   * Render match grid HTML and attach click/dblclick handlers
+   * Reused by both initial render and filter re-renders
+   * @param {Array} matches - Match objects to render
+   * @param {HTMLElement} gridEl - The .token-replacer-fa-match-select container
+   * @param {boolean} multiSelectEnabled - Whether multi-select is active
+   * @param {Function} resolve - Promise resolve for dblclick quick-apply
+   * @param {Function} updateSelectionCount - Callback to update selection count display
+   */
+  _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
+    gridEl.innerHTML = matches.map((match, idx) => {
+      const safeMatchName = escapeHtml(match.name);
+      const safePath = escapeHtml(match.path);
+      const scoreDisplay = match.score !== undefined
+        ? `${Math.round((1 - match.score) * 100)}%`
+        : escapeHtml(match.source || '');
+      return `
+        <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
+          <div class="skeleton-loader skeleton-72">
+            <img src="${safePath}" alt="${safeMatchName}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+          </div>
+          <div class="match-name">${safeMatchName}</div>
+          <div class="match-score">${scoreDisplay}</div>
+          <div class="match-check"><i class="fas fa-check"></i></div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach click/dblclick handlers to new DOM elements
+    const options = gridEl.querySelectorAll('.match-option');
+    options.forEach(option => {
+      option.addEventListener('click', () => {
+        if (multiSelectEnabled) {
+          option.classList.toggle('selected');
+          const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
+          if (selectedCount === 0) option.classList.add('selected');
+          updateSelectionCount();
+        } else {
+          options.forEach(o => o.classList.remove('selected'));
+          option.classList.add('selected');
+        }
+      });
+
+      option.addEventListener('dblclick', () => {
+        resolve({
+          paths: [option.dataset.path],
+          mode: 'sequential'
+        });
+      });
+    });
+
+    updateSelectionCount();
+  }
+
+  /**
    * Setup match selection event handlers
    * @param {HTMLElement} dialogElement - Dialog element
    * @returns {Promise<Object|null>} Selection result
@@ -526,31 +584,23 @@ export class UIManager {
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             const filterTerms = parseFilterTerms(searchInput.value);
-            const allOptions = container.querySelectorAll('.match-option');
-            let visibleCount = 0;
+            const totalCountEl = container.querySelector('.total-count');
 
-            allOptions.forEach(option => {
-              const name = option.dataset.name || '';
-              const path = option.dataset.path || '';
-              const matches = matchesAllTerms(name + ' ' + path, filterTerms);
+            // Filter the FULL dataset in memory, not just rendered DOM
+            const fullData = this._currentMatches || [];
+            const filtered = filterTerms.length > 0
+              ? fullData.filter(m => matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms))
+              : fullData;
 
-              if (matches) {
-                option.style.display = '';
-                visibleCount++;
-              } else {
-                option.style.display = 'none';
-                option.classList.remove('selected');
-              }
-            });
+            // Cap for rendering
+            const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
-            if (visibleCountEl) visibleCountEl.textContent = visibleCount;
+            // Re-render the grid with filtered results
+            this._renderMatchGrid(display, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
 
-            const visibleSelected = container.querySelectorAll('.match-option:not([style*="display: none"]).selected');
-            if (visibleSelected.length === 0) {
-              const firstVisible = container.querySelector('.match-option:not([style*="display: none"])');
-              if (firstVisible) firstVisible.classList.add('selected');
-            }
-            updateSelectionCount();
+            // Update counts
+            if (visibleCountEl) visibleCountEl.textContent = display.length;
+            if (totalCountEl) totalCountEl.textContent = filtered.length;
           }, 150);
         });
 
@@ -574,19 +624,17 @@ export class UIManager {
         });
       });
 
-      // Handle match option clicks
-      const options = container.querySelectorAll('.match-option');
-      options.forEach(option => {
+      // Bind click/dblclick on initial match options
+      const initialOptions = container.querySelectorAll('.match-option');
+      initialOptions.forEach(option => {
         option.addEventListener('click', () => {
           if (multiSelectEnabled) {
             option.classList.toggle('selected');
             const selectedCount = container.querySelectorAll('.match-option.selected').length;
-            if (selectedCount === 0) {
-              option.classList.add('selected');
-            }
+            if (selectedCount === 0) option.classList.add('selected');
             updateSelectionCount();
           } else {
-            options.forEach(o => o.classList.remove('selected'));
+            initialOptions.forEach(o => o.classList.remove('selected'));
             option.classList.add('selected');
           }
         });
@@ -675,32 +723,8 @@ export class UIManager {
         });
       };
 
-      const setupMatchOptions = () => {
-        const options = container.querySelectorAll('.match-option');
-        options.forEach(option => {
-          option.addEventListener('click', () => {
-            if (multiSelectEnabled) {
-              option.classList.toggle('selected');
-              const selectedCount = container.querySelectorAll('.match-option.selected').length;
-              if (selectedCount === 0) {
-                option.classList.add('selected');
-              }
-              updateSelectionCount();
-            } else {
-              options.forEach(o => o.classList.remove('selected'));
-              option.classList.add('selected');
-              updateSelectionCount();
-            }
-          });
-
-          option.addEventListener('dblclick', () => {
-            resolve({
-              paths: [option.dataset.path],
-              mode: 'sequential'
-            });
-          });
-        });
-      };
+      // Full category results stored for filtering across the entire dataset
+      let fullCategoryResults = [];
 
       const displayResults = (results) => {
         if (loadingEl) loadingEl.style.display = 'none';
@@ -709,6 +733,9 @@ export class UIManager {
         const categoryVisibleCount = container.querySelector('.category-visible-count');
         const categoryTotalCount = container.querySelector('.category-total-count');
         const categorySearchInput = container.querySelector('.category-search-filter-input');
+
+        // Store full dataset for filtering
+        fullCategoryResults = results;
 
         if (results.length === 0) {
           if (categoryFilter) categoryFilter.style.display = 'none';
@@ -722,9 +749,7 @@ export class UIManager {
         }
 
         // Cap displayed results to prevent UI freeze
-        const displayItems = results.length > MAX_DISPLAY_RESULTS
-          ? results.slice(0, MAX_DISPLAY_RESULTS)
-          : results;
+        const displayItems = results.slice(0, MAX_DISPLAY_RESULTS);
 
         if (categoryFilter) {
           categoryFilter.style.display = 'block';
@@ -734,23 +759,9 @@ export class UIManager {
         }
 
         if (!matchGrid) return;
-        matchGrid.innerHTML = displayItems.map((match, idx) => {
-          const safeMatchName = escapeHtml(match.name);
-          const safePath = escapeHtml(match.path);
-          const scoreDisplay = match.score !== undefined
-            ? `${Math.round((1 - match.score) * 100)}%`
-            : escapeHtml(match.source || '');
-          return `
-            <div class="match-option" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
-              <div class="skeleton-loader skeleton-72">
-                <img src="${safePath}" alt="${safeMatchName}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
-              </div>
-              <div class="match-name">${safeMatchName}</div>
-              <div class="match-score">${scoreDisplay}</div>
-              <div class="match-check"><i class="fas fa-check"></i></div>
-            </div>
-          `;
-        }).join('');
+
+        // Render grid and attach handlers via shared helper
+        this._renderMatchGrid(displayItems, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
 
         if (multiSelectEnabled) {
           if (modeToggle) modeToggle.style.display = 'flex';
@@ -758,15 +769,11 @@ export class UIManager {
           setupModeButtons();
         }
 
-        setupMatchOptions();
-        updateSelectionCount();
-
-        // Setup category filter with AND logic
+        // Setup category filter with AND logic on full dataset
         if (categorySearchInput) {
           const categoryClearBtn = container.querySelector('.category-filter .search-clear-btn');
           let debounceTimer = null;
 
-          // Toggle clear button visibility based on input value
           const toggleClearButton = () => {
             if (categoryClearBtn) {
               if (categorySearchInput.value.trim().length > 0) {
@@ -777,51 +784,34 @@ export class UIManager {
             }
           };
 
-          // Initial state - show clear button and apply filter if restored from localStorage
           toggleClearButton();
           if (categorySearchInput.value.trim().length > 0) {
-            // Trigger filter logic for restored filter term
             categorySearchInput.dispatchEvent(new Event('input'));
           }
 
           categorySearchInput.addEventListener('input', () => {
             toggleClearButton();
-
-            // Save filter term to localStorage for session persistence
             saveFilterTerm(categorySearchInput.value);
 
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
               const filterTerms = parseFilterTerms(categorySearchInput.value);
-              const allOptions = matchGrid.querySelectorAll('.match-option');
-              let visibleCount = 0;
 
-              allOptions.forEach(option => {
-                const name = option.dataset.name || '';
-                const path = option.dataset.path || '';
-                const matches = matchesAllTerms(name + ' ' + path, filterTerms);
+              // Filter the FULL dataset, not just rendered DOM elements
+              const filtered = filterTerms.length > 0
+                ? fullCategoryResults.filter(m => matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms))
+                : fullCategoryResults;
 
-                if (matches) {
-                  option.style.display = '';
-                  visibleCount++;
-                } else {
-                  option.style.display = 'none';
-                  option.classList.remove('selected');
-                }
-              });
+              const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
-              if (categoryVisibleCount) categoryVisibleCount.textContent = visibleCount;
+              // Re-render grid with filtered results
+              this._renderMatchGrid(display, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
 
-              const visibleSelected = matchGrid.querySelectorAll('.match-option:not([style*="display: none"]).selected');
-              if (visibleSelected.length === 0) {
-                const firstVisible = matchGrid.querySelector('.match-option:not([style*="display: none"])');
-                if (firstVisible) firstVisible.classList.add('selected');
-              }
-              updateSelectionCount();
+              if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
+              if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
             }, 150);
           });
 
-          // Clear button click handler
           if (categoryClearBtn) {
             categoryClearBtn.addEventListener('click', () => {
               categorySearchInput.value = '';
@@ -1023,6 +1013,7 @@ export class UIManager {
       }
       this.mainDialog = null;
     }
+    this._currentMatches = null;
     // Clear filter term on dialog close (session-only persistence)
     clearFilterTerm();
   }

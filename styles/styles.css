@@ -228,7 +228,7 @@
   align-items: center;
 }
 
-.token-replacer-fa-search-filter .search-input-wrapper i {
+.token-replacer-fa-search-filter .search-input-wrapper .fa-search {
   position: absolute;
   left: 12px;
   color: #666;
@@ -259,6 +259,7 @@
 
 .token-replacer-fa-search-filter .search-clear-btn {
   position: absolute;
+  left: auto;
   right: 12px;
   color: #666;
   font-size: 14px;
