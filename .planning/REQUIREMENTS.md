@@ -9,10 +9,10 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Tooling Infrastructure
 
-- [ ] **TOOL-01**: Project has package.json with dev dependencies (Vitest, ESLint, Prettier, fvtt-types)
-- [ ] **TOOL-02**: Vitest test runner configured with jsdom environment and working `npm test` command
-- [ ] **TOOL-03**: ESLint v9 flat config with rules appropriate for Foundry VTT module development
-- [ ] **TOOL-04**: Prettier formatting configured and integrated with ESLint
+- [x] **TOOL-01**: Project has package.json with dev dependencies (Vitest, ESLint, Prettier, fvtt-types)
+- [x] **TOOL-02**: Vitest test runner configured with jsdom environment and working `npm test` command
+- [x] **TOOL-03**: ESLint v9 flat config with rules appropriate for Foundry VTT module development
+- [x] **TOOL-04**: Prettier formatting configured and integrated with ESLint
 - [ ] **TOOL-05**: GitHub Actions CI pipeline runs tests, linting, and type checking on PR
 
 ### Foundry Mocks
@@ -107,52 +107,52 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ## Traceability
 
-| Requirement | Phase    | Status  |
-| ----------- | -------- | ------- |
-| TOOL-01     | Phase 1  | Pending |
-| TOOL-02     | Phase 1  | Pending |
-| TOOL-03     | Phase 1  | Pending |
-| TOOL-04     | Phase 1  | Pending |
-| TOOL-05     | Phase 3  | Pending |
-| MOCK-01     | Phase 2  | Pending |
-| MOCK-02     | Phase 2  | Pending |
-| MOCK-03     | Phase 2  | Pending |
-| MOCK-04     | Phase 2  | Pending |
-| MOCK-05     | Phase 2  | Pending |
-| TEST-01     | Phase 4  | Pending |
-| TEST-02     | Phase 4  | Pending |
-| TEST-03     | Phase 4  | Pending |
-| TEST-04     | Phase 4  | Pending |
-| TEST-05     | Phase 4  | Pending |
-| TEST-06     | Phase 5  | Pending |
-| TEST-07     | Phase 7  | Pending |
-| TEST-08     | Phase 7  | Pending |
-| TEST-09     | Phase 7  | Pending |
-| TEST-10     | Phase 7  | Pending |
-| TEST-11     | Phase 7  | Pending |
-| TEST-12     | Phase 7  | Pending |
-| TEST-13     | Phase 7  | Pending |
-| INTG-01     | Phase 8  | Pending |
-| INTG-02     | Phase 8  | Pending |
-| INTG-03     | Phase 8  | Pending |
-| DI-01       | Phase 6  | Pending |
-| DI-02       | Phase 6  | Pending |
-| DI-03       | Phase 6  | Pending |
-| DI-04       | Phase 6  | Pending |
-| DI-05       | Phase 6  | Pending |
-| TYPE-01     | Phase 9  | Pending |
-| TYPE-02     | Phase 9  | Pending |
-| TYPE-03     | Phase 9  | Pending |
-| TYPE-04     | Phase 9  | Pending |
-| TYPE-05     | Phase 9  | Pending |
-| TYPE-06     | Phase 9  | Pending |
-| ERR-01      | Phase 10 | Pending |
-| ERR-02      | Phase 10 | Pending |
-| ERR-03      | Phase 10 | Pending |
-| ERR-04      | Phase 10 | Pending |
-| WORK-01     | Phase 10 | Pending |
-| WORK-02     | Phase 10 | Pending |
-| WORK-03     | Phase 10 | Pending |
+| Requirement | Phase    | Status   |
+| ----------- | -------- | -------- |
+| TOOL-01     | Phase 1  | Complete |
+| TOOL-02     | Phase 1  | Complete |
+| TOOL-03     | Phase 1  | Complete |
+| TOOL-04     | Phase 1  | Complete |
+| TOOL-05     | Phase 3  | Pending  |
+| MOCK-01     | Phase 2  | Pending  |
+| MOCK-02     | Phase 2  | Pending  |
+| MOCK-03     | Phase 2  | Pending  |
+| MOCK-04     | Phase 2  | Pending  |
+| MOCK-05     | Phase 2  | Pending  |
+| TEST-01     | Phase 4  | Pending  |
+| TEST-02     | Phase 4  | Pending  |
+| TEST-03     | Phase 4  | Pending  |
+| TEST-04     | Phase 4  | Pending  |
+| TEST-05     | Phase 4  | Pending  |
+| TEST-06     | Phase 5  | Pending  |
+| TEST-07     | Phase 7  | Pending  |
+| TEST-08     | Phase 7  | Pending  |
+| TEST-09     | Phase 7  | Pending  |
+| TEST-10     | Phase 7  | Pending  |
+| TEST-11     | Phase 7  | Pending  |
+| TEST-12     | Phase 7  | Pending  |
+| TEST-13     | Phase 7  | Pending  |
+| INTG-01     | Phase 8  | Pending  |
+| INTG-02     | Phase 8  | Pending  |
+| INTG-03     | Phase 8  | Pending  |
+| DI-01       | Phase 6  | Pending  |
+| DI-02       | Phase 6  | Pending  |
+| DI-03       | Phase 6  | Pending  |
+| DI-04       | Phase 6  | Pending  |
+| DI-05       | Phase 6  | Pending  |
+| TYPE-01     | Phase 9  | Pending  |
+| TYPE-02     | Phase 9  | Pending  |
+| TYPE-03     | Phase 9  | Pending  |
+| TYPE-04     | Phase 9  | Pending  |
+| TYPE-05     | Phase 9  | Pending  |
+| TYPE-06     | Phase 9  | Pending  |
+| ERR-01      | Phase 10 | Pending  |
+| ERR-02      | Phase 10 | Pending  |
+| ERR-03      | Phase 10 | Pending  |
+| ERR-04      | Phase 10 | Pending  |
+| WORK-01     | Phase 10 | Pending  |
+| WORK-02     | Phase 10 | Pending  |
+| WORK-03     | Phase 10 | Pending  |
 
 **Coverage:**
 
