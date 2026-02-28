@@ -2,3 +2,6 @@ node_modules/
 releases/
 *.zip
 package-lock.json
+module.json
+templates/match-selection.hbs
+templates/no-match.hbs

@@ -54,16 +54,16 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 
 ## Settings
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **Fuzzy Search Threshold** | Lower values require closer matches (0.0 = exact, 1.0 = match anything) | 0.1 |
-| **Search Priority** | Which source to search first (FA Nexus, Forge Bazaar, or Both) | Both |
-| **Auto Replace on Match** | Automatically replace if high-confidence match found | Off |
-| **Confirm Before Replace** | Show selection dialog for each creature type | On |
-| **Fallback to Full Search** | Search entire index if no matches in creature category | Off |
-| **Additional Search Paths** | Comma-separated custom paths to search for tokens | Empty |
-| **Use TVA Cache** | Use Token Variant Art's pre-built cache instead of manual scanning | On |
-| **Refresh TVA Cache** | Force refresh TVA cache before searching (for new images) | Off |
+| Setting                     | Description                                                             | Default |
+| --------------------------- | ----------------------------------------------------------------------- | ------- |
+| **Fuzzy Search Threshold**  | Lower values require closer matches (0.0 = exact, 1.0 = match anything) | 0.1     |
+| **Search Priority**         | Which source to search first (FA Nexus, Forge Bazaar, or Both)          | Both    |
+| **Auto Replace on Match**   | Automatically replace if high-confidence match found                    | Off     |
+| **Confirm Before Replace**  | Show selection dialog for each creature type                            | On      |
+| **Fallback to Full Search** | Search entire index if no matches in creature category                  | Off     |
+| **Additional Search Paths** | Comma-separated custom paths to search for tokens                       | Empty   |
+| **Use TVA Cache**           | Use Token Variant Art's pre-built cache instead of manual scanning      | On      |
+| **Refresh TVA Cache**       | Force refresh TVA cache before searching (for new images)               | Off     |
 
 ## How It Works
 
@@ -78,6 +78,7 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 ### Search Terms
 
 For each NPC token, the module extracts:
+
 1. **Actor Name** (primary) - e.g., "Goblin Boss"
 2. **Token Name** - if different from actor
 3. **Creature Type** - e.g., "humanoid"
@@ -88,22 +89,22 @@ For each NPC token, the module extracts:
 
 The module maps D&D 5e creature types to common folder names:
 
-| Creature Type | Matched Folders |
-|--------------|-----------------|
-| Aberration | aberration, mind flayer, beholder |
-| Beast | beast, animal |
-| Celestial | celestial, angel |
-| Construct | construct, golem, robot |
-| Dragon | dragon, drake, wyrm |
-| Elemental | elemental, genie |
-| Fey | fey, fairy, sprite, pixie |
-| Fiend | fiend, demon, devil |
-| Giant | giant, ogre, troll |
-| Humanoid | humanoid, human, npc, goblin, orc, elf, dwarf |
-| Monstrosity | monstrosity, monster |
-| Ooze | ooze, slime |
-| Plant | plant, fungus |
-| Undead | undead, zombie, skeleton, ghost, vampire, lich |
+| Creature Type | Matched Folders                                |
+| ------------- | ---------------------------------------------- |
+| Aberration    | aberration, mind flayer, beholder              |
+| Beast         | beast, animal                                  |
+| Celestial     | celestial, angel                               |
+| Construct     | construct, golem, robot                        |
+| Dragon        | dragon, drake, wyrm                            |
+| Elemental     | elemental, genie                               |
+| Fey           | fey, fairy, sprite, pixie                      |
+| Fiend         | fiend, demon, devil                            |
+| Giant         | giant, ogre, troll                             |
+| Humanoid      | humanoid, human, npc, goblin, orc, elf, dwarf  |
+| Monstrosity   | monstrosity, monster                           |
+| Ooze          | ooze, slime                                    |
+| Plant         | plant, fungus                                  |
+| Undead        | undead, zombie, skeleton, ghost, vampire, lich |
 
 ### Search Sources
 
@@ -119,6 +120,7 @@ The module maps D&D 5e creature types to common folder names:
 ### Fuzzy Matching
 
 Uses [Fuse.js](https://fusejs.io/) for intelligent fuzzy matching:
+
 - Handles typos and abbreviations
 - Scores matches by similarity (lower = better)
 - Configurable threshold for match sensitivity
@@ -130,22 +132,22 @@ The module exposes `window.TokenReplacerFA` for debugging and integration:
 
 ```javascript
 // Check if modules are available
-TokenReplacerFA.hasTVA      // Token Variant Art available
-TokenReplacerFA.hasFANexus  // FA Nexus available
+TokenReplacerFA.hasTVA; // Token Variant Art available
+TokenReplacerFA.hasFANexus; // FA Nexus available
 
 // Access Fuse.js instance
-TokenReplacerFA.Fuse
+TokenReplacerFA.Fuse;
 
 // Get settings
-TokenReplacerFA.getSetting('fuzzyThreshold')
-TokenReplacerFA.getSetting('searchPriority')
-TokenReplacerFA.getSetting('fallbackFullSearch')
+TokenReplacerFA.getSetting('fuzzyThreshold');
+TokenReplacerFA.getSetting('searchPriority');
+TokenReplacerFA.getSetting('fallbackFullSearch');
 
 // Localization
-TokenReplacerFA.i18n('dialog.title')
+TokenReplacerFA.i18n('dialog.title');
 
 // Check processing state
-TokenReplacerFA.isProcessing
+TokenReplacerFA.isProcessing;
 ```
 
 ## Troubleshooting
@@ -181,6 +183,7 @@ TokenReplacerFA.isProcessing
 ### Console Debugging
 
 Enable browser console (F12) to see detailed logs:
+
 ```
 token-replacer-fa | Found token path: modules/fa-nexus/tokens
 token-replacer-fa | Found 1234 images in local directories
@@ -191,48 +194,58 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 ## Changelog
 
 ### v2.9.0
+
 - **Enhanced Filtering**: Exclude environmental assets (maps, tiles, portraits) from token searches
 - **Comprehensive FA Library Filtering**: Better filtering of non-token assets
 - **Category Fallback**: When subtype search returns no results, automatically falls back to broader category search
 
 ### v2.8.0
+
 - **Direct TVA Cache Access**: Fast path for searching using TVA's static cache file directly
 - **Performance**: Searches complete much faster by reading TVA cache directly instead of using API
 - **CDN Path Handling**: Properly filter CDN URL segments from folder exclusion checks
 
 ### v2.7.0
+
 - **UI Responsiveness**: Improved parallelization and UI responsiveness during search
 - **Progress Notifications**: Better cache key handling for progress notifications
 - **Index Storage**: Index now stores all images for general search
 
 ### v2.6.0
+
 - **Hierarchical JSON Index**: Configurable update frequency for index rebuilding
 - **Critical Bug Fixes**: Fixed index initialization issues
 - **Better Organization**: Improved index structure for faster lookups
 
 ### v2.5.0
+
 - **Persistent Cache**: localStorage caching for faster subsequent searches
 - **Improved TVA Access**: Better integration with Token Variant Art cache
 - **Extended Exclusion Filters**: Non-blocking index build with extended folder exclusion
 - **Subtype Parsing**: Parse subtype from string format like "Humanoid (Tiefling)"
 
 ### v2.4.0
+
 - **Pre-built Keyword Index**: O(1) search performance using hash table lookups
 - **Asset Folder Exclusion**: Exclude non-token asset folders from index
 
 ### v2.3.0
+
 - **Direct TVA Search**: Remove custom IndexService, use TVA doImageSearch directly
 - **Critical Bug Fix**: Fixed TVA Map result parsing to extract all results
 
 ### v2.2.0
+
 - **Performance Optimization**: Pre-built keyword index for O(1) searches
 - **Direct CACHED_IMAGES Access**: Faster performance by accessing TVA cache directly
 
 ### v2.1.0
+
 - **OR Logic for Subtypes**: Subtype search now uses OR logic (show all matching subtypes)
 - **UI Cleanup**: Removed quick search buttons for cleaner interface
 
 ### v2.0.0
+
 - **Major Refactoring**: Complete OOP architecture with modular services
 - **Service Architecture**: Separate services for Token, Search, Index, Scan, and UI
 - **Code Optimization**: O(1) Set lookups, improved performance
@@ -240,18 +253,21 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 - **Creature Type Extraction**: Improved actor data parsing
 
 ### v1.5.0
+
 - **AND Logic Filter**: Text filter uses AND logic for multiple search terms
 - **Progress Bar**: Visual progress bar during category search
 - **Search Filter UI**: Debounced filter input with delimiter support
 - **Dialog Improvements**: Taller dialog that adapts to content
 
 ### v1.4.0
+
 - **Category Browser on No Match**: When no fuzzy search matches are found, a dropdown menu now appears allowing you to browse artwork by creature type (Humanoid, Aberration, Beast, Undead, etc.)
 - **Creature Type Detection**: The dropdown pre-selects the creature type from the token's character sheet
 - **Multi-Select in Category Browser**: When browsing by category with multiple tokens, you can select multiple artworks with sequential/random assignment
 - **Improved UX**: Users can now always find artwork even when automatic search fails
 
 ### v1.3.0
+
 - **Multi-Select Variations**: When multiple artwork variations exist, you can now select multiple and assign them to tokens
 - **Assignment Modes**: Choose between Sequential (default) or Random assignment for variations
 - **Improved UI**: Completely redesigned dialog layout with better sizing, scrolling, and visibility
@@ -259,15 +275,18 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 - **Token Count Display**: Shows how many tokens will be affected when selecting artwork
 
 ### v1.2.1
+
 - **Selected Token Support**: If tokens are selected, only processes selected NPC tokens instead of all NPCs on the scene
 
 ### v1.2.0
+
 - **Fixed TVA Result Parsing**: Now properly handles TVA's tuple format `[path, config]` which was causing "no matches found" issues
 - **Improved UI Contrast**: Fixed text visibility for failed/skipped items (was showing black text on dark backgrounds)
 - **Enhanced Debug Logging**: Added comprehensive debug logging to help troubleshoot TVA integration issues
 - **CSS Improvements**: Refactored styles for better dialog layout and visual consistency
 
 ### v1.1.0
+
 - **Major Performance Optimization**: Added TVA cache integration
   - Skips manual directory scanning when Token Variant Art is available
   - Leverages TVA's pre-built image index for much faster searches
@@ -277,6 +296,7 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 - Improved search logic when TVA cache mode is enabled
 
 ### v1.0.9
+
 - Fixed UI glitching caused by multiple dialog windows
 - Refactored to use single dialog throughout entire replacement process
 - Added inline selection buttons for match selection
@@ -284,12 +304,14 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 - Better user feedback when no tokens or matches are found
 
 ### v1.0.8
+
 - Code cleanup and removal of unused variables
 - Added missing localization strings
 - Removed verbose debug logging
 - Updated documentation
 
 ### v1.0.7
+
 - Fixed TVA API path extraction (paths no longer show as numeric indices)
 - Fixed dialog auto-sizing issues
 - Added result validation to filter invalid paths
@@ -297,34 +319,41 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 - Added missing localization strings
 
 ### v1.0.6
+
 - Made fallback full search optional (default: off)
 - Added "Fallback to Full Search" setting
 
 ### v1.0.5
+
 - Added category-based search optimization
 - Creature type now filters search to relevant folders first
 - Improved performance for large token libraries
 
 ### v1.0.4
+
 - Added parallel search for multiple creature types
 - Identical creatures now share search results
 - Real-time progress display during processing
 
 ### v1.0.3
+
 - Fixed browser freezing during directory scan
 - Added yielding to prevent UI blocking
 - Throttled UI updates for better performance
 
 ### v1.0.2
+
 - Fixed multiple dialog windows appearing
 - Added safe dialog closing mechanism
 
 ### v1.0.1
+
 - Fixed settings localization
 - Fixed Foundry v12/v13 compatibility for scene controls
 - Added XSS protection
 
 ### v1.0.0
+
 - Initial release
 
 ## License

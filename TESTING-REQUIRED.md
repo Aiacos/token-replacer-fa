@@ -20,11 +20,14 @@ The V2 Dialog API migration is **100% code complete**, but requires manual testi
 ## What to Test
 
 ### Critical Check ⚠️
+
 **NO deprecation warnings in browser console**
+
 - Look for any mentions of: "deprecated", "Dialog", "V1", "ApplicationV1"
 - Expected: Clean console with no warnings
 
 ### Feature Tests
+
 - ✅ Dialog renders when clicking token replacement button
 - ✅ Match selection dialog works
 - ✅ No-match category browser works
@@ -68,6 +71,7 @@ Comprehensive guides available in `.auto-claude/specs/001-migrate-to-v2-dialog-a
 After successful testing, mark this subtask complete:
 
 1. **Update the plan:**
+
    ```bash
    # Edit implementation_plan.json
    # Find subtask-4-3
@@ -76,6 +80,7 @@ After successful testing, mark this subtask complete:
    ```
 
 2. **Update build progress:**
+
    ```bash
    echo "" >> ./.auto-claude/specs/001-migrate-to-v2-dialog-api/build-progress.txt
    echo "## MANUAL TESTING COMPLETE - $(date)" >> ./.auto-claude/specs/001-migrate-to-v2-dialog-api/build-progress.txt
@@ -89,6 +94,7 @@ After successful testing, mark this subtask complete:
    ```
 
 3. **Commit the changes:**
+
    ```bash
    git add -A
    git commit -m "auto-claude: subtask-4-3 - Manual testing complete, no deprecation warnings
@@ -127,16 +133,19 @@ Do NOT commit changes if tests fail.
 ## Migration Status
 
 ### Code Implementation: ✅ COMPLETE
+
 - Phase 1: TokenReplacerDialog class created
 - Phase 2: All V1 Dialog usage migrated to ApplicationV2
 - Phase 3: Testing documentation created (350+ checkpoints)
 - Phase 4: V1 code removed, CLAUDE.md updated
 
 ### Manual Testing: ⏳ PENDING
+
 - Awaiting user testing in Foundry VTT environment
 - Cannot be automated (requires Foundry runtime)
 
 ### Overall: 95% Complete
+
 - Only this final verification step remains!
 
 ---

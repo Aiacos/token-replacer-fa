@@ -25,9 +25,10 @@ export class ScanService {
     // Get additional paths from settings
     const additionalPathsSetting = game.settings.get(MODULE_ID, 'additionalPaths') || '';
     if (additionalPathsSetting) {
-      const additionalPaths = additionalPathsSetting.split(',')
-        .map(p => sanitizePath(p))
-        .filter(p => p !== null);
+      const additionalPaths = additionalPathsSetting
+        .split(',')
+        .map((p) => sanitizePath(p))
+        .filter((p) => p !== null);
       paths.push(...additionalPaths);
     }
 
@@ -37,7 +38,7 @@ export class ScanService {
       'modules/forgotten-adventures',
       'modules/token-variants',
       'tokens',
-      'assets/tokens'
+      'assets/tokens',
     ];
 
     for (const path of commonPaths) {
@@ -66,7 +67,13 @@ export class ScanService {
    * @param {string} category - Category name from parent folder
    * @returns {Promise<Array>} Array of image objects
    */
-  async scanDirectoryForImages(path, depth = 0, maxDepth = MAX_SCAN_DEPTH, progressCallback = null, category = null) {
+  async scanDirectoryForImages(
+    path,
+    depth = 0,
+    maxDepth = MAX_SCAN_DEPTH,
+    progressCallback = null,
+    category = null
+  ) {
     if (depth > maxDepth) return [];
 
     const images = [];
@@ -81,7 +88,7 @@ export class ScanService {
           currentDir: path,
           depth: depth,
           filesFound: result.files?.length || 0,
-          dirsFound: result.dirs?.length || 0
+          dirsFound: result.dirs?.length || 0,
         });
       }
 
@@ -99,13 +106,16 @@ export class ScanService {
           const ext = '.' + file.split('.').pop().toLowerCase();
           if (this.imageExtensions.includes(ext)) {
             const fileName = file.split('/').pop();
-            const name = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
+            const name = fileName
+              .replace(/\.[^/.]+$/, '')
+              .replace(/[-_]/g, ' ')
+              .trim();
             images.push({
               path: file,
               name: name,
               fileName: fileName,
               category: currentCategory,
-              source: 'local'
+              source: 'local',
             });
           }
         }
@@ -134,7 +144,6 @@ export class ScanService {
           images.push(...subImages);
         }
       }
-
     } catch (error) {
       console.warn(`${MODULE_ID} | Error scanning directory ${path}:`, error);
     }
@@ -169,7 +178,12 @@ export class ScanService {
 
     for (const basePath of paths) {
       console.log(`${MODULE_ID} | Scanning: ${basePath}`);
-      const images = await this.scanDirectoryForImages(basePath, 0, MAX_SCAN_DEPTH, progressCallback);
+      const images = await this.scanDirectoryForImages(
+        basePath,
+        0,
+        MAX_SCAN_DEPTH,
+        progressCallback
+      );
       allImages.push(...images);
     }
 
@@ -183,7 +197,9 @@ export class ScanService {
       }
     }
 
-    console.log(`${MODULE_ID} | Local index built: ${uniqueImages.length} images from ${dirsScanned} directories`);
+    console.log(
+      `${MODULE_ID} | Local index built: ${uniqueImages.length} images from ${dirsScanned} directories`
+    );
     return uniqueImages;
   }
 
@@ -206,7 +222,7 @@ export class ScanService {
         try {
           const searchResults = await tvaAPI.doImageSearch(term, {
             searchType: 'Portrait',
-            simpleResults: false
+            simpleResults: false,
           });
 
           if (searchResults && Array.isArray(searchResults)) {
@@ -218,7 +234,8 @@ export class ScanService {
               if (typeof item === 'string') {
                 imagePath = item;
               } else if (typeof item === 'object' && item !== null) {
-                imagePath = item.path || item.route || item.img || item.src || item.image || item.uri;
+                imagePath =
+                  item.path || item.route || item.img || item.src || item.image || item.uri;
                 name = item.name || item.label || item.title || 'Unknown';
               }
 
@@ -226,13 +243,18 @@ export class ScanService {
               if (imagePath && !seenPaths.has(imagePath) && !isExcludedPath(imagePath)) {
                 seenPaths.add(imagePath);
                 if (name === 'Unknown' && imagePath) {
-                  name = imagePath.split('/').pop()?.replace(/\.[^/.]+$/, '')
-                    .replace(/[-_]/g, ' ').trim() || 'Unknown';
+                  name =
+                    imagePath
+                      .split('/')
+                      .pop()
+                      ?.replace(/\.[^/.]+$/, '')
+                      .replace(/[-_]/g, ' ')
+                      .trim() || 'Unknown';
                 }
                 results.push({
                   path: imagePath,
                   name: name,
-                  source: 'tva'
+                  source: 'tva',
                 });
               }
             }
@@ -261,7 +283,7 @@ export class ScanService {
     if (!images || !categoryType) return [];
 
     const categoryLower = categoryType.toLowerCase();
-    return images.filter(img => {
+    return images.filter((img) => {
       // Skip excluded paths first
       if (isExcludedPath(img.path)) return false;
 

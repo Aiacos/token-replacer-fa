@@ -36,7 +36,9 @@ export class SearchService {
       forgeBazaarService.init();
       searchOrchestrator.setDependencies(tvaCacheService, forgeBazaarService);
       this._initialized = true;
-      console.log(`${MODULE_ID} | SearchService initialized (delegates to TVACacheService, ForgeBazaarService, and SearchOrchestrator)`);
+      console.log(
+        `${MODULE_ID} | SearchService initialized (delegates to TVACacheService, ForgeBazaarService, and SearchOrchestrator)`
+      );
       this._debugLog('SearchService initialization complete');
     } catch (error) {
       console.error(`${MODULE_ID} | SearchService initialization failed:`, error);
@@ -73,7 +75,12 @@ export class SearchService {
    * @returns {Promise<Array>} Search results
    * @throws {Object} Structured error if search fails
    */
-  async searchByCategory(categoryType, localIndex, directSearchTerm = null, progressCallback = null) {
+  async searchByCategory(
+    categoryType,
+    localIndex,
+    directSearchTerm = null,
+    progressCallback = null
+  ) {
     try {
       if (!categoryType || typeof categoryType !== 'string') {
         this._debugLog('Invalid category type for searchByCategory:', categoryType);
@@ -93,8 +100,15 @@ export class SearchService {
         );
       }
 
-      this._debugLog(`Searching by category: "${categoryType}", directSearch: ${directSearchTerm || 'none'}`);
-      const results = await searchOrchestrator.searchByCategory(categoryType, localIndex, directSearchTerm, progressCallback);
+      this._debugLog(
+        `Searching by category: "${categoryType}", directSearch: ${directSearchTerm || 'none'}`
+      );
+      const results = await searchOrchestrator.searchByCategory(
+        categoryType,
+        localIndex,
+        directSearchTerm,
+        progressCallback
+      );
       this._debugLog(`Category search completed: ${results.length} results found`);
       return results;
     } catch (error) {
@@ -124,11 +138,9 @@ export class SearchService {
     try {
       if (!groups || !(groups instanceof Map)) {
         this._debugLog('Invalid groups for parallelSearchCreatures:', groups);
-        throw createModuleError(
-          'search_failed',
-          'Invalid groups provided (must be a Map)',
-          ['check_console']
-        );
+        throw createModuleError('search_failed', 'Invalid groups provided (must be a Map)', [
+          'check_console',
+        ]);
       }
 
       if (groups.size === 0) {
@@ -146,7 +158,11 @@ export class SearchService {
       }
 
       this._debugLog(`Starting parallel search for ${groups.size} creature groups`);
-      const results = await searchOrchestrator.parallelSearchCreatures(groups, localIndex, progressCallback);
+      const results = await searchOrchestrator.parallelSearchCreatures(
+        groups,
+        localIndex,
+        progressCallback
+      );
       this._debugLog(`Parallel search completed: ${results.size} groups processed`);
       return results;
     } catch (error) {

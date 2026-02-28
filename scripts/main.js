@@ -42,7 +42,7 @@ export class TokenReplacerApp {
     // Cache statistics for debugging
     this.i18nCacheStats = {
       hits: 0,
-      misses: 0
+      misses: 0,
     };
   }
 
@@ -80,7 +80,9 @@ export class TokenReplacerApp {
   logI18nCacheStats() {
     const total = this.i18nCacheStats.hits + this.i18nCacheStats.misses;
     const hitRate = total > 0 ? ((this.i18nCacheStats.hits / total) * 100).toFixed(1) : 0;
-    console.log(`${MODULE_ID} | i18n cache stats: ${this.i18nCache.size} entries, ${this.i18nCacheStats.hits} hits, ${this.i18nCacheStats.misses} misses (${hitRate}% hit rate)`);
+    console.log(
+      `${MODULE_ID} | i18n cache stats: ${this.i18nCache.size} entries, ${this.i18nCacheStats.hits} hits, ${this.i18nCacheStats.misses} misses (${hitRate}% hit rate)`
+    );
   }
 
   /**
@@ -95,7 +97,7 @@ export class TokenReplacerApp {
       errorType,
       message: this.i18n(`errors.${errorType}`),
       details,
-      recoverySuggestions: recoverySuggestions.map(key => this.i18n(`recovery.${key}`))
+      recoverySuggestions: recoverySuggestions.map((key) => this.i18n(`recovery.${key}`)),
     };
   }
 
@@ -159,7 +161,7 @@ export class TokenReplacerApp {
       config: true,
       type: Number,
       range: { min: 0, max: 1, step: 0.1 },
-      default: 0.1
+      default: 0.1,
     });
 
     game.settings.register(MODULE_ID, 'searchPriority', {
@@ -171,9 +173,9 @@ export class TokenReplacerApp {
       choices: {
         faNexus: 'TOKEN_REPLACER_FA.priority.faNexus',
         forgeBazaar: 'TOKEN_REPLACER_FA.priority.forgeBazaar',
-        both: 'TOKEN_REPLACER_FA.priority.both'
+        both: 'TOKEN_REPLACER_FA.priority.both',
       },
-      default: 'both'
+      default: 'both',
     });
 
     game.settings.register(MODULE_ID, 'autoReplace', {
@@ -182,7 +184,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: Boolean,
-      default: false
+      default: false,
     });
 
     game.settings.register(MODULE_ID, 'confirmReplace', {
@@ -191,7 +193,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: Boolean,
-      default: true
+      default: true,
     });
 
     game.settings.register(MODULE_ID, 'fallbackFullSearch', {
@@ -200,7 +202,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: Boolean,
-      default: false
+      default: false,
     });
 
     game.settings.register(MODULE_ID, 'additionalPaths', {
@@ -209,7 +211,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: String,
-      default: ''
+      default: '',
     });
 
     game.settings.register(MODULE_ID, 'useTVACache', {
@@ -218,7 +220,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: Boolean,
-      default: true
+      default: true,
     });
 
     game.settings.register(MODULE_ID, 'refreshTVACache', {
@@ -227,7 +229,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: Boolean,
-      default: false
+      default: false,
     });
 
     game.settings.register(MODULE_ID, 'indexUpdateFrequency', {
@@ -240,9 +242,9 @@ export class TokenReplacerApp {
         daily: 'TOKEN_REPLACER_FA.frequency.daily',
         weekly: 'TOKEN_REPLACER_FA.frequency.weekly',
         monthly: 'TOKEN_REPLACER_FA.frequency.monthly',
-        quarterly: 'TOKEN_REPLACER_FA.frequency.quarterly'
+        quarterly: 'TOKEN_REPLACER_FA.frequency.quarterly',
       },
-      default: 'weekly'
+      default: 'weekly',
     });
 
     game.settings.register(MODULE_ID, 'debugMode', {
@@ -251,7 +253,7 @@ export class TokenReplacerApp {
       scope: 'world',
       config: true,
       type: Boolean,
-      default: false
+      default: false,
     });
   }
 
@@ -269,7 +271,7 @@ export class TokenReplacerApp {
         await this.tvaAPI.updateTokenImage(imagePath, {
           token: token,
           actor: token.actor,
-          imgName: imagePath.split('/').pop()
+          imgName: imagePath.split('/').pop(),
         });
         this._debugLog('Token updated successfully via TVA');
         return true;
@@ -306,22 +308,19 @@ export class TokenReplacerApp {
       this._debugLog('Loading Fuse.js library');
       const Fuse = await loadFuse();
       if (!Fuse) {
-        const error = this._createError(
-          'fuse_load_failed',
-          'Fuse.js library failed to load',
-          ['reload_module', 'check_network']
-        );
+        const error = this._createError('fuse_load_failed', 'Fuse.js library failed to load', [
+          'reload_module',
+          'check_network',
+        ]);
         throw error;
       }
       this._debugLog('Fuse.js loaded successfully');
 
       // Check for active scene
       if (!canvas?.scene) {
-        const error = this._createError(
-          'no_tokens_selected',
-          'No active scene found',
-          ['check_console']
-        );
+        const error = this._createError('no_tokens_selected', 'No active scene found', [
+          'check_console',
+        ]);
         ui.notifications.warn(this.i18n('notifications.noScene'));
         throw error;
       }
@@ -378,12 +377,16 @@ export class TokenReplacerApp {
           }
           await yieldToMain(100);
           // Force reload: clears in-memory + IndexedDB cache, then re-fetches
-          uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+          uiManager.updateDialogContent(
+            await uiManager.createTVACacheHTML(false, 'Loading TVA cache...')
+          );
           this._debugLog('Force reloading TVA cache after refresh');
           cacheLoaded = await tvaCacheService.reloadTVACache();
         } else {
           // Normal load (may restore from IndexedDB)
-          uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false, 'Loading TVA cache...'));
+          uiManager.updateDialogContent(
+            await uiManager.createTVACacheHTML(false, 'Loading TVA cache...')
+          );
           this._debugLog('Loading TVA cache');
           cacheLoaded = await tvaCacheService.loadTVACache();
         }
@@ -429,24 +432,50 @@ export class TokenReplacerApp {
       const creatureGroups = TokenService.groupTokensByCreature(npcTokens);
       const uniqueCreatures = creatureGroups.size;
 
-      this._debugLog('Found', uniqueCreatures, 'unique creature types among', npcTokens.length, 'tokens');
+      this._debugLog(
+        'Found',
+        uniqueCreatures,
+        'unique creature types among',
+        npcTokens.length,
+        'tokens'
+      );
 
       // PHASE 2: Parallel search
       this._debugLog('Starting parallel search for', uniqueCreatures, 'creature types');
       uiManager.updateDialogContent(
-        await uiManager.createParallelSearchHTML(0, uniqueCreatures, uniqueCreatures, npcTokens.length, [])
+        await uiManager.createParallelSearchHTML(
+          0,
+          uniqueCreatures,
+          uniqueCreatures,
+          npcTokens.length,
+          []
+        )
       );
       await yieldToMain(50);
 
-      const searchResults = await searchService.parallelSearchCreatures(creatureGroups, localIndex, async (info) => {
-        if (info.type === 'batch' && uiManager.isDialogOpen()) {
-          uiManager.updateDialogContent(
-            await uiManager.createParallelSearchHTML(info.completed, info.total, uniqueCreatures, npcTokens.length, info.currentBatch)
-          );
+      const searchResults = await searchService.parallelSearchCreatures(
+        creatureGroups,
+        localIndex,
+        async (info) => {
+          if (info.type === 'batch' && uiManager.isDialogOpen()) {
+            uiManager.updateDialogContent(
+              await uiManager.createParallelSearchHTML(
+                info.completed,
+                info.total,
+                uniqueCreatures,
+                npcTokens.length,
+                info.currentBatch
+              )
+            );
+          }
         }
-      });
+      );
 
-      this._debugLog('Parallel search completed, found matches for', searchResults.size, 'creature types');
+      this._debugLog(
+        'Parallel search completed, found matches for',
+        searchResults.size,
+        'creature types'
+      );
 
       // PHASE 3: Process tokens
       this._debugLog('Starting token replacement phase');
@@ -454,164 +483,205 @@ export class TokenReplacerApp {
       const autoReplace = this.getSetting('autoReplace');
       const confirmReplace = this.getSetting('confirmReplace');
       const threshold = this.getSetting('fuzzyThreshold');
-      this._debugLog('Settings: autoReplace =', autoReplace, ', confirmReplace =', confirmReplace, ', threshold =', threshold);
+      this._debugLog(
+        'Settings: autoReplace =',
+        autoReplace,
+        ', confirmReplace =',
+        confirmReplace,
+        ', threshold =',
+        threshold
+      );
 
-    const updateProgress = async (current, total, status, result = null) => {
-      if (result) results.push(result);
-      uiManager.updateDialogContent(await uiManager.createProgressHTML(current, total, status, results));
-    };
+      const updateProgress = async (current, total, status, result = null) => {
+        if (result) results.push(result);
+        uiManager.updateDialogContent(
+          await uiManager.createProgressHTML(current, total, status, results)
+        );
+      };
 
-    await updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
-    await yieldToMain(50);
+      await updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
+      await yieldToMain(50);
 
-    let tokenIndex = 0;
+      let tokenIndex = 0;
 
-    for (const [key, data] of searchResults) {
-      if (!uiManager.isDialogOpen()) break;
+      for (const [key, data] of searchResults) {
+        if (!uiManager.isDialogOpen()) break;
 
-      const { matches, tokens, creatureInfo } = data;
+        const { matches, tokens, creatureInfo } = data;
 
-      // No matches - show category browser
-      if (matches.length === 0) {
-        this._debugLog(`No matches found for "${creatureInfo.actorName}", showing category browser`);
-        uiManager.updateDialogContent(await uiManager.createNoMatchHTML(creatureInfo, tokens.length));
-        await yieldToMain(50);
-
-        const dialogEl = uiManager.getDialogElement();
-        let selectionResult = null;
-
-        if (dialogEl) {
-          this._debugLog('Setting up no-match handlers for manual selection');
-          selectionResult = await uiManager.setupNoMatchHandlers(
-            dialogEl, creatureInfo, localIndex, tokens.length,
-            (type, idx, term, cb) => searchService.searchByCategory(type, idx, term, cb)
+        // No matches - show category browser
+        if (matches.length === 0) {
+          this._debugLog(
+            `No matches found for "${creatureInfo.actorName}", showing category browser`
           );
+          uiManager.updateDialogContent(
+            await uiManager.createNoMatchHTML(creatureInfo, tokens.length)
+          );
+          await yieldToMain(50);
+
+          const dialogEl = uiManager.getDialogElement();
+          let selectionResult = null;
+
+          if (dialogEl) {
+            this._debugLog('Setting up no-match handlers for manual selection');
+            selectionResult = await uiManager.setupNoMatchHandlers(
+              dialogEl,
+              creatureInfo,
+              localIndex,
+              tokens.length,
+              (type, idx, term, cb) => searchService.searchByCategory(type, idx, term, cb)
+            );
+          }
+
+          if (selectionResult?.paths?.length > 0) {
+            this._debugLog(
+              `User selected ${selectionResult.paths.length} image(s) for ${tokens.length} token(s), mode: ${selectionResult.mode || 'sequential'}`
+            );
+
+            const selectedPaths = selectionResult.paths;
+            const assignmentMode = selectionResult.mode || 'sequential';
+            let pathIndex = 0;
+
+            const shuffledPaths =
+              assignmentMode === 'random' ? fisherYatesShuffle(selectedPaths) : selectedPaths;
+
+            for (const token of tokens) {
+              if (!uiManager.isDialogOpen()) break;
+              tokenIndex++;
+
+              const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
+              const matchName = pathForToken
+                .split('/')
+                .pop()
+                .replace(/\.[^/.]+$/, '');
+
+              const success = await this.replaceTokenImage(token, pathForToken);
+              await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
+                name: `${creatureInfo.actorName} (${token.name})`,
+                status: success ? 'success' : 'failed',
+                match: matchName,
+              });
+
+              pathIndex++;
+            }
+          } else {
+            this._debugLog(
+              `No selection made for "${creatureInfo.actorName}", skipping ${tokens.length} token(s)`
+            );
+            for (const token of tokens) {
+              tokenIndex++;
+              await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
+                name: `${creatureInfo.actorName} (${token.name})`,
+                status: 'skipped',
+              });
+            }
+          }
+
+          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
+          await yieldToMain(50);
+          continue;
         }
 
-        if (selectionResult?.paths?.length > 0) {
-          this._debugLog(`User selected ${selectionResult.paths.length} image(s) for ${tokens.length} token(s), mode: ${selectionResult.mode || 'sequential'}`);
+        // Has matches
+        const bestMatch = matches[0];
+        const matchScore = bestMatch.score !== undefined ? 1 - bestMatch.score : 0.8;
+        this._debugLog(
+          `Found ${matches.length} match(es) for "${creatureInfo.actorName}", best score: ${matchScore.toFixed(2)}`
+        );
 
-          const selectedPaths = selectionResult.paths;
-          const assignmentMode = selectionResult.mode || 'sequential';
-          let pathIndex = 0;
+        let selectedPaths = null;
+        let assignmentMode = 'sequential';
 
-          const shuffledPaths = assignmentMode === 'random'
+        if (autoReplace && matchScore >= 1 - threshold) {
+          this._debugLog(
+            `Auto-replacing with best match (score ${matchScore.toFixed(2)} >= threshold ${(1 - threshold).toFixed(2)})`
+          );
+          selectedPaths = [bestMatch.path];
+        } else if (confirmReplace) {
+          this._debugLog('Showing match selection dialog for user confirmation');
+
+          uiManager.updateDialogContent(
+            await uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length)
+          );
+          await yieldToMain(50);
+
+          const dialogEl = uiManager.getDialogElement();
+          if (dialogEl) {
+            const selectionResult = await uiManager.setupMatchSelectionHandlers(dialogEl);
+
+            if (selectionResult?.paths) {
+              selectedPaths = selectionResult.paths;
+              assignmentMode = selectionResult.mode || 'sequential';
+              this._debugLog(
+                `User selected ${selectedPaths.length} image(s), mode: ${assignmentMode}`
+              );
+            } else {
+              this._debugLog('No selection made by user');
+            }
+          }
+
+          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
+          await yieldToMain(50);
+        } else {
+          this._debugLog('Using best match without confirmation (confirmReplace disabled)');
+          selectedPaths = [bestMatch.path];
+        }
+
+        // Apply selected paths
+        let pathIndex = 0;
+        const shuffledPaths =
+          assignmentMode === 'random' && selectedPaths
             ? fisherYatesShuffle(selectedPaths)
             : selectedPaths;
 
-          for (const token of tokens) {
-            if (!uiManager.isDialogOpen()) break;
-            tokenIndex++;
+        if (shuffledPaths?.length > 0) {
+          this._debugLog(
+            `Applying ${shuffledPaths.length} path(s) to ${tokens.length} token(s) in ${assignmentMode} mode`
+          );
+        } else {
+          this._debugLog(`Skipping ${tokens.length} token(s) - no paths selected`);
+        }
 
+        for (const token of tokens) {
+          if (!uiManager.isDialogOpen()) break;
+
+          tokenIndex++;
+
+          if (shuffledPaths?.length > 0) {
             const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
-            const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
+            const matchName = pathForToken
+              .split('/')
+              .pop()
+              .replace(/\.[^/.]+$/, '');
 
             const success = await this.replaceTokenImage(token, pathForToken);
             await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
               name: `${creatureInfo.actorName} (${token.name})`,
               status: success ? 'success' : 'failed',
-              match: matchName
+              match: matchName,
             });
 
             pathIndex++;
-          }
-        } else {
-          this._debugLog(`No selection made for "${creatureInfo.actorName}", skipping ${tokens.length} token(s)`);
-          for (const token of tokens) {
-            tokenIndex++;
+          } else {
             await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
               name: `${creatureInfo.actorName} (${token.name})`,
-              status: 'skipped'
+              status: 'skipped',
             });
           }
         }
-
-        await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
-        await yieldToMain(50);
-        continue;
       }
-
-      // Has matches
-      const bestMatch = matches[0];
-      const matchScore = bestMatch.score !== undefined ? (1 - bestMatch.score) : 0.8;
-      this._debugLog(`Found ${matches.length} match(es) for "${creatureInfo.actorName}", best score: ${matchScore.toFixed(2)}`);
-
-      let selectedPaths = null;
-      let assignmentMode = 'sequential';
-
-      if (autoReplace && matchScore >= (1 - threshold)) {
-        this._debugLog(`Auto-replacing with best match (score ${matchScore.toFixed(2)} >= threshold ${(1 - threshold).toFixed(2)})`);
-        selectedPaths = [bestMatch.path];
-      } else if (confirmReplace) {
-        this._debugLog('Showing match selection dialog for user confirmation');
-
-        uiManager.updateDialogContent(await uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length));
-        await yieldToMain(50);
-
-        const dialogEl = uiManager.getDialogElement();
-        if (dialogEl) {
-          const selectionResult = await uiManager.setupMatchSelectionHandlers(dialogEl);
-
-          if (selectionResult?.paths) {
-            selectedPaths = selectionResult.paths;
-            assignmentMode = selectionResult.mode || 'sequential';
-            this._debugLog(`User selected ${selectedPaths.length} image(s), mode: ${assignmentMode}`);
-          } else {
-            this._debugLog('No selection made by user');
-          }
-        }
-
-        await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
-        await yieldToMain(50);
-      } else {
-        this._debugLog('Using best match without confirmation (confirmReplace disabled)');
-        selectedPaths = [bestMatch.path];
-      }
-
-      // Apply selected paths
-      let pathIndex = 0;
-      const shuffledPaths = assignmentMode === 'random' && selectedPaths
-        ? fisherYatesShuffle(selectedPaths)
-        : selectedPaths;
-
-      if (shuffledPaths?.length > 0) {
-        this._debugLog(`Applying ${shuffledPaths.length} path(s) to ${tokens.length} token(s) in ${assignmentMode} mode`);
-      } else {
-        this._debugLog(`Skipping ${tokens.length} token(s) - no paths selected`);
-      }
-
-      for (const token of tokens) {
-        if (!uiManager.isDialogOpen()) break;
-
-        tokenIndex++;
-
-        if (shuffledPaths?.length > 0) {
-          const pathForToken = shuffledPaths[pathIndex % shuffledPaths.length];
-          const matchName = pathForToken.split('/').pop().replace(/\.[^/.]+$/, '');
-
-          const success = await this.replaceTokenImage(token, pathForToken);
-          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), {
-            name: `${creatureInfo.actorName} (${token.name})`,
-            status: success ? 'success' : 'failed',
-            match: matchName
-          });
-
-          pathIndex++;
-        } else {
-          await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.skipped'), {
-            name: `${creatureInfo.actorName} (${token.name})`,
-            status: 'skipped'
-          });
-        }
-      }
-    }
 
       // Final update
       if (uiManager.isDialogOpen()) {
-        const successCount = results.filter(r => r.status === 'success').length;
-        const failedCount = results.filter(r => r.status === 'failed').length;
+        const successCount = results.filter((r) => r.status === 'success').length;
+        const failedCount = results.filter((r) => r.status === 'failed').length;
 
-        await updateProgress(npcTokens.length, npcTokens.length, this.i18n('dialog.complete'), null);
+        await updateProgress(
+          npcTokens.length,
+          npcTokens.length,
+          this.i18n('dialog.complete'),
+          null
+        );
 
         ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
@@ -621,7 +691,6 @@ export class TokenReplacerApp {
       }
 
       this._debugLog('Token replacement process completed successfully');
-
     } catch (error) {
       // Handle errors gracefully with user-friendly messages
       console.error(`${MODULE_ID} | Error during token replacement:`, error);
@@ -673,7 +742,6 @@ export class TokenReplacerApp {
         );
         this._debugLog('Error displayed via notification');
       }
-
     } finally {
       // Always reset processing flag, even on errors
       this.isProcessing = false;
@@ -707,7 +775,7 @@ Hooks.once('init', async () => {
     'modules/token-replacer-fa/templates/parallel-search.hbs',
     'modules/token-replacer-fa/templates/progress.hbs',
     'modules/token-replacer-fa/templates/match-selection.hbs',
-    'modules/token-replacer-fa/templates/no-match.hbs'
+    'modules/token-replacer-fa/templates/no-match.hbs',
   ]);
   tokenReplacerApp._debugLog('Templates preloaded successfully');
   tokenReplacerApp._debugLog('Module initialization complete');
@@ -723,7 +791,9 @@ Hooks.once('ready', async () => {
 
   console.log(`${MODULE_ID} | Token Variant Art available: ${tokenReplacerApp.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${tokenReplacerApp.hasFANexus}`);
-  tokenReplacerApp._debugLog(`Module dependencies - TVA: ${tokenReplacerApp.hasTVA}, FA Nexus: ${tokenReplacerApp.hasFANexus}`);
+  tokenReplacerApp._debugLog(
+    `Module dependencies - TVA: ${tokenReplacerApp.hasTVA}, FA Nexus: ${tokenReplacerApp.hasFANexus}`
+  );
 
   // Initialize search service (also initializes ForgeBazaarService)
   searchService.init();
@@ -739,10 +809,16 @@ Hooks.once('ready', async () => {
         const cacheLoaded = await tvaCacheService.loadTVACache();
         if (cacheLoaded) {
           const stats = tvaCacheService.getTVACacheStats();
-          console.log(`${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`);
-          tokenReplacerApp._debugLog(`TVA cache loaded - ${stats.totalImages} images in ${stats.categories} categories`);
+          console.log(
+            `${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`
+          );
+          tokenReplacerApp._debugLog(
+            `TVA cache loaded - ${stats.totalImages} images in ${stats.categories} categories`
+          );
         } else {
-          console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`);
+          console.warn(
+            `${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`
+          );
           tokenReplacerApp._debugLog('TVA cache load failed, will use fallback methods');
         }
       } catch (err) {
@@ -756,13 +832,15 @@ Hooks.once('ready', async () => {
         tokenReplacerApp._debugLog('Starting background image index build');
 
         const hasCache = await storageService.has('token-replacer-fa-index-v3');
-        tokenReplacerApp._debugLog(`Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`);
+        tokenReplacerApp._debugLog(
+          `Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`
+        );
 
         const onProgress = (current, total, images) => {
           const percent = Math.round((current / total) * 100);
           ui.notifications.info(
             tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
-            `Token Replacer FA: Building index... ${percent}% (${images} images)`,
+              `Token Replacer FA: Building index... ${percent}% (${images} images)`,
             { permanent: false }
           );
         };
@@ -771,24 +849,35 @@ Hooks.once('ready', async () => {
           tokenReplacerApp._debugLog('Showing first-time index build notification');
           ui.notifications.info(
             tokenReplacerApp.i18n('notifications.indexingStart') ||
-            'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
+              'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
             { permanent: false }
           );
         }
 
-        const tvaCacheImages = tvaCacheService.isTVACacheLoaded ? tvaCacheService.tvaCacheImages : null;
-        tokenReplacerApp._debugLog(`Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`);
-        const success = await indexService.build(false, hasCache ? null : onProgress, tvaCacheImages);
+        const tvaCacheImages = tvaCacheService.isTVACacheLoaded
+          ? tvaCacheService.tvaCacheImages
+          : null;
+        tokenReplacerApp._debugLog(
+          `Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`
+        );
+        const success = await indexService.build(
+          false,
+          hasCache ? null : onProgress,
+          tvaCacheImages
+        );
         if (success) {
           const stats = indexService.getStats();
           console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
-          tokenReplacerApp._debugLog(`Index build completed successfully - ${stats.totalImages} images indexed`);
+          tokenReplacerApp._debugLog(
+            `Index build completed successfully - ${stats.totalImages} images indexed`
+          );
 
           if (!hasCache) {
             tokenReplacerApp._debugLog('Showing index build completion notification');
             ui.notifications.info(
-              tokenReplacerApp.i18n('notifications.indexingComplete', { count: stats.totalImages }) ||
-              `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
+              tokenReplacerApp.i18n('notifications.indexingComplete', {
+                count: stats.totalImages,
+              }) || `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
               { permanent: false }
             );
           }
@@ -826,7 +915,7 @@ Hooks.on('getSceneControlButtons', (controls) => {
   // Handle both v12 (array) and v13 (object) formats
   if (Array.isArray(controls)) {
     tokenReplacerApp._debugLog('Using v12 control format (array)');
-    const tokenControls = controls.find(c => c.name === 'token');
+    const tokenControls = controls.find((c) => c.name === 'token');
     if (tokenControls) {
       tokenControls.tools.push({
         name: 'tokenReplacerFA',
@@ -834,8 +923,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
         icon: 'fas fa-wand-magic-sparkles',
         button: true,
         visible: true,
-        onChange: () => tokenReplacerApp.processTokenReplacement(),  // v13+ uses onChange
-        onClick: () => tokenReplacerApp.processTokenReplacement()    // v12 fallback
+        onChange: () => tokenReplacerApp.processTokenReplacement(), // v13+ uses onChange
+        onClick: () => tokenReplacerApp.processTokenReplacement(), // v12 fallback
       });
       tokenReplacerApp._debugLog('Scene control button added successfully');
     } else {
@@ -857,8 +946,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
       order: toolCount + 1,
       button: true,
       visible: true,
-      onChange: () => tokenReplacerApp.processTokenReplacement(),  // v13+ uses onChange
-      onClick: () => tokenReplacerApp.processTokenReplacement()    // v12 fallback
+      onChange: () => tokenReplacerApp.processTokenReplacement(), // v13+ uses onChange
+      onClick: () => tokenReplacerApp.processTokenReplacement(), // v12 fallback
     };
     tokenReplacerApp._debugLog('Scene control button added successfully');
   }

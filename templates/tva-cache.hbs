@@ -1,24 +1,25 @@
-<div class="token-replacer-fa-scan-progress">
+<div class='token-replacer-fa-scan-progress'>
   {{#if refreshing}}
-    <div class="scan-status">
-      <i class="fas fa-sync fa-spin"></i>
+    <div class='scan-status'>
+      <i class='fas fa-sync fa-spin'></i>
       <span>Refreshing TVA cache...</span>
     </div>
-    <p style="text-align: center; color: #888; margin-top: 10px;">
+    <p style='text-align: center; color: #888; margin-top: 10px;'>
       This may take a moment for large image libraries
     </p>
-    <div class="token-replacer-fa-progress-buttons">
-      <button type="button" class="cancel-btn" data-action="cancel">
-        <i class="fas fa-times"></i> Cancel
+    <div class='token-replacer-fa-progress-buttons'>
+      <button type='button' class='cancel-btn' data-action='cancel'>
+        <i class='fas fa-times'></i>
+        Cancel
       </button>
     </div>
   {{else}}
-    <div class="scan-status">
-      <i class="fas fa-bolt"></i>
+    <div class='scan-status'>
+      <i class='fas fa-bolt'></i>
       <span>{{statusMessage}}</span>
     </div>
-    <div class="optimization-info">
-      <i class="fas fa-info-circle"></i>
+    <div class='optimization-info'>
+      <i class='fas fa-info-circle'></i>
       <span>Leveraging TVA's pre-built image index for faster search</span>
     </div>
   {{/if}}

@@ -3,6 +3,7 @@
 This document describes how to manually test the caching implementation in ForgeBazaarService.
 
 ## Prerequisites
+
 - Load the module in Foundry VTT
 - Open the browser console (F12)
 
@@ -96,7 +97,7 @@ await service.search('dragon');
 
 // Wait 6 minutes (or manually set timestamp in the past)
 // Manually expire cache for testing:
-service.searchCache.get('dragon').timestamp = Date.now() - (6 * 60 * 1000);
+service.searchCache.get('dragon').timestamp = Date.now() - 6 * 60 * 1000;
 
 // Call again - should NOT use cache (expired)
 await service.search('dragon');

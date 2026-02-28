@@ -34,9 +34,11 @@ export class StorageService {
    */
   checkIndexedDBSupport() {
     try {
-      return typeof window !== 'undefined' &&
-             typeof window.indexedDB !== 'undefined' &&
-             window.indexedDB !== null;
+      return (
+        typeof window !== 'undefined' &&
+        typeof window.indexedDB !== 'undefined' &&
+        window.indexedDB !== null
+      );
     } catch (error) {
       console.warn(`${MODULE_ID} | IndexedDB support check failed:`, error);
       return false;
@@ -190,7 +192,7 @@ export class StorageService {
         const record = {
           id: key,
           data: data,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
 
         // Put data into object store
@@ -222,17 +224,21 @@ export class StorageService {
     try {
       const json = JSON.stringify({
         data: data,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       // Check size limit (~5MB for localStorage)
       if (json.length > 4.5 * 1024 * 1024) {
-        console.warn(`${MODULE_ID} | Data too large for localStorage (${(json.length / 1024 / 1024).toFixed(1)}MB)`);
+        console.warn(
+          `${MODULE_ID} | Data too large for localStorage (${(json.length / 1024 / 1024).toFixed(1)}MB)`
+        );
         return false;
       }
 
       localStorage.setItem(key, json);
-      console.log(`${MODULE_ID} | Saved to localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`);
+      console.log(
+        `${MODULE_ID} | Saved to localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`
+      );
       return true;
     } catch (error) {
       console.error(`${MODULE_ID} | localStorage save failed:`, error);
@@ -298,7 +304,9 @@ export class StorageService {
       }
 
       const record = JSON.parse(json);
-      console.log(`${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`);
+      console.log(
+        `${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`
+      );
       return record.data;
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to load from localStorage:`, error);
@@ -345,7 +353,10 @@ export class StorageService {
 
         return true;
       } catch (error) {
-        console.warn(`${MODULE_ID} | IndexedDB remove failed, falling back to localStorage:`, error);
+        console.warn(
+          `${MODULE_ID} | IndexedDB remove failed, falling back to localStorage:`,
+          error
+        );
         // Fall through to localStorage fallback
       }
     }
@@ -441,7 +452,9 @@ export class StorageService {
       const hasLocalStorageData = localStorage.getItem(oldKey) !== null;
 
       if (!hasLocalStorageData) {
-        console.log(`${MODULE_ID} | No migration needed: no localStorage data found for key "${oldKey}"`);
+        console.log(
+          `${MODULE_ID} | No migration needed: no localStorage data found for key "${oldKey}"`
+        );
         return false;
       }
 
@@ -450,12 +463,16 @@ export class StorageService {
       const hasNewData = newData !== null;
 
       if (hasNewData) {
-        console.log(`${MODULE_ID} | No migration needed: data already exists in new storage for key "${newKey}"`);
+        console.log(
+          `${MODULE_ID} | No migration needed: data already exists in new storage for key "${newKey}"`
+        );
         return false;
       }
 
       // Migration needed: old data exists but new storage is empty
-      console.log(`${MODULE_ID} | Migration needed: localStorage data found for "${oldKey}", but "${newKey}" is empty in IndexedDB`);
+      console.log(
+        `${MODULE_ID} | Migration needed: localStorage data found for "${oldKey}", but "${newKey}" is empty in IndexedDB`
+      );
       return true;
     } catch (error) {
       console.warn(`${MODULE_ID} | Error checking migration status:`, error);
@@ -471,34 +488,46 @@ export class StorageService {
    */
   async migrateFromLocalStorage(oldKey, newKey) {
     try {
-      console.log(`${MODULE_ID} | Starting migration from localStorage "${oldKey}" to storage "${newKey}"`);
+      console.log(
+        `${MODULE_ID} | Starting migration from localStorage "${oldKey}" to storage "${newKey}"`
+      );
 
       // Read data from localStorage
       const json = localStorage.getItem(oldKey);
       if (!json) {
-        console.warn(`${MODULE_ID} | Migration failed: no data found in localStorage for key "${oldKey}"`);
+        console.warn(
+          `${MODULE_ID} | Migration failed: no data found in localStorage for key "${oldKey}"`
+        );
         return false;
       }
 
       // Parse JSON wrapper {data, timestamp}
       const record = JSON.parse(json);
       if (!record || !record.data) {
-        console.warn(`${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`);
+        console.warn(
+          `${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`
+        );
         return false;
       }
 
       const dataSize = (json.length / 1024).toFixed(0);
-      console.log(`${MODULE_ID} | Migrating ${dataSize}KB of data from localStorage to IndexedDB...`);
+      console.log(
+        `${MODULE_ID} | Migrating ${dataSize}KB of data from localStorage to IndexedDB...`
+      );
 
       // Save to new storage (IndexedDB or localStorage fallback)
       const success = await this.save(newKey, record.data);
 
       if (success) {
-        console.log(`${MODULE_ID} | Migration successful: ${dataSize}KB migrated from "${oldKey}" to "${newKey}"`);
+        console.log(
+          `${MODULE_ID} | Migration successful: ${dataSize}KB migrated from "${oldKey}" to "${newKey}"`
+        );
         // Remove old localStorage data to prevent needsMigration from returning true on every call
         try {
           localStorage.removeItem(oldKey);
-          console.log(`${MODULE_ID} | Removed old localStorage key "${oldKey}" after successful migration`);
+          console.log(
+            `${MODULE_ID} | Removed old localStorage key "${oldKey}" after successful migration`
+          );
         } catch (e) {
           console.warn(`${MODULE_ID} | Failed to remove old localStorage key "${oldKey}":`, e);
         }

@@ -47,7 +47,7 @@ export class TokenService {
       type: null,
       subtype: null,
       race: null,
-      searchTerms: []
+      searchTerms: [],
     };
 
     // Get creature type from dnd5e system
@@ -79,7 +79,10 @@ export class TokenService {
 
     // Debug log to help troubleshoot type extraction issues
     if (!info.type) {
-      console.warn(`${MODULE_ID} | Could not extract creature type for ${actor.name}. Details:`, actor.system?.details);
+      console.warn(
+        `${MODULE_ID} | Could not extract creature type for ${actor.name}. Details:`,
+        actor.system?.details
+      );
     }
 
     // Get race if available
@@ -139,7 +142,7 @@ export class TokenService {
 
     if (selectedTokens.length > 0) {
       // Filter selected tokens to only include NPCs
-      return selectedTokens.filter(token => {
+      return selectedTokens.filter((token) => {
         const actor = token.actor;
         if (!actor) return false;
         return actor.type === 'npc' || actor.type === 'creature';
@@ -147,7 +150,7 @@ export class TokenService {
     }
 
     // No selection - get all NPC tokens on the scene
-    return canvas.tokens.placeables.filter(token => {
+    return canvas.tokens.placeables.filter((token) => {
       const actor = token.actor;
       if (!actor) return false;
       return actor.type === 'npc' || actor.type === 'creature';
@@ -172,7 +175,7 @@ export class TokenService {
         groups.set(key, {
           creatureInfo: creatureInfo,
           tokens: [],
-          searchTerms: creatureInfo.searchTerms
+          searchTerms: creatureInfo.searchTerms,
         });
       }
 
@@ -192,14 +195,14 @@ export class TokenService {
     try {
       // Update both the token document and the prototype token on the actor
       await token.document.update({
-        'texture.src': imagePath
+        'texture.src': imagePath,
       });
 
       // Also update the actor's prototype token if it exists
       const actor = token.actor;
       if (actor) {
         await actor.update({
-          'prototypeToken.texture.src': imagePath
+          'prototypeToken.texture.src': imagePath,
         });
       }
 

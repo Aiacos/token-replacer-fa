@@ -33,11 +33,13 @@ The build script auto-detects module ID, version, and GitHub URL from `module.js
    - `"download"`: update to match: `https://github.com/Aiacos/token-replacer-fa/releases/download/vX.Y.Z/token-replacer-fa-vX.Y.Z.zip`
 
 2. **Build the package**:
+
    ```bash
    bash build.sh
    ```
 
 3. **Commit and push**:
+
    ```bash
    git add module.json
    git commit -m "Bump version to X.Y.Z"
@@ -98,16 +100,19 @@ templates/
 The module uses Handlebars templates (preloaded in `main.js` init hook) to separate presentation from logic:
 
 **Template Rendering:**
+
 - All UI generation methods in `UIManager.js` use `renderTemplate(path, data)`
 - Methods are async and return `Promise<string>`
 - Templates are preloaded via `loadTemplates()` in the init hook for performance
 
 **XSS Protection:**
+
 - Handlebars auto-escapes all variables by default (e.g., `{{name}}`)
 - No manual escaping needed in template methods - just pass raw data
 - `escapeHtml()` utility is only used for dynamic HTML generation outside templates (e.g., `innerHTML` assignments in event handlers)
 
 **Template Conventions:**
+
 - Template files are in `/templates` directory with `.hbs` extension
 - Use `{{variable}}` for auto-escaped output
 - Use `{{#if condition}}...{{/if}}` for conditionals
@@ -117,6 +122,7 @@ The module uses Handlebars templates (preloaded in `main.js` init hook) to separ
 ### TVA Integration
 
 The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather than using the slower `doImageSearch` API. Cache format:
+
 ```javascript
 // TVA cache JSON: { category: [ path | [path, name] | [path, name, tags] ] }
 // Converted to: { path, name, category } objects in tvaCacheImages[]
@@ -127,18 +133,21 @@ The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather
 Index building uses Web Workers to prevent main thread blocking:
 
 **IndexWorker.js** - Runs in background thread, processes thousands of images at full speed without UI freezing
+
 - Receives `indexPaths` command with image paths and categorization rules
 - Processes all paths without setTimeout yields (unlike main thread fallback)
 - Sends progress updates every 1000 items via `postMessage`
 - Returns categorized index structure when complete
 
 **IndexService** - Manages worker lifecycle and fallback
+
 - Initializes worker on construction: `new Worker('modules/token-replacer-fa/scripts/workers/IndexWorker.js')`
 - Uses `indexPathsWithWorker()` when worker available (non-blocking)
 - Falls back to `indexPathsDirectly()` with 10ms yields if worker unavailable
 - Properly terminates worker with `terminate()` method
 
 **Benefits:**
+
 - Main thread remains completely responsive during large index builds
 - Full-speed processing (no yield delays) in worker thread
 - Graceful fallback for browsers without Worker support
@@ -146,6 +155,7 @@ Index building uses Web Workers to prevent main thread blocking:
 ### Critical: CDN Path Handling
 
 `isExcludedPath()` must filter out CDN URL segments before checking EXCLUDED_FOLDERS:
+
 ```javascript
 // Forge URLs: https://assets.forge-vtt.com/bazaar/assets/FA_Pack/...
 // Must skip: 'https:', 'bazaar', 'assets' (CDN structure, not actual folders)
@@ -159,11 +169,13 @@ const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules
 **Single Source of Truth:** The version is defined in `module.json` only. All other files are updated automatically.
 
 **Automated Synchronization:** The `sync-version.sh` script reads the version from `module.json` and automatically updates:
+
 1. `CLAUDE.md` - **Version:** field
 2. `scripts/main.js` - JSDoc `@version` tag
 3. `scripts/main.js` - Console log in `Hooks.once('init', ...)`
 
 **How It Works:**
+
 - `build.sh` (Unix) and `build.bat` (Windows) automatically call version sync scripts before packaging
 - Developers only need to update `"version"` in `module.json`
 - Version sync runs as step 1 of the build process

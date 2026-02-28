@@ -39,11 +39,11 @@ self.addEventListener('message', (event) => {
         break;
 
       case 'fuzzySearch':
-        handleFuzzySearch(data).catch(error => {
+        handleFuzzySearch(data).catch((error) => {
           self.postMessage({
             type: 'error',
             message: error.message,
-            stack: error.stack
+            stack: error.stack,
           });
         });
         break;
@@ -61,14 +61,14 @@ self.addEventListener('message', (event) => {
       default:
         self.postMessage({
           type: 'error',
-          message: `Unknown command: ${command}`
+          message: `Unknown command: ${command}`,
         });
     }
   } catch (error) {
     self.postMessage({
       type: 'error',
       message: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
   }
 });
@@ -84,12 +84,7 @@ self.addEventListener('message', (event) => {
  * @param {Array} data.excludedFilenameTerms - Filename terms to exclude
  */
 function handleIndexPaths(data) {
-  const {
-    paths,
-    creatureTypeMappings,
-    excludedFolders,
-    excludedFilenameTerms
-  } = data;
+  const { paths, creatureTypeMappings, excludedFolders, excludedFilenameTerms } = data;
 
   // Reset cancellation flag at start of operation
   cancelled = false;
@@ -120,7 +115,7 @@ function handleIndexPaths(data) {
     type: 'progress',
     processed: 0,
     total: paths.length,
-    imagesFound: 0
+    imagesFound: 0,
   });
 
   let imagesFound = 0;
@@ -153,7 +148,14 @@ function handleIndexPaths(data) {
     }
 
     // Extract name from path if not provided
-    const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
+    const imageName =
+      name ||
+      path
+        .split('/')
+        .pop()
+        ?.replace(/\.[^/.]+$/, '')
+        .replace(/[-_]/g, ' ') ||
+      'Unknown';
 
     // Try to categorize the image
     const { category, subcategories } = categorizeImage(path, imageName, creatureTypeMappings);
@@ -162,7 +164,7 @@ function handleIndexPaths(data) {
     allPaths[path] = {
       name: imageName,
       category: category || null,
-      subcategories: subcategories || []
+      subcategories: subcategories || [],
     };
 
     imagesFound++;
@@ -207,7 +209,7 @@ function handleIndexPaths(data) {
       return;
     }
     const searchText = `${path} ${data.name}`.toLowerCase();
-    const terms = searchText.split(/[\/\\\-_\s\.]+/).filter(t => t.length > 0);
+    const terms = searchText.split(/[\/\\\-_\s\.]+/).filter((t) => t.length > 0);
     for (const term of new Set(terms)) {
       if (!termIndex[term]) termIndex[term] = [];
       termIndex[term].push(path);
@@ -219,7 +221,7 @@ function handleIndexPaths(data) {
     type: 'complete',
     result: { categories, allPaths, termIndex },
     imagesFound,
-    total: paths.length
+    total: paths.length,
   });
 }
 
@@ -235,7 +237,7 @@ function reportProgress(processed, total, imagesFound) {
     type: 'progress',
     processed,
     total,
-    imagesFound
+    imagesFound,
   });
 }
 
@@ -254,7 +256,7 @@ async function loadFuse() {
     self.postMessage({
       type: 'error',
       message: `Failed to load Fuse.js: ${error.message}`,
-      stack: error.stack
+      stack: error.stack,
     });
     return null;
   }
@@ -291,7 +293,7 @@ async function handleFuzzySearch(data) {
   if (!Fuse) {
     self.postMessage({
       type: 'complete',
-      result: []
+      result: [],
     });
     return;
   }
@@ -312,7 +314,7 @@ async function handleFuzzySearch(data) {
     type: 'progress',
     current: 0,
     total: searchTerms.length,
-    term: ''
+    term: '',
   });
 
   // Search for each term
@@ -329,7 +331,7 @@ async function handleFuzzySearch(data) {
       type: 'progress',
       current: i + 1,
       total: searchTerms.length,
-      term: term
+      term: term,
     });
 
     const searchResults = fuse.search(term);
@@ -343,7 +345,7 @@ async function handleFuzzySearch(data) {
       }
       results.push({
         ...item,
-        score: result.score
+        score: result.score,
       });
     }
   }
@@ -351,7 +353,7 @@ async function handleFuzzySearch(data) {
   // Send completion message with results
   self.postMessage({
     type: 'complete',
-    result: results
+    result: results,
   });
 }
 
@@ -396,9 +398,22 @@ function categorizeImage(path, name, creatureTypeMappings) {
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
  */
 const CDN_SEGMENTS = new Set([
-  'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
-  'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
-  'www', 'cdn', 'static', 'public', 'uploads', 'files'
+  'https:',
+  'http:',
+  '',
+  'bazaar',
+  'assets',
+  'modules',
+  'systems',
+  'assets.forge-vtt.com',
+  'forge-vtt.com',
+  'foundryvtt.com',
+  'www',
+  'cdn',
+  'static',
+  'public',
+  'uploads',
+  'files',
 ]);
 
 /**
@@ -427,7 +442,9 @@ function isExcludedPath(path, excludedFolders, excludedFilenameTerms) {
 
   // Precompile patterns on first call (once per worker lifetime)
   if (!compiledExcludedPatterns) {
-    compiledExcludedPatterns = excludedFilenameTerms.map(term => new RegExp(`\\b${term}\\b`, 'i'));
+    compiledExcludedPatterns = excludedFilenameTerms.map(
+      (term) => new RegExp(`\\b${term}\\b`, 'i')
+    );
   }
   if (!compiledExcludedFolders) {
     compiledExcludedFolders = new Set(excludedFolders);
@@ -437,20 +454,22 @@ function isExcludedPath(path, excludedFolders, excludedFilenameTerms) {
   const segments = pathLower.split('/');
 
   // Filter out CDN segments and check remaining folder names
-  const folderSegments = segments.filter(s => !CDN_SEGMENTS.has(s) && s.length > 0);
+  const folderSegments = segments.filter((s) => !CDN_SEGMENTS.has(s) && s.length > 0);
 
   // Check folder names against exclusion Set (O(1) per segment)
-  if (folderSegments.some(segment => compiledExcludedFolders.has(segment))) {
+  if (folderSegments.some((segment) => compiledExcludedFolders.has(segment))) {
     return true;
   }
 
   // Also check filename for environmental/prop terms
   const filename = segments[segments.length - 1] || '';
   // Remove extension and convert separators to spaces for word matching
-  const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+  const filenameClean = filename
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[-_]/g, ' ')
+    .toLowerCase();
 
   // Check if filename contains excluded terms using precompiled patterns
   // Match as word boundary on both sides: "cliff_entrance" matches "cliff", but "clifford" doesn't
-  return compiledExcludedPatterns.some(pattern => pattern.test(filenameClean));
+  return compiledExcludedPatterns.some((pattern) => pattern.test(filenameClean));
 }
-

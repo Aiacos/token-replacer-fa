@@ -7,6 +7,7 @@
 **Overall:** Multi-layered service-based architecture with clear separation between orchestration, domain logic, and presentation.
 
 **Key Characteristics:**
+
 - Service layer delegates work to specialized components (TVA, Search, Index, Scan)
 - Entry point (`main.js`) orchestrates entire token replacement workflow
 - Stateless token operations vs. stateful search/caching operations
@@ -16,6 +17,7 @@
 ## Layers
 
 **Application/Controller Layer:**
+
 - Location: `scripts/main.js` (`TokenReplacerApp` class)
 - Purpose: Main orchestrator - manages entire token replacement workflow, coordinates services, handles settings/UI updates
 - Contains: Hook handlers (init, ready), settings registration, main workflow logic (`processTokenReplacement()`)
@@ -23,26 +25,31 @@
 - Used by: Foundry VTT hooks system
 
 **Service Layer:**
+
 - Location: `scripts/services/`
 - Contains specialized domain services that coordinate lower layers
 - Services: `SearchService.js` (facade), `SearchOrchestrator.js` (complex search logic), `TokenService.js` (token extraction), `TVACacheService.js` (TVA integration), `IndexService.js` (token index), `ScanService.js` (directory scanning), `StorageService.js` (database), `ForgeBazaarService.js` (stub for future)
 
 **Data/Persistence Layer:**
+
 - Location: `scripts/services/StorageService.js`, `scripts/services/TVACacheService.js`
 - Purpose: Abstract data storage - IndexedDB with localStorage fallback (StorageService), direct TVA cache access (TVACacheService)
 - Depends on: Browser IndexedDB API, Foundry TVA module
 
 **Worker Layer:**
+
 - Location: `scripts/workers/IndexWorker.js`
 - Purpose: Background thread for non-blocking index building
 - Processes: Converts flat image paths into hierarchical category index
 - Uses: Same categorization logic as main thread (CREATURE_TYPE_MAPPINGS)
 
 **Utility/Core Layer:**
+
 - Location: `scripts/core/`
 - Contains: Constants (MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, batch sizes), Utils (Fuse.js loading, path filtering, search term parsing)
 
 **UI Layer:**
+
 - Location: `scripts/ui/UIManager.js`
 - Purpose: Dialog and HTML generation using Handlebars templates
 - Depends on: Template system (`templates/`), localization (`lang/`)
@@ -113,18 +120,21 @@
 ## Key Abstractions
 
 **SearchService (Facade):**
+
 - Purpose: Single entry point for search operations, hides dependency wiring
 - Pattern: Simple delegation facade
 - Examples: `scripts/services/SearchService.js`
 - Methods: `init()`, `clearCache()`, `searchByCategory()`, `parallelSearchCreatures()`
 
 **TokenService (Stateless):**
+
 - Purpose: Extract creature info from Foundry tokens, group by type, perform replacements
 - Pattern: Static utility class (no instance state)
 - Examples: `scripts/services/TokenService.js`
 - Methods: `extractCreatureInfo()`, `getSceneNPCTokens()`, `groupTokensByCreature()`, `replaceTokenImage()`
 
 **SearchOrchestrator:**
+
 - Purpose: Complex search logic - fuzzy search, categorization, parallel processing
 - Pattern: Stateful service with caching
 - Examples: `scripts/services/SearchOrchestrator.js`
@@ -132,6 +142,7 @@
 - Methods: `searchByCategory()`, `searchTokenArt()`, `parallelSearchCreatures()`, `searchLocalIndexWithWorker()`
 
 **IndexService:**
+
 - Purpose: Hierarchical index of token images organized by creature category
 - Pattern: Lazy-loaded singleton with Worker integration
 - Examples: `scripts/services/IndexService.js`
@@ -139,6 +150,7 @@
 - Includes: termIndex for O(1) search term lookups (maps "term" → ["path1", "path2", ...])
 
 **TVACacheService:**
+
 - Purpose: Direct access to TVA's static cache file, bypasses slow API calls
 - Pattern: Initialization service with async load
 - Examples: `scripts/services/TVACacheService.js`
@@ -147,15 +159,18 @@
 ## Entry Points
 
 **Module Entry:**
+
 - Location: `scripts/main.js` (ES module)
 - Triggers: Foundry `init` and `ready` hooks
 - Responsibilities: Register settings, register UI buttons, initialize caches
 
 **User Action:**
+
 - UI button click → `TokenReplacerApp.processTokenReplacement()` method
 - Scene control button added via hook
 
 **Hook Listeners:**
+
 - `Hooks.once('init')`: Register settings, preload templates, initialize IndexedDB
 - `Hooks.once('ready')`: Setup scene controls, wire up event handlers
 
@@ -166,15 +181,17 @@
 **Patterns:**
 
 1. **Try-catch with structured errors:**
+
    ```javascript
    try {
      // operation
    } catch (error) {
-     throw createModuleError('error_key', 'technical details', ['recovery_suggestion_1'])
+     throw createModuleError('error_key', 'technical details', ['recovery_suggestion_1']);
    }
    ```
 
 2. **Error structure:**
+
    ```javascript
    {
      errorType: 'tva_missing',
@@ -194,20 +211,24 @@
 ## Cross-Cutting Concerns
 
 **Logging:**
+
 - Debug mode toggle via settings (`debugMode`)
 - Each service has `createDebugLogger()` utility
 - Pattern: `_debugLog('message', value)` checks setting before logging
 - Console prefixed with MODULE_ID for easy filtering
 
 **Validation:**
+
 - Path validation: `sanitizePath()` checks for traversal, null bytes, absolute paths
 - Type validation: Services validate category types, array inputs before processing
 - XSS protection: Handlebars auto-escapes all variables; `escapeHtml()` for dynamic HTML
 
 **Authentication:**
+
 - N/A: Module operates within Foundry VTT ecosystem with its own auth
 
 **Performance Optimization:**
+
 - Web Workers: IndexService offloads index building to background thread
 - Caching: Multiple layers (i18n, search, index, TVA cache)
 - Precompiled RegExp: EXCLUDED_FILENAME_PATTERNS built once at module load for path filtering
@@ -218,4 +239,4 @@
 
 ---
 
-*Architecture analysis: 2026-02-28*
+_Architecture analysis: 2026-02-28_

@@ -4,7 +4,13 @@
  * @module services/SearchOrchestrator
  */
 
-import { MODULE_ID, PARALLEL_BATCH_SIZE, CREATURE_TYPE_MAPPINGS, PRIMARY_CATEGORY_TERMS, SLOW_MODE_BATCH_SIZE } from '../core/Constants.js';
+import {
+  MODULE_ID,
+  PARALLEL_BATCH_SIZE,
+  CREATURE_TYPE_MAPPINGS,
+  PRIMARY_CATEGORY_TERMS,
+  SLOW_MODE_BATCH_SIZE,
+} from '../core/Constants.js';
 import {
   parseSubtypeTerms,
   hasGenericSubtype,
@@ -14,7 +20,7 @@ import {
   extractPathFromTVAResult,
   extractNameFromTVAResult,
   yieldToMain,
-  createDebugLogger
+  createDebugLogger,
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -110,7 +116,7 @@ export class SearchOrchestrator {
     // Check against mappings
     const mappings = CREATURE_TYPE_MAPPINGS[typeLower];
     if (mappings) {
-      return mappings.some(term => folderLower.includes(term.toLowerCase()));
+      return mappings.some((term) => folderLower.includes(term.toLowerCase()));
     }
 
     return false;
@@ -143,12 +149,15 @@ export class SearchOrchestrator {
       // Try different search configurations for TVA compatibility
       let searchResults = await this.tvaCacheService.tvaAPI.doImageSearch(searchTerm, {
         searchType: 'Portrait',
-        simpleResults: false
+        simpleResults: false,
       });
 
       // If no results, try without options (TVA 6.x compatibility)
-      if (!searchResults || (Array.isArray(searchResults) && searchResults.length === 0) ||
-          (searchResults instanceof Map && searchResults.size === 0)) {
+      if (
+        !searchResults ||
+        (Array.isArray(searchResults) && searchResults.length === 0) ||
+        (searchResults instanceof Map && searchResults.size === 0)
+      ) {
         searchResults = await this.tvaCacheService.tvaAPI.doImageSearch(searchTerm);
       }
 
@@ -168,7 +177,7 @@ export class SearchOrchestrator {
           path: imagePath,
           name: name,
           source: 'tva',
-          score: item?.score ?? 0.5
+          score: item?.score ?? 0.5,
         });
       };
 
@@ -178,7 +187,10 @@ export class SearchOrchestrator {
         for (const item of searchResults) {
           processItem(item);
         }
-      } else if (searchResults instanceof Map || (searchResults && typeof searchResults.entries === 'function')) {
+      } else if (
+        searchResults instanceof Map ||
+        (searchResults && typeof searchResults.entries === 'function')
+      ) {
         // Map format: key is search term, value is array of results
         for (const [key, data] of searchResults.entries()) {
           if (Array.isArray(data)) {
@@ -198,14 +210,18 @@ export class SearchOrchestrator {
                 path: key,
                 name: extractNameFromTVAResult(data, key),
                 source: 'tva',
-                score: 0.5
+                score: 0.5,
               });
             }
           }
         }
       } else if (searchResults && typeof searchResults === 'object') {
         // Object with nested paths/images/results property
-        const pathsArray = searchResults.paths || searchResults.images || searchResults.results || searchResults.data;
+        const pathsArray =
+          searchResults.paths ||
+          searchResults.images ||
+          searchResults.results ||
+          searchResults.data;
         if (Array.isArray(pathsArray)) {
           for (const item of pathsArray) {
             processItem(item);
@@ -269,7 +285,7 @@ export class SearchOrchestrator {
       keys: ['name', 'fileName', 'category'],
       threshold: threshold,
       includeScore: true,
-      minMatchCharLength: 2
+      minMatchCharLength: 2,
     };
 
     const fuse = new Fuse(index, fuseOptions);
@@ -291,7 +307,7 @@ export class SearchOrchestrator {
         results.push({
           ...item,
           score: result.score,
-          source: 'local'
+          source: 'local',
         });
       }
     }
@@ -379,9 +395,9 @@ export class SearchOrchestrator {
             keys: ['name', 'fileName', 'category'],
             threshold: threshold,
             includeScore: true,
-            minMatchCharLength: 2
-          }
-        }
+            minMatchCharLength: 2,
+          },
+        },
       });
     });
   }
@@ -395,8 +411,15 @@ export class SearchOrchestrator {
    * @param {Function} progressCallback - Optional progress callback
    * @returns {Promise<Array>} Search results
    */
-  async searchByCategory(categoryType, localIndex, directSearchTerm = null, progressCallback = null) {
-    console.log(`${MODULE_ID} | searchByCategory START - type: ${categoryType}, directSearch: ${directSearchTerm}`);
+  async searchByCategory(
+    categoryType,
+    localIndex,
+    directSearchTerm = null,
+    progressCallback = null
+  ) {
+    console.log(
+      `${MODULE_ID} | searchByCategory START - type: ${categoryType}, directSearch: ${directSearchTerm}`
+    );
     const results = [];
     const seenPaths = new Set();
 
@@ -420,7 +443,12 @@ export class SearchOrchestrator {
         }
       }
       // Search TVA (when priority is faNexus, both, or forgeBazaar unavailable)
-      else if (this.tvaCacheService?.hasTVA && (priority === 'faNexus' || priority === 'both' || !this.forgeBazaarService?.isServiceAvailable())) {
+      else if (
+        this.tvaCacheService?.hasTVA &&
+        (priority === 'faNexus' ||
+          priority === 'both' ||
+          !this.forgeBazaarService?.isServiceAvailable())
+      ) {
         const tvaResults = await this.searchTVA(directSearchTerm);
         for (const result of tvaResults) {
           if (!seenPaths.has(result.path)) {
@@ -443,13 +471,13 @@ export class SearchOrchestrator {
       // Search local index
       if (localIndex?.length > 0) {
         const termLower = directSearchTerm.toLowerCase();
-        const localMatches = localIndex.filter(img =>
-          !isExcludedPath(img.path) && (
-            img.name?.toLowerCase().includes(termLower) ||
-            img.fileName?.toLowerCase().includes(termLower) ||
-            img.category?.toLowerCase().includes(termLower) ||
-            img.path?.toLowerCase().includes(termLower)
-          )
+        const localMatches = localIndex.filter(
+          (img) =>
+            !isExcludedPath(img.path) &&
+            (img.name?.toLowerCase().includes(termLower) ||
+              img.fileName?.toLowerCase().includes(termLower) ||
+              img.category?.toLowerCase().includes(termLower) ||
+              img.path?.toLowerCase().includes(termLower))
         );
         for (const match of localMatches) {
           if (!seenPaths.has(match.path)) {
@@ -460,10 +488,17 @@ export class SearchOrchestrator {
       }
 
       if (progressCallback) {
-        progressCallback({ current: 1, total: 1, term: directSearchTerm, resultsFound: results.length });
+        progressCallback({
+          current: 1,
+          total: 1,
+          term: directSearchTerm,
+          resultsFound: results.length,
+        });
       }
 
-      console.log(`${MODULE_ID} | Direct search for "${directSearchTerm}" found ${results.length} results`);
+      console.log(
+        `${MODULE_ID} | Direct search for "${directSearchTerm}" found ${results.length} results`
+      );
       return results;
     }
 
@@ -487,13 +522,18 @@ export class SearchOrchestrator {
           seenPaths.add(result.path);
           results.push({
             ...result,
-            source: result.source || 'index'
+            source: result.source || 'index',
           });
         }
       }
 
       if (progressCallback) {
-        progressCallback({ current: 1, total: 1, term: 'index lookup', resultsFound: results.length });
+        progressCallback({
+          current: 1,
+          total: 1,
+          term: 'index lookup',
+          resultsFound: results.length,
+        });
       }
 
       console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
@@ -511,19 +551,29 @@ export class SearchOrchestrator {
           seenPaths.add(result.path);
           results.push({
             ...result,
-            source: 'forge-bazaar'
+            source: 'forge-bazaar',
           });
         }
       }
 
       if (progressCallback) {
-        progressCallback({ current: 1, total: 1, term: 'Forge Bazaar', resultsFound: results.length });
+        progressCallback({
+          current: 1,
+          total: 1,
+          term: 'Forge Bazaar',
+          resultsFound: results.length,
+        });
       }
 
       console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
     }
     // FAST PATH: Use TVA direct cache if loaded (when priority is not forgeBazaar, or when forgeBazaar unavailable)
-    else if (this.tvaCacheService?.tvaCacheLoaded && (priority === 'faNexus' || priority === 'both' || !this.forgeBazaarService?.isServiceAvailable())) {
+    else if (
+      this.tvaCacheService?.tvaCacheLoaded &&
+      (priority === 'faNexus' ||
+        priority === 'both' ||
+        !this.forgeBazaarService?.isServiceAvailable())
+    ) {
       console.log(`${MODULE_ID} | Using TVA direct cache (FAST mode)`);
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'TVA cache lookup', resultsFound: 0 });
@@ -538,17 +588,29 @@ export class SearchOrchestrator {
       }
 
       if (progressCallback) {
-        progressCallback({ current: 1, total: 1, term: 'TVA cache lookup', resultsFound: results.length });
+        progressCallback({
+          current: 1,
+          total: 1,
+          term: 'TVA cache lookup',
+          resultsFound: results.length,
+        });
       }
 
       console.log(`${MODULE_ID} | TVA direct cache found ${results.length} results (FAST mode)`);
     }
     // Fallback to SLOW mode - multiple TVA API calls (when priority is not forgeBazaar, or when forgeBazaar unavailable)
-    else if (this.tvaCacheService?.hasTVA && (priority === 'faNexus' || priority === 'both' || !this.forgeBazaarService?.isServiceAvailable())) {
+    else if (
+      this.tvaCacheService?.hasTVA &&
+      (priority === 'faNexus' ||
+        priority === 'both' ||
+        !this.forgeBazaarService?.isServiceAvailable())
+    ) {
       const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
       if (categoryTerms) {
-        console.log(`${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode - index not built)`);
+        console.log(
+          `${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode - index not built)`
+        );
         const totalTerms = categoryTerms.length;
         let searchCount = 0;
 
@@ -561,12 +623,12 @@ export class SearchOrchestrator {
               current: searchCount,
               total: totalTerms,
               term: batch.join(', '),
-              resultsFound: results.length
+              resultsFound: results.length,
             });
           }
 
           // Execute batch in parallel
-          const batchPromises = batch.map(term => this.searchTVA(term));
+          const batchPromises = batch.map((term) => this.searchTVA(term));
           const batchResults = await Promise.allSettled(batchPromises);
 
           // Process results
@@ -584,7 +646,9 @@ export class SearchOrchestrator {
           searchCount += batch.length;
 
           if (searchCount % 12 === 0 || searchCount === totalTerms) {
-            console.log(`${MODULE_ID} | Search progress: ${searchCount}/${totalTerms} terms, ${results.length} results`);
+            console.log(
+              `${MODULE_ID} | Search progress: ${searchCount}/${totalTerms} terms, ${results.length} results`
+            );
           }
 
           // Yield to main thread after each batch for UI responsiveness
@@ -606,11 +670,11 @@ export class SearchOrchestrator {
                 current: searchCount,
                 total: totalTerms,
                 term: batch.join(', '),
-                resultsFound: results.length
+                resultsFound: results.length,
               });
             }
 
-            const batchPromises = batch.map(term => this.searchTVA(term));
+            const batchPromises = batch.map((term) => this.searchTVA(term));
             const batchResults = await Promise.allSettled(batchPromises);
 
             for (const result of batchResults) {
@@ -644,13 +708,18 @@ export class SearchOrchestrator {
           seenPaths.add(result.path);
           results.push({
             ...result,
-            source: 'forge-bazaar'
+            source: 'forge-bazaar',
           });
         }
       }
 
       if (progressCallback) {
-        progressCallback({ current: 1, total: 1, term: 'Forge Bazaar', resultsFound: results.length });
+        progressCallback({
+          current: 1,
+          total: 1,
+          term: 'Forge Bazaar',
+          resultsFound: results.length,
+        });
       }
 
       console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
@@ -659,12 +728,19 @@ export class SearchOrchestrator {
     // Search local index by category
     if (localIndex?.length > 0) {
       if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: 'local index', resultsFound: results.length });
+        progressCallback({
+          current: 0,
+          total: 1,
+          term: 'local index',
+          resultsFound: results.length,
+        });
       }
 
-      const categoryMatches = localIndex.filter(img =>
-        !isExcludedPath(img.path) &&
-        img.category && this.folderMatchesCreatureType(img.category, categoryType)
+      const categoryMatches = localIndex.filter(
+        (img) =>
+          !isExcludedPath(img.path) &&
+          img.category &&
+          this.folderMatchesCreatureType(img.category, categoryType)
       );
       for (const match of categoryMatches) {
         if (!seenPaths.has(match.path)) {
@@ -674,7 +750,9 @@ export class SearchOrchestrator {
       }
     }
 
-    console.log(`${MODULE_ID} | searchByCategory END - found ${results.length} results for ${categoryType}`);
+    console.log(
+      `${MODULE_ID} | searchByCategory END - found ${results.length} results for ${categoryType}`
+    );
     return results;
   }
 
@@ -706,7 +784,9 @@ export class SearchOrchestrator {
 
     // Case: Specific subtypes - search each term separately (OR logic)
     if (hasSpecificSubtypes) {
-      console.log(`${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`);
+      console.log(
+        `${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`
+      );
 
       const seenPaths = new Set();
 
@@ -717,7 +797,9 @@ export class SearchOrchestrator {
         // First search for actor name (highest priority - exact matches)
         if (creatureInfo.actorName) {
           const nameResults = indexService.search(creatureInfo.actorName.toLowerCase());
-          console.log(`${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`);
+          console.log(
+            `${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`
+          );
           for (const result of nameResults) {
             // Double-check exclusion filter for safety
             if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
@@ -725,7 +807,7 @@ export class SearchOrchestrator {
               results.push({
                 ...result,
                 score: result.score ?? 0.1, // Higher priority (lower score = better)
-                fromName: true
+                fromName: true,
               });
             }
           }
@@ -742,7 +824,7 @@ export class SearchOrchestrator {
             results.push({
               ...result,
               score: result.score ?? 0.3,
-              fromSubtype: true
+              fromSubtype: true,
             });
           }
         }
@@ -753,8 +835,12 @@ export class SearchOrchestrator {
 
         // First search for actor name (highest priority)
         if (creatureInfo.actorName) {
-          const nameResults = await this.tvaCacheService.searchTVACacheDirect(creatureInfo.actorName);
-          console.log(`${MODULE_ID} | TVA direct cache returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`);
+          const nameResults = await this.tvaCacheService.searchTVACacheDirect(
+            creatureInfo.actorName
+          );
+          console.log(
+            `${MODULE_ID} | TVA direct cache returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`
+          );
 
           for (const result of nameResults) {
             if (!seenPaths.has(result.path)) {
@@ -762,7 +848,7 @@ export class SearchOrchestrator {
               results.push({
                 ...result,
                 score: result.score ?? 0.1,
-                fromName: true
+                fromName: true,
               });
             }
           }
@@ -770,7 +856,9 @@ export class SearchOrchestrator {
 
         // Then search for all subtypes at once (more efficient)
         const subtypeResults = await this.tvaCacheService.searchTVACacheMultiple(subtypeTerms);
-        console.log(`${MODULE_ID} | TVA direct cache returned ${subtypeResults.length} results for subtypes (${subtypeTerms.join(', ')})`);
+        console.log(
+          `${MODULE_ID} | TVA direct cache returned ${subtypeResults.length} results for subtypes (${subtypeTerms.join(', ')})`
+        );
 
         for (const result of subtypeResults) {
           if (!seenPaths.has(result.path)) {
@@ -778,14 +866,16 @@ export class SearchOrchestrator {
             results.push({
               ...result,
               score: result.score ?? 0.3,
-              fromSubtype: true
+              fromSubtype: true,
             });
           }
         }
       }
       // Fallback to SLOW mode - TVA API calls (only if cache not loaded)
       else if (this.tvaCacheService?.hasTVA) {
-        console.log(`${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode - cache not loaded)`);
+        console.log(
+          `${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode - cache not loaded)`
+        );
 
         // First search for actor name (highest priority)
         if (creatureInfo.actorName) {
@@ -799,7 +889,7 @@ export class SearchOrchestrator {
               results.push({
                 ...result,
                 score: result.score ?? 0.1,
-                fromName: true
+                fromName: true,
               });
             }
           }
@@ -819,7 +909,7 @@ export class SearchOrchestrator {
                 ...result,
                 score: result.score ?? 0.3,
                 fromSubtype: true,
-                matchedTerm: term
+                matchedTerm: term,
               });
             }
           }
@@ -831,7 +921,7 @@ export class SearchOrchestrator {
         // First search for actor name
         if (creatureInfo.actorName) {
           const actorNameLower = creatureInfo.actorName.toLowerCase();
-          const nameMatches = localIndex.filter(img => {
+          const nameMatches = localIndex.filter((img) => {
             if (isExcludedPath(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
@@ -845,7 +935,7 @@ export class SearchOrchestrator {
                 ...match,
                 source: 'local',
                 score: match.score ?? 0.15,
-                fromName: true
+                fromName: true,
               });
             }
           }
@@ -854,15 +944,17 @@ export class SearchOrchestrator {
         // Then search for subtypes
         for (const term of subtypeTerms) {
           const termLower = term.toLowerCase();
-          const localMatches = localIndex.filter(img => {
+          const localMatches = localIndex.filter((img) => {
             // Skip excluded paths
             if (isExcludedPath(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
             const categoryLower = (img.category || '').toLowerCase();
-            return nameLower.includes(termLower) ||
-                   pathLower.includes(termLower) ||
-                   categoryLower.includes(termLower);
+            return (
+              nameLower.includes(termLower) ||
+              pathLower.includes(termLower) ||
+              categoryLower.includes(termLower)
+            );
           });
 
           for (const match of localMatches) {
@@ -873,14 +965,16 @@ export class SearchOrchestrator {
                 source: 'local',
                 score: match.score ?? 0.4,
                 fromSubtype: true,
-                matchedTerm: term
+                matchedTerm: term,
               });
             }
           }
         }
       }
 
-      console.log(`${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`);
+      console.log(
+        `${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`
+      );
 
       this.searchCache.set(cacheKey, results);
       return results;
@@ -898,7 +992,10 @@ export class SearchOrchestrator {
       results.push(...localResults);
     }
 
-    if (this.tvaCacheService?.hasTVA && (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')) {
+    if (
+      this.tvaCacheService?.hasTVA &&
+      (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')
+    ) {
       for (const term of searchTerms) {
         const tvaResults = await this.searchTVA(term);
         for (const result of tvaResults) {
@@ -925,16 +1022,21 @@ export class SearchOrchestrator {
           results.push({
             ...result,
             score: result.score ?? 0.6,
-            fromCategory: true
+            fromCategory: true,
           });
         }
       }
     }
 
     // Filter and sort results
-    const validResults = results.filter(r => {
+    const validResults = results.filter((r) => {
       if (!r.path || typeof r.path !== 'string') return false;
-      return r.path.includes('/') || r.path.includes('.') || r.path.startsWith('http') || r.path.startsWith('forge://');
+      return (
+        r.path.includes('/') ||
+        r.path.includes('.') ||
+        r.path.startsWith('http') ||
+        r.path.startsWith('forge://')
+      );
     });
 
     validResults.sort((a, b) => {
@@ -955,8 +1057,9 @@ export class SearchOrchestrator {
       if (!aIsSubtype && bIsSubtype && !aIsName) return 1;
 
       // Category matches last
-      if (aIsCategory && bIsCategory) { /* same priority */ }
-      else if (!aIsCategory && bIsCategory) return -1;
+      if (aIsCategory && bIsCategory) {
+        /* same priority */
+      } else if (!aIsCategory && bIsCategory) return -1;
       else if (aIsCategory && !bIsCategory) return 1;
 
       // Within same priority, respect source preference
@@ -997,7 +1100,7 @@ export class SearchOrchestrator {
           type: 'batch',
           completed: completed,
           total: totalGroups,
-          currentBatch: batch.map(([key, group]) => group.creatureInfo.actorName)
+          currentBatch: batch.map(([key, group]) => group.creatureInfo.actorName),
         });
       }
 
@@ -1012,7 +1115,7 @@ export class SearchOrchestrator {
         results.set(key, {
           matches: searchResults,
           tokens: group.tokens,
-          creatureInfo: group.creatureInfo
+          creatureInfo: group.creatureInfo,
         });
       }
     }

@@ -18,6 +18,7 @@ chrome scripts/workers/test-worker.html
 ```
 
 Then click the test buttons to verify worker functionality:
+
 - **Test Small Dataset (500 paths)** - Fast test, completes in < 1 second
 - **Test Medium Dataset (2500 paths)** - Progress updates visible
 - **Test Large Dataset (10000 paths)** - Full performance test
@@ -55,21 +56,25 @@ Then click the test buttons to verify worker functionality:
 ### Success Indicators
 
 ✅ **Worker Initialization:**
+
 ```
 token-replacer-fa | Web Worker initialized for background index building
 ```
 
 ✅ **Worker Usage:**
+
 ```
 token-replacer-fa | Using Web Worker for background index building
 ```
 
 ✅ **Progress Updates:**
+
 ```
 token-replacer-fa | Worker completed: 750 images from 800 paths
 ```
 
 ✅ **UI Responsiveness:**
+
 - No freezing during index build
 - Smooth interactions
 - Tokens can be moved while indexing
@@ -77,15 +82,19 @@ token-replacer-fa | Worker completed: 750 images from 800 paths
 ### Failure Indicators
 
 ❌ **Fallback Mode:**
+
 ```
 token-replacer-fa | Using fallback method (main thread with yields)
 ```
+
 This means the worker failed to initialize (check browser compatibility).
 
 ❌ **Worker Errors:**
+
 ```
 token-replacer-fa | Failed to initialize Web Worker: <error>
 ```
+
 Check browser console for details.
 
 ## Files
@@ -97,6 +106,7 @@ Check browser console for details.
 ## Browser Compatibility
 
 Web Workers are supported in:
+
 - ✅ Chrome 4+
 - ✅ Firefox 3.5+
 - ✅ Safari 4+
@@ -107,12 +117,12 @@ If your browser doesn't support workers, the module automatically falls back to 
 
 ## Performance Expectations
 
-| Dataset Size | Expected Duration | Progress Updates |
-|-------------|-------------------|------------------|
-| < 1000 paths | < 1 second | 0-1 updates |
-| 1000-5000 paths | 1-3 seconds | 1-5 updates |
-| 5000-10000 paths | 3-5 seconds | 5-10 updates |
-| > 10000 paths | 5-10+ seconds | 10+ updates |
+| Dataset Size     | Expected Duration | Progress Updates |
+| ---------------- | ----------------- | ---------------- |
+| < 1000 paths     | < 1 second        | 0-1 updates      |
+| 1000-5000 paths  | 1-3 seconds       | 1-5 updates      |
+| 5000-10000 paths | 3-5 seconds       | 5-10 updates     |
+| > 10000 paths    | 5-10+ seconds     | 10+ updates      |
 
 Progress is reported every 1000 items processed.
 
@@ -121,6 +131,7 @@ Progress is reported every 1000 items processed.
 ### Worker not initializing?
 
 Check the browser console for errors. Common issues:
+
 - CSP (Content Security Policy) blocking worker creation
 - Incorrect file path
 - Browser doesn't support workers
@@ -157,6 +168,7 @@ worker.terminate();
 ### Benchmark Performance
 
 Use the standalone test harness to compare performance:
+
 1. Open test-worker.html
 2. Click "Test Large Dataset (10000 paths)"
 3. Note the duration in the statistics panel

@@ -5,7 +5,13 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
-import { isExcludedPath, clearExcludedPathCache, yieldToMain, createModuleError, createDebugLogger } from '../core/Utils.js';
+import {
+  isExcludedPath,
+  clearExcludedPathCache,
+  yieldToMain,
+  createModuleError,
+  createDebugLogger,
+} from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
 const TVA_CACHE_KEY = 'tva-cache-v1';
@@ -69,9 +75,11 @@ export class TVACacheService {
     const isCaching = this.tvaAPI.isCaching;
     if (typeof isCaching === 'function') {
       const startWait = Date.now();
-      while (isCaching() && (Date.now() - startWait) < maxWaitMs) {
-        this._debugLog(`Waiting for TVA to finish caching... (${Date.now() - startWait}ms elapsed)`);
-        await new Promise(resolve => setTimeout(resolve, 500));
+      while (isCaching() && Date.now() - startWait < maxWaitMs) {
+        this._debugLog(
+          `Waiting for TVA to finish caching... (${Date.now() - startWait}ms elapsed)`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
       if (isCaching()) {
@@ -87,7 +95,9 @@ export class TVACacheService {
       }
     }
 
-    this._loadPromise = this._loadTVACacheFromFile().finally(() => { this._loadPromise = null; });
+    this._loadPromise = this._loadTVACacheFromFile().finally(() => {
+      this._loadPromise = null;
+    });
     return this._loadPromise;
   }
 
@@ -140,11 +150,15 @@ export class TVACacheService {
         this.tvaCacheByCategory = cached.tvaCacheByCategory;
         this.tvaCacheImages = cached.tvaCacheImages;
         // Pre-filter excluded paths once (avoids repeated isExcludedPath calls in search methods)
-        this.tvaCacheSearchable = this.tvaCacheImages.filter(img => !isExcludedPath(img.path));
+        this.tvaCacheSearchable = this.tvaCacheImages.filter((img) => !isExcludedPath(img.path));
         this.tvaCacheLoaded = true;
         const categories = Object.keys(this.tvaCacheByCategory).length;
-        this._debugLog(`TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
-        console.log(`${MODULE_ID} | TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
+        this._debugLog(
+          `TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
+        );
+        console.log(
+          `${MODULE_ID} | TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
+        );
         return true;
       }
 
@@ -210,7 +224,11 @@ export class TVACacheService {
             }
           } else {
             // Just a path string - extract name from filename
-            const fileName = img.split('/').pop()?.replace(/\.[^/.]+$/, '') || '';
+            const fileName =
+              img
+                .split('/')
+                .pop()
+                ?.replace(/\.[^/.]+$/, '') || '';
             imageObj = { path: img, name: fileName, category };
           }
 
@@ -231,18 +249,21 @@ export class TVACacheService {
       }
 
       // Pre-filter excluded paths once (avoids 150K+ isExcludedPath calls during searches)
-      this.tvaCacheSearchable = this.tvaCacheImages.filter(img => !isExcludedPath(img.path));
+      this.tvaCacheSearchable = this.tvaCacheImages.filter((img) => !isExcludedPath(img.path));
 
       this.tvaCacheLoaded = true;
       const categories = Object.keys(this.tvaCacheByCategory).length;
-      this._debugLog(`TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
-      console.log(`${MODULE_ID} | TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
+      this._debugLog(
+        `TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
+      );
+      console.log(
+        `${MODULE_ID} | TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
+      );
 
       // Save to IndexedDB for next startup (fire-and-forget)
       this._persistToIndexedDB(staticCacheFile, lastModified, contentLength);
 
       return true;
-
     } catch (error) {
       // If it's already a structured error, re-throw it
       if (error.errorType && error.message && error.recoverySuggestions) {
@@ -294,7 +315,11 @@ export class TVACacheService {
           }
 
           // If server provides Content-Length and it differs → stale
-          if (serverLength > 0 && cached.contentLength > 0 && serverLength !== cached.contentLength) {
+          if (
+            serverLength > 0 &&
+            cached.contentLength > 0 &&
+            serverLength !== cached.contentLength
+          ) {
             this._debugLog(`Content-Length changed: ${cached.contentLength} → ${serverLength}`);
             return null;
           }
@@ -328,18 +353,21 @@ export class TVACacheService {
       cacheFilePath,
       lastModified,
       contentLength,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
-    storageService.save(TVA_CACHE_KEY, data).then(success => {
-      if (success) {
-        this._debugLog(`TVA cache persisted to IndexedDB: ${data.imageCount} images`);
-      } else {
-        this._debugLog('Failed to persist TVA cache to IndexedDB');
-      }
-    }).catch(error => {
-      this._debugLog('Error persisting TVA cache to IndexedDB:', error);
-    });
+    storageService
+      .save(TVA_CACHE_KEY, data)
+      .then((success) => {
+        if (success) {
+          this._debugLog(`TVA cache persisted to IndexedDB: ${data.imageCount} images`);
+        } else {
+          this._debugLog('Failed to persist TVA cache to IndexedDB');
+        }
+      })
+      .catch((error) => {
+        this._debugLog('Error persisting TVA cache to IndexedDB:', error);
+      });
   }
 
   /**
@@ -400,7 +428,7 @@ export class TVACacheService {
           category: img.category,
           tags: img.tags,
           source: 'tva-direct',
-          score: nameLower === termLower ? 0 : nameLower.startsWith(termLower) ? 0.1 : 0.3
+          score: nameLower === termLower ? 0 : nameLower.startsWith(termLower) ? 0.1 : 0.3,
         });
       }
     }
@@ -437,7 +465,9 @@ export class TVACacheService {
       return [];
     }
 
-    this._debugLog(`Searching TVA cache by category: "${categoryType}" (${categoryTerms.length} terms)`);
+    this._debugLog(
+      `Searching TVA cache by category: "${categoryType}" (${categoryTerms.length} terms)`
+    );
     const startTime = Date.now();
 
     const results = [];
@@ -452,7 +482,7 @@ export class TVACacheService {
 
       // Check if matches any category term
       // Note: We intentionally DON'T check img.category (TVA folder name) as it's unreliable
-      const matches = categoryTerms.some(term => {
+      const matches = categoryTerms.some((term) => {
         const termLower = term.toLowerCase();
         return nameLower.includes(termLower) || meaningfulPath.includes(termLower);
       });
@@ -465,7 +495,7 @@ export class TVACacheService {
           category: img.category,
           tags: img.tags,
           source: 'tva-direct',
-          score: 0.3
+          score: 0.3,
         });
       }
     }
@@ -492,10 +522,12 @@ export class TVACacheService {
       return [];
     }
 
-    this._debugLog(`Searching TVA cache for ${searchTerms.length} terms: [${searchTerms.join(', ')}]`);
+    this._debugLog(
+      `Searching TVA cache for ${searchTerms.length} terms: [${searchTerms.join(', ')}]`
+    );
     const startTime = Date.now();
 
-    const termsLower = searchTerms.map(t => t.toLowerCase());
+    const termsLower = searchTerms.map((t) => t.toLowerCase());
     const results = [];
     const seenPaths = new Set();
 
@@ -506,8 +538,8 @@ export class TVACacheService {
       const pathLower = (img.path || '').toLowerCase();
 
       // Check if matches ANY term (OR logic)
-      const matchedTerm = termsLower.find(term =>
-        nameLower.includes(term) || pathLower.includes(term)
+      const matchedTerm = termsLower.find(
+        (term) => nameLower.includes(term) || pathLower.includes(term)
       );
 
       if (matchedTerm) {
@@ -519,7 +551,7 @@ export class TVACacheService {
           tags: img.tags,
           source: 'tva-direct',
           score: nameLower === matchedTerm ? 0 : nameLower.startsWith(matchedTerm) ? 0.1 : 0.3,
-          matchedTerm
+          matchedTerm,
         });
       }
     }
@@ -528,7 +560,9 @@ export class TVACacheService {
     results.sort((a, b) => a.score - b.score);
 
     const elapsed = Date.now() - startTime;
-    this._debugLog(`Multiple term search completed in ${elapsed}ms: ${results.length} matches found`);
+    this._debugLog(
+      `Multiple term search completed in ${elapsed}ms: ${results.length} matches found`
+    );
 
     return results;
   }
@@ -549,7 +583,7 @@ export class TVACacheService {
     const stats = {
       loaded: this.tvaCacheLoaded,
       totalImages: this.tvaCacheImages.length,
-      categories: Object.keys(this.tvaCacheByCategory).length
+      categories: Object.keys(this.tvaCacheByCategory).length,
     };
 
     this._debugLog('Cache stats:', stats);

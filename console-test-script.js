@@ -7,10 +7,10 @@
  */
 
 (async function testIsExcludedPath() {
-  console.log("╔═══════════════════════════════════════════════════════════╗");
-  console.log("║  Token Replacer FA - isExcludedPath() Test Suite         ║");
-  console.log("║  Testing RegExp Precompilation Optimization              ║");
-  console.log("╚═══════════════════════════════════════════════════════════╝\n");
+  console.log('╔═══════════════════════════════════════════════════════════╗');
+  console.log('║  Token Replacer FA - isExcludedPath() Test Suite         ║');
+  console.log('║  Testing RegExp Precompilation Optimization              ║');
+  console.log('╚═══════════════════════════════════════════════════════════╝\n');
 
   // Try to import the isExcludedPath function
   let isExcludedPath;
@@ -19,11 +19,13 @@
     // Adjust this path based on how your module exports utilities
     const utilsModule = await import('./scripts/core/Utils.js');
     isExcludedPath = utilsModule.isExcludedPath;
-    console.log("✅ Successfully imported isExcludedPath from Utils.js\n");
+    console.log('✅ Successfully imported isExcludedPath from Utils.js\n');
   } catch (error) {
-    console.error("❌ Failed to import isExcludedPath:", error);
-    console.log("\nTo run tests manually, use:");
-    console.log("  import('./scripts/core/Utils.js').then(m => window.testIsExcludedPath = m.isExcludedPath)");
+    console.error('❌ Failed to import isExcludedPath:', error);
+    console.log('\nTo run tests manually, use:');
+    console.log(
+      "  import('./scripts/core/Utils.js').then(m => window.testIsExcludedPath = m.isExcludedPath)"
+    );
     return;
   }
 
@@ -72,16 +74,22 @@
     { path: 'creatures/treant_ancient.webp', reason: 'different from tree' },
 
     // Forge CDN creature URLs
-    { path: 'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/creatures/giant_hill.webp', reason: 'creature URL' },
-    { path: 'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/undead/zombie.png', reason: 'creature URL' },
+    {
+      path: 'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/creatures/giant_hill.webp',
+      reason: 'creature URL',
+    },
+    {
+      path: 'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/undead/zombie.png',
+      reason: 'creature URL',
+    },
   ];
 
   // Test excluded paths
-  console.log("═══ TEST 1: Paths That SHOULD Be Excluded (expect TRUE) ═══\n");
+  console.log('═══ TEST 1: Paths That SHOULD Be Excluded (expect TRUE) ═══\n');
   let excludedPass = 0;
   let excludedFail = 0;
 
-  excludedTests.forEach(test => {
+  excludedTests.forEach((test) => {
     const result = isExcludedPath(test.path);
     const status = result ? '✅ PASS' : '❌ FAIL';
     if (result) excludedPass++;
@@ -90,14 +98,16 @@
     console.log(`${status} | ${test.term.padEnd(12)} | ${test.path}`);
   });
 
-  console.log(`\n📊 Excluded Paths: ${excludedPass} passed, ${excludedFail} failed (${excludedTests.length} total)\n`);
+  console.log(
+    `\n📊 Excluded Paths: ${excludedPass} passed, ${excludedFail} failed (${excludedTests.length} total)\n`
+  );
 
   // Test included paths
-  console.log("═══ TEST 2: Paths That Should Be INCLUDED (expect FALSE) ═══\n");
+  console.log('═══ TEST 2: Paths That Should Be INCLUDED (expect FALSE) ═══\n');
   let includedPass = 0;
   let includedFail = 0;
 
-  includedTests.forEach(test => {
+  includedTests.forEach((test) => {
     const result = isExcludedPath(test.path);
     const status = !result ? '✅ PASS' : '❌ FAIL';
     if (!result) includedPass++;
@@ -106,10 +116,12 @@
     console.log(`${status} | ${test.reason.padEnd(18)} | ${test.path}`);
   });
 
-  console.log(`\n📊 Included Paths: ${includedPass} passed, ${includedFail} failed (${includedTests.length} total)\n`);
+  console.log(
+    `\n📊 Included Paths: ${includedPass} passed, ${includedFail} failed (${includedTests.length} total)\n`
+  );
 
   // Edge case testing
-  console.log("═══ TEST 3: Word Boundary Edge Cases ═══\n");
+  console.log('═══ TEST 3: Word Boundary Edge Cases ═══\n');
   const edgeCases = [
     { path: 'tokens/cliff_face.png', expected: true, reason: '"cliff" as whole word' },
     { path: 'tokens/clifford.png', expected: false, reason: '"cliff" as substring only' },
@@ -120,20 +132,24 @@
   let edgePass = 0;
   let edgeFail = 0;
 
-  edgeCases.forEach(test => {
+  edgeCases.forEach((test) => {
     const result = isExcludedPath(test.path);
     const status = result === test.expected ? '✅ PASS' : '❌ FAIL';
     if (result === test.expected) edgePass++;
     else edgeFail++;
 
-    console.log(`${status} | Expected: ${String(test.expected).padEnd(5)} | Got: ${String(result).padEnd(5)} | ${test.reason}`);
+    console.log(
+      `${status} | Expected: ${String(test.expected).padEnd(5)} | Got: ${String(result).padEnd(5)} | ${test.reason}`
+    );
     console.log(`      | ${test.path}`);
   });
 
-  console.log(`\n📊 Edge Cases: ${edgePass} passed, ${edgeFail} failed (${edgeCases.length} total)\n`);
+  console.log(
+    `\n📊 Edge Cases: ${edgePass} passed, ${edgeFail} failed (${edgeCases.length} total)\n`
+  );
 
   // Performance test
-  console.log("═══ TEST 4: Performance Test ═══\n");
+  console.log('═══ TEST 4: Performance Test ═══\n');
   const iterations = 10000;
   const testPaths = [
     'assets/tokens/creature_001.webp',
@@ -147,7 +163,7 @@
   console.time('isExcludedPath Performance');
 
   for (let i = 0; i < iterations; i++) {
-    testPaths.forEach(path => {
+    testPaths.forEach((path) => {
       isExcludedPath(path.replace('001', String(i).padStart(3, '0')));
     });
   }
@@ -159,13 +175,17 @@
 
   console.log(`\n✅ Completed ${totalCalls.toLocaleString()} calls`);
   console.log(`💡 With precompiled patterns: ~${totalPatterns} RegExp objects total`);
-  console.log(`💡 Without optimization: ~${(totalCalls * totalPatterns).toLocaleString()} RegExp objects would be created!`);
-  console.log(`📈 Memory and CPU savings: ${Math.round((totalCalls * totalPatterns) / totalPatterns)}x improvement\n`);
+  console.log(
+    `💡 Without optimization: ~${(totalCalls * totalPatterns).toLocaleString()} RegExp objects would be created!`
+  );
+  console.log(
+    `📈 Memory and CPU savings: ${Math.round((totalCalls * totalPatterns) / totalPatterns)}x improvement\n`
+  );
 
   // Summary
-  console.log("╔═══════════════════════════════════════════════════════════╗");
-  console.log("║                      TEST SUMMARY                         ║");
-  console.log("╚═══════════════════════════════════════════════════════════╝");
+  console.log('╔═══════════════════════════════════════════════════════════╗');
+  console.log('║                      TEST SUMMARY                         ║');
+  console.log('╚═══════════════════════════════════════════════════════════╝');
 
   const totalTests = excludedTests.length + includedTests.length + edgeCases.length;
   const totalPass = excludedPass + includedPass + edgePass;
@@ -177,14 +197,14 @@
   console.log(`  Success Rate: ${Math.round((totalPass / totalTests) * 100)}%\n`);
 
   if (totalFail === 0) {
-    console.log("  🎉 ALL TESTS PASSED! 🎉");
-    console.log("  The RegExp precompilation optimization is working correctly.\n");
+    console.log('  🎉 ALL TESTS PASSED! 🎉');
+    console.log('  The RegExp precompilation optimization is working correctly.\n');
   } else {
-    console.log("  ⚠️  SOME TESTS FAILED");
-    console.log("  Please review the failed tests above.\n");
+    console.log('  ⚠️  SOME TESTS FAILED');
+    console.log('  Please review the failed tests above.\n');
   }
 
-  console.log("═══════════════════════════════════════════════════════════\n");
+  console.log('═══════════════════════════════════════════════════════════\n');
 
   // Return test results for programmatic access
   return {
@@ -194,7 +214,7 @@
     details: {
       excluded: { passed: excludedPass, failed: excludedFail },
       included: { passed: includedPass, failed: includedFail },
-      edgeCases: { passed: edgePass, failed: edgeFail }
-    }
+      edgeCases: { passed: edgePass, failed: edgeFail },
+    },
   };
 })();

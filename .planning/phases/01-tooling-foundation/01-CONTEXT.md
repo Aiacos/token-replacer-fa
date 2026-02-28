@@ -14,6 +14,7 @@ Create package.json with dev dependencies, configure Vitest with jsdom, ESLint v
 ## Implementation Decisions
 
 ### Claude's Discretion
+
 All tooling decisions delegated to Claude. The following constraints are derived from existing codebase conventions:
 
 - **Formatting**: Match existing style — 2-space indentation, single quotes, semicolons, double quotes in templates
@@ -36,12 +37,15 @@ No specific requirements — open to standard approaches. Research should determ
 </specifics>
 
 <code_context>
+
 ## Existing Code Insights
 
 ### Reusable Assets
+
 - No existing tooling configuration to build on — clean slate
 
 ### Established Patterns
+
 - 2-space indentation throughout all .js files
 - Single quotes for strings, double quotes for HTML attributes
 - Semicolons at statement ends
@@ -50,6 +54,7 @@ No specific requirements — open to standard approaches. Research should determ
 - No existing package.json — module runs purely in browser
 
 ### Integration Points
+
 - `scripts/` directory contains all source code to lint/typecheck
 - `scripts/workers/IndexWorker.js` runs in Web Worker context (may need special ESLint env)
 - `build.sh` and `build.bat` must NOT be modified — tooling is dev-only
@@ -66,5 +71,5 @@ None — discussion stayed within phase scope
 
 ---
 
-*Phase: 01-tooling-foundation*
-*Context gathered: 2026-02-28*
+_Phase: 01-tooling-foundation_
+_Context gathered: 2026-02-28_

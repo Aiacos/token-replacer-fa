@@ -5,7 +5,12 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS, MAX_DISPLAY_RESULTS } from '../core/Constants.js';
-import { escapeHtml, parseFilterTerms, matchesAllTerms, renderModuleTemplate } from '../core/Utils.js';
+import {
+  escapeHtml,
+  parseFilterTerms,
+  matchesAllTerms,
+  renderModuleTemplate,
+} from '../core/Utils.js';
 
 // i18n cache to avoid repeated localization lookups
 const I18N_CACHE = new Map();
@@ -13,7 +18,7 @@ const I18N_CACHE = new Map();
 // Cache statistics for debugging
 const I18N_CACHE_STATS = {
   hits: 0,
-  misses: 0
+  misses: 0,
 };
 
 // Filter persistence key for session-only localStorage
@@ -53,7 +58,9 @@ function i18n(key, data = {}) {
 function logI18nCacheStats() {
   const total = I18N_CACHE_STATS.hits + I18N_CACHE_STATS.misses;
   const hitRate = total > 0 ? ((I18N_CACHE_STATS.hits / total) * 100).toFixed(1) : 0;
-  console.log(`${MODULE_ID} | UIManager i18n cache stats: ${I18N_CACHE.size} entries, ${I18N_CACHE_STATS.hits} hits, ${I18N_CACHE_STATS.misses} misses (${hitRate}% hit rate)`);
+  console.log(
+    `${MODULE_ID} | UIManager i18n cache stats: ${I18N_CACHE.size} entries, ${I18N_CACHE_STATS.hits} hits, ${I18N_CACHE_STATS.misses} misses (${hitRate}% hit rate)`
+  );
 }
 
 /**
@@ -119,12 +126,12 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
     window: {
       title: 'Token Replacer FA',
       resizable: true,
-      minimizable: false
+      minimizable: false,
     },
     position: {
       width: 500,
-      height: 'auto'
-    }
+      height: 'auto',
+    },
   };
 
   /**
@@ -227,24 +234,27 @@ export class UIManager {
    * @param {string} currentFile - Current file being processed
    * @returns {Promise<string>} HTML string
    */
-  async createScanProgressHTML(currentDir, dirsScanned, imagesFound, filesInDir, subDirs, currentFile = null) {
-    const shortDir = currentDir.length > 50
-      ? '...' + currentDir.substring(currentDir.length - 47)
-      : currentDir;
+  async createScanProgressHTML(
+    currentDir,
+    dirsScanned,
+    imagesFound,
+    filesInDir,
+    subDirs,
+    currentFile = null
+  ) {
+    const shortDir =
+      currentDir.length > 50 ? '...' + currentDir.substring(currentDir.length - 47) : currentDir;
 
-    return await renderModuleTemplate(
-      `modules/${MODULE_ID}/templates/scan-progress.hbs`,
-      {
-        currentDir,
-        shortDir,
-        dirsScanned,
-        imagesFound,
-        filesInDir,
-        subDirs,
-        currentFile,
-        showDirInfo: filesInDir > 0
-      }
-    );
+    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/scan-progress.hbs`, {
+      currentDir,
+      shortDir,
+      dirsScanned,
+      imagesFound,
+      filesInDir,
+      subDirs,
+      currentFile,
+      showDirInfo: filesInDir > 0,
+    });
   }
 
   /**
@@ -259,18 +269,15 @@ export class UIManager {
   async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    return await renderModuleTemplate(
-      `modules/${MODULE_ID}/templates/parallel-search.hbs`,
-      {
-        percent,
-        completed,
-        total,
-        uniqueTypes,
-        totalTokens,
-        currentBatch,
-        hasBatch: currentBatch.length > 0
-      }
-    );
+    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/parallel-search.hbs`, {
+      percent,
+      completed,
+      total,
+      uniqueTypes,
+      totalTokens,
+      currentBatch,
+      hasBatch: currentBatch.length > 0,
+    });
   }
 
   /**
@@ -288,47 +295,42 @@ export class UIManager {
     this._currentMatches = matches;
 
     // Cap displayed results to prevent UI freeze (12K+ results = DOM + image loading storm)
-    const displayMatches = matches.length > MAX_DISPLAY_RESULTS
-      ? matches.slice(0, MAX_DISPLAY_RESULTS)
-      : matches;
+    const displayMatches =
+      matches.length > MAX_DISPLAY_RESULTS ? matches.slice(0, MAX_DISPLAY_RESULTS) : matches;
     const isCapped = matches.length > MAX_DISPLAY_RESULTS;
 
     // Transform matches array with computed fields
     const transformedMatches = displayMatches.map((match, idx) => {
-      const scoreDisplay = match.score !== undefined
-        ? `${Math.round((1 - match.score) * 100)}%`
-        : (match.source || '');
+      const scoreDisplay =
+        match.score !== undefined ? `${Math.round((1 - match.score) * 100)}%` : match.source || '';
       return {
         index: idx,
         path: match.path,
         name: match.name,
         nameLower: match.name.toLowerCase(),
         scoreDisplay,
-        isFirst: idx === 0
+        isFirst: idx === 0,
       };
     });
 
     // Restore filter term from localStorage for session persistence
     const savedFilterTerm = loadFilterTerm();
 
-    return await renderModuleTemplate(
-      `modules/${MODULE_ID}/templates/match-selection.hbs`,
-      {
-        currentImage: creatureInfo.currentImage,
-        actorName: creatureInfo.actorName,
-        type: creatureInfo.type || 'Unknown',
-        subtype: creatureInfo.subtype || '',
-        tokenCount,
-        showTokenCount: tokenCount > 1,
-        showMultiSelect,
-        totalCount,
-        displayCount: displayMatches.length,
-        isCapped,
-        matches: transformedMatches,
-        skipLabel: i18n('dialog.skip'),
-        savedFilterTerm
-      }
-    );
+    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/match-selection.hbs`, {
+      currentImage: creatureInfo.currentImage,
+      actorName: creatureInfo.actorName,
+      type: creatureInfo.type || 'Unknown',
+      subtype: creatureInfo.subtype || '',
+      tokenCount,
+      showTokenCount: tokenCount > 1,
+      showMultiSelect,
+      totalCount,
+      displayCount: displayMatches.length,
+      isCapped,
+      matches: transformedMatches,
+      skipLabel: i18n('dialog.skip'),
+      savedFilterTerm,
+    });
   }
 
   /**
@@ -341,32 +343,31 @@ export class UIManager {
     const showMultiSelect = tokenCount > 1;
 
     // Transform creature types array with display names
-    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS).sort().map(type => ({
-      displayName: type.charAt(0).toUpperCase() + type.slice(1)
-    }));
+    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS)
+      .sort()
+      .map((type) => ({
+        displayName: type.charAt(0).toUpperCase() + type.slice(1),
+      }));
 
     // Restore filter term from localStorage for session persistence
     const savedFilterTerm = loadFilterTerm();
 
-    return await renderModuleTemplate(
-      `modules/${MODULE_ID}/templates/no-match.hbs`,
-      {
-        currentImage: creatureInfo.currentImage,
-        actorName: creatureInfo.actorName,
-        type: creatureInfo.type || 'Unknown',
-        subtype: creatureInfo.subtype || '',
-        tokenCount,
-        showTokenCount: tokenCount > 1,
-        showMultiSelect,
-        noMatchMessage: i18n('dialog.noMatch', { name: creatureInfo.actorName }),
-        browseByTypeLabel: i18n('dialog.browseByType'),
-        searchCategoryLabel: i18n('dialog.searchCategory'),
-        typeValue: creatureInfo.type || '',
-        creatureTypes,
-        skipLabel: i18n('dialog.skip'),
-        savedFilterTerm
-      }
-    );
+    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/no-match.hbs`, {
+      currentImage: creatureInfo.currentImage,
+      actorName: creatureInfo.actorName,
+      type: creatureInfo.type || 'Unknown',
+      subtype: creatureInfo.subtype || '',
+      tokenCount,
+      showTokenCount: tokenCount > 1,
+      showMultiSelect,
+      noMatchMessage: i18n('dialog.noMatch', { name: creatureInfo.actorName }),
+      browseByTypeLabel: i18n('dialog.browseByType'),
+      searchCategoryLabel: i18n('dialog.searchCategory'),
+      typeValue: creatureInfo.type || '',
+      creatureTypes,
+      skipLabel: i18n('dialog.skip'),
+      savedFilterTerm,
+    });
   }
 
   /**
@@ -379,17 +380,14 @@ export class UIManager {
     const { current, total, term, resultsFound } = progress;
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
 
-    return await renderModuleTemplate(
-      `modules/${MODULE_ID}/templates/search-progress.hbs`,
-      {
-        categoryType,
-        percent,
-        current,
-        total,
-        term: term || '',
-        resultsFound
-      }
-    );
+    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/search-progress.hbs`, {
+      categoryType,
+      percent,
+      current,
+      total,
+      term: term || '',
+      resultsFound,
+    });
   }
 
   /**
@@ -402,37 +400,37 @@ export class UIManager {
    */
   async createProgressHTML(current, total, status, results) {
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-    const counts = results.reduce((acc, r) => {
-      if (r.status === 'success') acc.success++;
-      else if (r.status === 'failed') acc.failed++;
-      else if (r.status === 'skipped') acc.skipped++;
-      return acc;
-    }, { success: 0, failed: 0, skipped: 0 });
+    const counts = results.reduce(
+      (acc, r) => {
+        if (r.status === 'success') acc.success++;
+        else if (r.status === 'failed') acc.failed++;
+        else if (r.status === 'skipped') acc.skipped++;
+        return acc;
+      },
+      { success: 0, failed: 0, skipped: 0 }
+    );
     const { success: successCount, failed: failedCount, skipped: skippedCount } = counts;
 
     // Transform results array with icon classes
-    const transformedResults = results.map(r => ({
+    const transformedResults = results.map((r) => ({
       name: r.name,
       match: r.match || null,
       status: r.status,
-      iconClass: r.status === 'success' ? 'fa-check' :
-                 r.status === 'failed' ? 'fa-times' : 'fa-forward'
+      iconClass:
+        r.status === 'success' ? 'fa-check' : r.status === 'failed' ? 'fa-times' : 'fa-forward',
     }));
 
-    return await renderModuleTemplate(
-      `modules/${MODULE_ID}/templates/progress.hbs`,
-      {
-        percent,
-        current,
-        total,
-        status,
-        successCount,
-        failedCount,
-        skippedCount,
-        hasResults: results.length > 0,
-        results: transformedResults
-      }
-    );
+    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/progress.hbs`, {
+      percent,
+      current,
+      total,
+      status,
+      successCount,
+      failedCount,
+      skippedCount,
+      hasResults: results.length > 0,
+      results: transformedResults,
+    });
   }
 
   /**
@@ -446,7 +444,7 @@ export class UIManager {
     const statusMessage = customMessage || 'Using Token Variant Art cache...';
     return await renderModuleTemplate(templatePath, {
       refreshing,
-      statusMessage
+      statusMessage,
     });
   }
 
@@ -463,15 +461,14 @@ export class UIManager {
     const templatePath = `modules/${MODULE_ID}/templates/error.hbs`;
 
     // Support backward compatibility: accept string or object
-    const data = typeof errorData === 'string'
-      ? { errorType: 'error', message: errorData }
-      : errorData;
+    const data =
+      typeof errorData === 'string' ? { errorType: 'error', message: errorData } : errorData;
 
     return await renderModuleTemplate(templatePath, {
       errorType: data.errorType || 'error',
       message: data.message,
       details: data.details,
-      recoverySuggestions: data.recoverySuggestions
+      recoverySuggestions: data.recoverySuggestions,
     });
   }
 
@@ -485,13 +482,15 @@ export class UIManager {
    * @param {Function} updateSelectionCount - Callback to update selection count display
    */
   _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
-    gridEl.innerHTML = matches.map((match, idx) => {
-      const safeMatchName = escapeHtml(match.name);
-      const safePath = escapeHtml(match.path);
-      const scoreDisplay = match.score !== undefined
-        ? `${Math.round((1 - match.score) * 100)}%`
-        : escapeHtml(match.source || '');
-      return `
+    gridEl.innerHTML = matches
+      .map((match, idx) => {
+        const safeMatchName = escapeHtml(match.name);
+        const safePath = escapeHtml(match.path);
+        const scoreDisplay =
+          match.score !== undefined
+            ? `${Math.round((1 - match.score) * 100)}%`
+            : escapeHtml(match.source || '');
+        return `
         <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
           <div class="skeleton-loader skeleton-72">
             <img src="${safePath}" alt="${safeMatchName}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
@@ -501,7 +500,8 @@ export class UIManager {
           <div class="match-check"><i class="fas fa-check"></i></div>
         </div>
       `;
-    }).join('');
+      })
+      .join('');
 
     // Event delegation with AbortController: fresh closures on each render,
     // old listeners automatically cleaned up via abort signal
@@ -509,30 +509,38 @@ export class UIManager {
     const ac = new AbortController();
     gridEl._delegateAbort = ac;
 
-    gridEl.addEventListener('click', (e) => {
-      const option = e.target.closest('.match-option');
-      if (!option) return;
-      const options = gridEl.querySelectorAll('.match-option');
-      if (multiSelectEnabled) {
-        option.classList.toggle('selected');
-        const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
-        if (selectedCount === 0) option.classList.add('selected');
-        updateSelectionCount();
-      } else {
-        options.forEach(o => o.classList.remove('selected'));
-        option.classList.add('selected');
-      }
-    }, { signal: ac.signal });
+    gridEl.addEventListener(
+      'click',
+      (e) => {
+        const option = e.target.closest('.match-option');
+        if (!option) return;
+        const options = gridEl.querySelectorAll('.match-option');
+        if (multiSelectEnabled) {
+          option.classList.toggle('selected');
+          const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
+          if (selectedCount === 0) option.classList.add('selected');
+          updateSelectionCount();
+        } else {
+          options.forEach((o) => o.classList.remove('selected'));
+          option.classList.add('selected');
+        }
+      },
+      { signal: ac.signal }
+    );
 
-    gridEl.addEventListener('dblclick', (e) => {
-      const option = e.target.closest('.match-option');
-      if (!option) return;
-      this._pendingResolve = null;
-      resolve({
-        paths: [option.dataset.path],
-        mode: 'sequential'
-      });
-    }, { signal: ac.signal });
+    gridEl.addEventListener(
+      'dblclick',
+      (e) => {
+        const option = e.target.closest('.match-option');
+        if (!option) return;
+        this._pendingResolve = null;
+        resolve({
+          paths: [option.dataset.path],
+          mode: 'sequential',
+        });
+      },
+      { signal: ac.signal }
+    );
 
     updateSelectionCount();
   }
@@ -605,15 +613,24 @@ export class UIManager {
 
             // Filter the FULL dataset in memory, not just rendered DOM
             const fullData = this._currentMatches || [];
-            const filtered = filterTerms.length > 0
-              ? fullData.filter(m => matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms))
-              : fullData;
+            const filtered =
+              filterTerms.length > 0
+                ? fullData.filter((m) =>
+                    matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
+                  )
+                : fullData;
 
             // Cap for rendering
             const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
             // Re-render the grid with filtered results
-            this._renderMatchGrid(display, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
+            this._renderMatchGrid(
+              display,
+              matchGrid,
+              multiSelectEnabled,
+              resolve,
+              updateSelectionCount
+            );
 
             // Update counts
             if (visibleCountEl) visibleCountEl.textContent = display.length;
@@ -633,9 +650,9 @@ export class UIManager {
 
       // Handle mode toggle buttons
       const modeButtons = container.querySelectorAll('.mode-btn');
-      modeButtons.forEach(btn => {
+      modeButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
-          modeButtons.forEach(b => b.classList.remove('active'));
+          modeButtons.forEach((b) => b.classList.remove('active'));
           btn.classList.add('active');
           assignmentMode = btn.dataset.mode;
         });
@@ -645,7 +662,13 @@ export class UIManager {
       // This uses the same AbortController pattern as filter re-renders (single code path)
       if (matchGrid) {
         const initialMatches = (this._currentMatches || []).slice(0, MAX_DISPLAY_RESULTS);
-        this._renderMatchGrid(initialMatches, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
+        this._renderMatchGrid(
+          initialMatches,
+          matchGrid,
+          multiSelectEnabled,
+          resolve,
+          updateSelectionCount
+        );
       }
 
       // Handle button clicks
@@ -655,7 +678,7 @@ export class UIManager {
       if (selectBtn) {
         selectBtn.addEventListener('click', () => {
           const selectedOptions = container.querySelectorAll('.match-option.selected');
-          const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+          const paths = Array.from(selectedOptions).map((opt) => opt.dataset.path);
           this._pendingResolve = null;
           if (paths.length > 0) {
             resolve({ paths, mode: assignmentMode });
@@ -721,9 +744,9 @@ export class UIManager {
 
       const setupModeButtons = () => {
         const modeButtons = container.querySelectorAll('.mode-btn');
-        modeButtons.forEach(btn => {
+        modeButtons.forEach((btn) => {
           btn.addEventListener('click', () => {
-            modeButtons.forEach(b => b.classList.remove('active'));
+            modeButtons.forEach((b) => b.classList.remove('active'));
             btn.classList.add('active');
             assignmentMode = btn.dataset.mode;
           });
@@ -746,7 +769,8 @@ export class UIManager {
 
         if (results.length === 0) {
           if (categoryFilter) categoryFilter.style.display = 'none';
-          if (matchGrid) matchGrid.innerHTML = `
+          if (matchGrid)
+            matchGrid.innerHTML = `
             <div class="no-results-message">
               <i class="fas fa-folder-open"></i>
               <span>${escapeHtml(i18n('dialog.noResultsInCategory'))}</span>
@@ -768,7 +792,13 @@ export class UIManager {
         if (!matchGrid) return;
 
         // Render grid and attach handlers via shared helper
-        this._renderMatchGrid(displayItems, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
+        this._renderMatchGrid(
+          displayItems,
+          matchGrid,
+          multiSelectEnabled,
+          resolve,
+          updateSelectionCount
+        );
 
         if (multiSelectEnabled) {
           if (modeToggle) modeToggle.style.display = 'flex';
@@ -805,14 +835,23 @@ export class UIManager {
               const filterTerms = parseFilterTerms(categorySearchInput.value);
 
               // Filter the FULL dataset, not just rendered DOM elements
-              const filtered = filterTerms.length > 0
-                ? fullCategoryResults.filter(m => matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms))
-                : fullCategoryResults;
+              const filtered =
+                filterTerms.length > 0
+                  ? fullCategoryResults.filter((m) =>
+                      matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
+                    )
+                  : fullCategoryResults;
 
               const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
               // Re-render grid with filtered results
-              this._renderMatchGrid(display, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
+              this._renderMatchGrid(
+                display,
+                matchGrid,
+                multiSelectEnabled,
+                resolve,
+                updateSelectionCount
+              );
 
               if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
               if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
@@ -840,21 +879,30 @@ export class UIManager {
 
           // Check if it matches a known creature type, otherwise use as direct search
           const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS);
-          const selectedType = creatureTypes.find(t => t === searchTerm) || searchTerm;
+          const selectedType = creatureTypes.find((t) => t === searchTerm) || searchTerm;
 
           if (resultsContainer) resultsContainer.style.display = 'block';
           if (loadingEl) {
             loadingEl.style.display = 'block';
             loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, {
-              current: 0, total: 1, term: 'initializing...', resultsFound: 0
+              current: 0,
+              total: 1,
+              term: 'initializing...',
+              resultsFound: 0,
             });
           }
           if (matchGrid) matchGrid.innerHTML = '';
           if (selectBtn) selectBtn.disabled = true;
 
-          const results = await searchByCategory(selectedType, localIndex, null, async (progress) => {
-            if (loadingEl) loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, progress);
-          });
+          const results = await searchByCategory(
+            selectedType,
+            localIndex,
+            null,
+            async (progress) => {
+              if (loadingEl)
+                loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, progress);
+            }
+          );
           displayResults(results);
         });
       }
@@ -873,7 +921,7 @@ export class UIManager {
       if (selectBtn) {
         selectBtn.addEventListener('click', () => {
           const selectedOptions = container.querySelectorAll('.match-option.selected');
-          const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+          const paths = Array.from(selectedOptions).map((opt) => opt.dataset.path);
           this._pendingResolve = null;
           if (paths.length > 0) {
             resolve({ paths, mode: assignmentMode });
@@ -935,12 +983,12 @@ export class UIManager {
         title: i18n('dialog.title'),
         resizable: true,
         positioned: true,
-        minimizable: false
+        minimizable: false,
       },
       position: {
         width: 500,
-        height: 'auto'
-      }
+        height: 'auto',
+      },
     });
     return this.mainDialog;
   }

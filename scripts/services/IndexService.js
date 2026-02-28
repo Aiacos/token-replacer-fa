@@ -5,19 +5,30 @@
  * @module services/IndexService
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, EXCLUDED_FILENAME_TERMS } from '../core/Constants.js';
-import { extractPathFromTVAResult, extractNameFromTVAResult, isExcludedPath, createModuleError, createDebugLogger } from '../core/Utils.js';
+import {
+  MODULE_ID,
+  CREATURE_TYPE_MAPPINGS,
+  EXCLUDED_FOLDERS,
+  EXCLUDED_FILENAME_TERMS,
+} from '../core/Constants.js';
+import {
+  extractPathFromTVAResult,
+  extractNameFromTVAResult,
+  isExcludedPath,
+  createModuleError,
+  createDebugLogger,
+} from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 14;  // v2.10.0: Added termIndex for O(1) search term lookups
+const INDEX_VERSION = 14; // v2.10.0: Added termIndex for O(1) search term lookups
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
-  daily: 24 * 60 * 60 * 1000,           // 1 day
-  weekly: 7 * 24 * 60 * 60 * 1000,      // 7 days
-  monthly: 30 * 24 * 60 * 60 * 1000,    // 30 days
-  quarterly: 90 * 24 * 60 * 60 * 1000   // 90 days
+  daily: 24 * 60 * 60 * 1000, // 1 day
+  weekly: 7 * 24 * 60 * 60 * 1000, // 7 days
+  monthly: 30 * 24 * 60 * 60 * 1000, // 30 days
+  quarterly: 90 * 24 * 60 * 60 * 1000, // 90 days
 };
 
 /**
@@ -58,7 +69,9 @@ export class IndexService {
         this.worker = null;
       }
     } else {
-      console.warn(`${MODULE_ID} | Web Workers not supported in this browser, using fallback method`);
+      console.warn(
+        `${MODULE_ID} | Web Workers not supported in this browser, using fallback method`
+      );
     }
   }
 
@@ -187,7 +200,7 @@ export class IndexService {
     const terms = text
       .toLowerCase()
       .split(/[\/\\\-_\s\.]+/)
-      .filter(term => term.length > 0);
+      .filter((term) => term.length > 0);
 
     // Return unique terms
     return [...new Set(terms)];
@@ -212,7 +225,9 @@ export class IndexService {
 
       // Version check
       if (data.version !== INDEX_VERSION) {
-        this._debugLog(`Index version mismatch (cached: ${data.version}, current: ${INDEX_VERSION}), rebuilding`);
+        this._debugLog(
+          `Index version mismatch (cached: ${data.version}, current: ${INDEX_VERSION}), rebuilding`
+        );
         console.log(`${MODULE_ID} | Index version mismatch, rebuilding`);
         await storageService.remove(CACHE_KEY);
         return false;
@@ -238,7 +253,9 @@ export class IndexService {
           }
         }
         const rebuiltSize = Object.keys(this.index.termIndex).length;
-        console.log(`${MODULE_ID} | termIndex rebuilt: ${rebuiltSize} unique terms from ${imageCount} images`);
+        console.log(
+          `${MODULE_ID} | termIndex rebuilt: ${rebuiltSize} unique terms from ${imageCount} images`
+        );
         // Save updated index back to cache so this only happens once
         await this.saveToCache();
       }
@@ -307,7 +324,7 @@ export class IndexService {
       lastUpdate: Date.now(),
       categories,
       allPaths: {},
-      termIndex: {}
+      termIndex: {},
     };
   }
 
@@ -336,7 +353,14 @@ export class IndexService {
 
     try {
       // Extract name from path if not provided
-      const imageName = name || path.split('/').pop()?.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ') || 'Unknown';
+      const imageName =
+        name ||
+        path
+          .split('/')
+          .pop()
+          ?.replace(/\.[^/.]+$/, '')
+          .replace(/[-_]/g, ' ') ||
+        'Unknown';
 
       // Try to categorize the image
       const { category, subcategories } = this.categorizeImage(path, imageName);
@@ -345,7 +369,7 @@ export class IndexService {
       this.index.allPaths[path] = {
         name: imageName,
         category: category || null,
-        subcategories: subcategories || []
+        subcategories: subcategories || [],
       };
 
       // Populate termIndex for O(1) search term lookups
@@ -396,11 +420,13 @@ export class IndexService {
    */
   _tryPreloadedCache(tvaCacheImages) {
     if (tvaCacheImages && tvaCacheImages.length > 0) {
-      console.log(`${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`);
-      return tvaCacheImages.map(img => ({
+      console.log(
+        `${MODULE_ID} | Using pre-loaded TVA cache (FAST PATH): ${tvaCacheImages.length} images`
+      );
+      return tvaCacheImages.map((img) => ({
         path: img.path,
         name: img.name,
-        category: img.category
+        category: img.category,
       }));
     }
     return [];
@@ -467,19 +493,32 @@ export class IndexService {
       // Look for any property that might contain cache data (arrays, Maps, large objects)
       for (const key of configKeys) {
         const val = config[key];
-        if (val && (Array.isArray(val) || val instanceof Map || (typeof val === 'object' && Object.keys(val).length > 100))) {
+        if (
+          val &&
+          (Array.isArray(val) ||
+            val instanceof Map ||
+            (typeof val === 'object' && Object.keys(val).length > 100))
+        ) {
           console.log(`${MODULE_ID} | TVA_CONFIG.${key} is potential cache:`, {
             type: typeof val,
             isArray: Array.isArray(val),
             isMap: val instanceof Map,
             constructor: val?.constructor?.name,
-            size: Array.isArray(val) ? val.length : (val instanceof Map ? val.size : Object.keys(val).length)
+            size: Array.isArray(val)
+              ? val.length
+              : val instanceof Map
+                ? val.size
+                : Object.keys(val).length,
           });
         }
       }
 
       // staticCache is just a boolean flag, not the cache itself
-      console.log(`${MODULE_ID} | staticCache is:`, config.staticCache, '(this is just a flag, not the cache)');
+      console.log(
+        `${MODULE_ID} | staticCache is:`,
+        config.staticCache,
+        '(this is just a flag, not the cache)'
+      );
     }
 
     // Method 3b: Look for TVA's searchPaths - this might contain configured paths
@@ -519,8 +558,11 @@ export class IndexService {
       // TVA stores static cache in game settings
       const staticCache = game.settings.get('token-variants', 'staticCache');
       if (staticCache) {
-        console.log(`${MODULE_ID} | Found staticCache in game settings, type:`, typeof staticCache,
-          Array.isArray(staticCache) ? `length: ${staticCache.length}` : '');
+        console.log(
+          `${MODULE_ID} | Found staticCache in game settings, type:`,
+          typeof staticCache,
+          Array.isArray(staticCache) ? `length: ${staticCache.length}` : ''
+        );
         allPaths = this.extractPathsFromTVACache(staticCache);
       }
     } catch (e) {
@@ -572,12 +614,16 @@ export class IndexService {
       tvaModule?.api?.cache,
       window.TVA?.cache,
       window.TVA?.staticCache,
-      globalThis.TVA_CACHE
+      globalThis.TVA_CACHE,
     ];
 
     for (const cache of possibleCaches) {
       if (cache) {
-        console.log(`${MODULE_ID} | Found potential cache:`, typeof cache, cache?.constructor?.name);
+        console.log(
+          `${MODULE_ID} | Found potential cache:`,
+          typeof cache,
+          cache?.constructor?.name
+        );
         const paths = this.extractPathsFromTVACache(cache);
         if (paths.length > 0) return paths;
       }
@@ -685,8 +731,8 @@ export class IndexService {
       // Fallback: Log available TVA API methods to find the cache
       this._debugLog('Could not find TVA cache directly, logging available API methods');
       console.log(`${MODULE_ID} | Could not find TVA cache directly. Available API methods:`);
-      const apiMethods = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] === 'function');
-      const apiProps = Object.keys(tvaAPI).filter(k => typeof tvaAPI[k] !== 'function');
+      const apiMethods = Object.keys(tvaAPI).filter((k) => typeof tvaAPI[k] === 'function');
+      const apiProps = Object.keys(tvaAPI).filter((k) => typeof tvaAPI[k] !== 'function');
       console.log(`${MODULE_ID} | Methods:`, apiMethods);
       console.log(`${MODULE_ID} | Properties:`, apiProps);
 
@@ -812,9 +858,17 @@ export class IndexService {
    */
   isValidImagePath(str) {
     if (!str || typeof str !== 'string') return false;
-    return str.includes('/') || str.startsWith('http') || str.startsWith('forge://') ||
-           str.endsWith('.webp') || str.endsWith('.png') || str.endsWith('.jpg') ||
-           str.endsWith('.jpeg') || str.endsWith('.gif') || str.endsWith('.svg');
+    return (
+      str.includes('/') ||
+      str.startsWith('http') ||
+      str.startsWith('forge://') ||
+      str.endsWith('.webp') ||
+      str.endsWith('.png') ||
+      str.endsWith('.jpg') ||
+      str.endsWith('.jpeg') ||
+      str.endsWith('.gif') ||
+      str.endsWith('.svg')
+    );
   }
 
   /**
@@ -828,21 +882,19 @@ export class IndexService {
   async indexPathsWithWorker(paths, onProgress = null) {
     if (!this.worker) {
       this._debugLog('Worker not available for indexPathsWithWorker');
-      throw this._createError(
-        'worker_failed',
-        'Web Worker not available for background indexing',
-        ['disable_worker', 'reload_module']
-      );
+      throw this._createError('worker_failed', 'Web Worker not available for background indexing', [
+        'disable_worker',
+        'reload_module',
+      ]);
     }
 
     // Validate paths array
     if (!Array.isArray(paths) || paths.length === 0) {
       this._debugLog('Invalid paths array in indexPathsWithWorker:', paths);
-      throw this._createError(
-        'invalid_paths',
-        'Paths array is empty or invalid',
-        ['check_paths', 'reload_module']
-      );
+      throw this._createError('invalid_paths', 'Paths array is empty or invalid', [
+        'check_paths',
+        'reload_module',
+      ]);
     }
 
     this._debugLog(`Starting worker-based indexing for ${paths.length} paths`);
@@ -872,7 +924,9 @@ export class IndexService {
             this.worker.removeEventListener('error', errorHandler);
 
             this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
-            console.log(`${MODULE_ID} | Worker completed: ${imagesFound} images from ${total} paths`);
+            console.log(
+              `${MODULE_ID} | Worker completed: ${imagesFound} images from ${total} paths`
+            );
             resolve(imagesFound);
             break;
 
@@ -934,8 +988,8 @@ export class IndexService {
             paths: paths,
             creatureTypeMappings: CREATURE_TYPE_MAPPINGS,
             excludedFolders: EXCLUDED_FOLDERS,
-            excludedFilenameTerms: EXCLUDED_FILENAME_TERMS
-          }
+            excludedFilenameTerms: EXCLUDED_FILENAME_TERMS,
+          },
         });
       } catch (error) {
         this.worker.removeEventListener('message', messageHandler);
@@ -963,11 +1017,10 @@ export class IndexService {
     // Validate paths array
     if (!Array.isArray(paths)) {
       this._debugLog('Invalid paths parameter in indexPathsDirectly:', paths);
-      throw this._createError(
-        'invalid_paths',
-        'Paths parameter is not an array',
-        ['check_paths', 'check_console']
-      );
+      throw this._createError('invalid_paths', 'Paths parameter is not an array', [
+        'check_paths',
+        'check_console',
+      ]);
     }
 
     if (paths.length === 0) {
@@ -1007,8 +1060,12 @@ export class IndexService {
         const timePerImage = batchDuration / batchImagesProcessed;
         const processed = Math.min(i + BATCH_SIZE, totalPaths);
 
-        this._debugLog(`Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image)`);
-        console.log(`${MODULE_ID} | Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image, ${(1000/batchDuration*batchImagesProcessed).toFixed(0)} images/sec)`);
+        this._debugLog(
+          `Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image)`
+        );
+        console.log(
+          `${MODULE_ID} | Progress: ${processed}/${totalPaths} images | Batch: ${batchDuration.toFixed(1)}ms (${timePerImage.toFixed(3)}ms/image, ${((1000 / batchDuration) * batchImagesProcessed).toFixed(0)} images/sec)`
+        );
 
         // Reset batch tracking
         batchStartTime = performance.now();
@@ -1020,17 +1077,21 @@ export class IndexService {
         }
 
         // Yield to main thread
-        await new Promise(r => setTimeout(r, 10));
+        await new Promise((r) => setTimeout(r, 10));
       }
 
       // Final performance summary
       const totalTime = performance.now() - startTime;
       const avgTimePerImage = totalTime / totalPaths;
-      const throughput = (totalPaths / totalTime * 1000).toFixed(0);
+      const throughput = ((totalPaths / totalTime) * 1000).toFixed(0);
 
-      this._debugLog(`Indexed ${imagesFound} images from ${totalPaths} paths in ${totalTime.toFixed(0)}ms`);
+      this._debugLog(
+        `Indexed ${imagesFound} images from ${totalPaths} paths in ${totalTime.toFixed(0)}ms`
+      );
       console.log(`${MODULE_ID} | Indexed ${imagesFound} images from ${totalPaths} paths`);
-      console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
+      console.log(
+        `${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`
+      );
 
       return imagesFound;
     } catch (error) {
@@ -1055,7 +1116,7 @@ export class IndexService {
     const allTerms = new Set();
     for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
       allTerms.add(category);
-      terms.forEach(t => allTerms.add(t));
+      terms.forEach((t) => allTerms.add(t));
     }
 
     const termsArray = Array.from(allTerms);
@@ -1098,7 +1159,7 @@ export class IndexService {
             isArray: Array.isArray(results),
             isMap: results instanceof Map,
             constructor: results?.constructor?.name,
-            size: results instanceof Map ? results.size : 'N/A'
+            size: results instanceof Map ? results.size : 'N/A',
           });
 
           // If it's a Map, log detailed structure of entries
@@ -1109,7 +1170,7 @@ export class IndexService {
                 valueType: typeof mapValue,
                 isArray: Array.isArray(mapValue),
                 length: Array.isArray(mapValue) ? mapValue.length : 'N/A',
-                sample: Array.isArray(mapValue) ? mapValue.slice(0, 2) : mapValue
+                sample: Array.isArray(mapValue) ? mapValue.slice(0, 2) : mapValue,
               });
             }
           }
@@ -1120,7 +1181,10 @@ export class IndexService {
 
         // DEBUG: Log extraction results
         if (processed < BATCH_SIZE && items.length > 0) {
-          console.log(`${MODULE_ID} | DEBUG extracted ${items.length} items from "${term}", first:`, items[0]);
+          console.log(
+            `${MODULE_ID} | DEBUG extracted ${items.length} items from "${term}", first:`,
+            items[0]
+          );
         }
 
         for (const item of items) {
@@ -1144,7 +1208,7 @@ export class IndexService {
       if (onProgress && (processed % 50 === 0 || processed === totalTerms)) {
         onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
       }
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 50));
     }
 
     // Final performance summary
@@ -1152,8 +1216,10 @@ export class IndexService {
     const totalImages = Object.keys(this.index.allPaths).length;
     if (totalImages > 0) {
       const avgTimePerImage = totalTime / totalImages;
-      const throughput = (totalImages / totalTime * 1000).toFixed(0);
-      console.log(`${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`);
+      const throughput = ((totalImages / totalTime) * 1000).toFixed(0);
+      console.log(
+        `${MODULE_ID} | Performance: Total ${totalTime.toFixed(0)}ms | Avg ${avgTimePerImage.toFixed(3)}ms/image | ${throughput} images/sec`
+      );
     }
 
     return imagesFound;
@@ -1214,7 +1280,7 @@ export class IndexService {
 
       try {
         // Try to load from cache first
-        if (!forceRebuild && await this.loadFromCache()) {
+        if (!forceRebuild && (await this.loadFromCache())) {
           // Check if update is needed
           if (!this.needsUpdate()) {
             this.isBuilt = true;
@@ -1243,8 +1309,12 @@ export class IndexService {
 
           const stats = this.getStats();
           const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
-          this._debugLog(`Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
-          console.log(`${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`);
+          this._debugLog(
+            `Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`
+          );
+          console.log(
+            `${MODULE_ID} | Index built: ${totalImages} total images (${stats.categorizedImages} categorized) in ${elapsed}s`
+          );
           return true;
         }
 
@@ -1312,11 +1382,11 @@ export class IndexService {
       }
 
       // Return all images in this category
-      const results = categoryData._all.map(item => ({
+      const results = categoryData._all.map((item) => ({
         path: item.path,
         name: item.name,
         source: 'index',
-        category: categoryLower
+        category: categoryLower,
       }));
 
       this._debugLog(`Found ${results.length} results for category: ${categoryLower}`);
@@ -1341,7 +1411,12 @@ export class IndexService {
     }
 
     // Validate parameters
-    if (!category || typeof category !== 'string' || !subcategory || typeof subcategory !== 'string') {
+    if (
+      !category ||
+      typeof category !== 'string' ||
+      !subcategory ||
+      typeof subcategory !== 'string'
+    ) {
       this._debugLog('Invalid category or subcategory parameters:', { category, subcategory });
       return [];
     }
@@ -1358,14 +1433,16 @@ export class IndexService {
 
       // Direct subcategory match
       if (categoryData[subcatLower]) {
-        const results = categoryData[subcatLower].map(item => ({
+        const results = categoryData[subcatLower].map((item) => ({
           path: item.path,
           name: item.name,
           source: 'index',
           category: categoryLower,
-          subcategory: subcatLower
+          subcategory: subcatLower,
         }));
-        this._debugLog(`Found ${results.length} results for subcategory: ${categoryLower}/${subcatLower}`);
+        this._debugLog(
+          `Found ${results.length} results for subcategory: ${categoryLower}/${subcatLower}`
+        );
         return results;
       }
 
@@ -1384,14 +1461,16 @@ export class IndexService {
                 name: item.name,
                 source: 'index',
                 category: categoryLower,
-                subcategory: subcat
+                subcategory: subcat,
               });
             }
           }
         }
       }
 
-      this._debugLog(`Found ${results.length} partial matches for subcategory: ${categoryLower}/${subcatLower}`);
+      this._debugLog(
+        `Found ${results.length} partial matches for subcategory: ${categoryLower}/${subcatLower}`
+      );
       return results;
     } catch (error) {
       this._debugLog(`Error searching by subcategory (${category}/${subcategory}):`, error);
@@ -1438,7 +1517,7 @@ export class IndexService {
                   path,
                   name: data.name,
                   source: 'index',
-                  category: data.category
+                  category: data.category,
                 });
               }
             }
@@ -1487,7 +1566,9 @@ export class IndexService {
         }
       }
 
-      this._debugLog(`Searching for multiple terms: [${terms.join(', ')}] (${allTokens.size} unique tokens)`);
+      this._debugLog(
+        `Searching for multiple terms: [${terms.join(', ')}] (${allTokens.size} unique tokens)`
+      );
 
       // O(1) lookup in termIndex for each unique token
       for (const token of allTokens) {
@@ -1502,7 +1583,7 @@ export class IndexService {
                   path,
                   name: data.name,
                   source: 'index',
-                  category: data.category
+                  category: data.category,
                 });
               }
             }
@@ -1542,8 +1623,10 @@ export class IndexService {
       totalImages: totalImages,
       categorizedImages: categorizedCount,
       uncategorizedImages: totalImages - categorizedCount,
-      lastUpdate: this.index?.lastUpdate ? new Date(this.index.lastUpdate).toLocaleString() : 'Never',
-      categories: categoryStats
+      lastUpdate: this.index?.lastUpdate
+        ? new Date(this.index.lastUpdate).toLocaleString()
+        : 'Never',
+      categories: categoryStats,
     };
   }
 

@@ -61,11 +61,12 @@ The module must continue to reliably replace token artwork exactly as it does to
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| JSDoc vs TypeScript | Trade-off between type safety strength and build complexity | — Pending (research will inform) |
-| Test framework choice | Need something compatible with Foundry VTT's browser-only runtime | — Pending (research will inform) |
-| Internal-only refactor | User wants quality uplift without disrupting existing users | — Pending |
+| Decision               | Rationale                                                         | Outcome                          |
+| ---------------------- | ----------------------------------------------------------------- | -------------------------------- |
+| JSDoc vs TypeScript    | Trade-off between type safety strength and build complexity       | — Pending (research will inform) |
+| Test framework choice  | Need something compatible with Foundry VTT's browser-only runtime | — Pending (research will inform) |
+| Internal-only refactor | User wants quality uplift without disrupting existing users       | — Pending                        |
 
 ---
-*Last updated: 2026-02-28 after initialization*
+
+_Last updated: 2026-02-28 after initialization_

@@ -49,19 +49,19 @@
 
 ### Component Responsibilities and Testability Status
 
-| Component | Responsibility | Foundry Globals Used | Testability (Current) |
-|-----------|----------------|---------------------|-----------------------|
-| `main.js` (TokenReplacerApp) | Workflow orchestration, settings registration, hooks | `game`, `ui`, `canvas`, `Hooks` | Not directly testable |
-| `UIManager.js` | Dialogs, template rendering | `game.i18n`, `ui.notifications`, `foundry.applications.api` | Not directly testable |
-| `TokenService.js` | Token extraction/grouping (static) | `canvas.tokens` | Partially: pure methods are testable with mock canvas |
-| `SearchOrchestrator.js` | Fuzzy search, parallel processing, caching | `game.settings.get()` (3 settings) | Partially: logic is testable with mocked settings |
-| `TVACacheService.js` | TVA integration, cache loading | `game.modules`, `game.settings` | Partially: pure cache parsing methods are testable |
-| `IndexService.js` | Hierarchical index, Worker management | `game.settings.get()` (1 setting) | Partially: index build logic is testable |
-| `ScanService.js` | Directory scanning | `game.settings`, `FilePicker` | Hard: FilePicker is Foundry-only |
-| `StorageService.js` | IndexedDB / localStorage wrapper | `window.indexedDB` | Testable with jsdom (IndexedDB mock exists) |
-| `Constants.js` | Configuration constants | None | Fully testable |
-| `Utils.js` | Shared utility functions | `game.i18n`, `game.settings` (in 2 functions) | Mostly testable; 2 functions need extraction |
-| `IndexWorker.js` | Background index building | None | Fully testable (Node-compatible) |
+| Component                    | Responsibility                                       | Foundry Globals Used                                        | Testability (Current)                                 |
+| ---------------------------- | ---------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- |
+| `main.js` (TokenReplacerApp) | Workflow orchestration, settings registration, hooks | `game`, `ui`, `canvas`, `Hooks`                             | Not directly testable                                 |
+| `UIManager.js`               | Dialogs, template rendering                          | `game.i18n`, `ui.notifications`, `foundry.applications.api` | Not directly testable                                 |
+| `TokenService.js`            | Token extraction/grouping (static)                   | `canvas.tokens`                                             | Partially: pure methods are testable with mock canvas |
+| `SearchOrchestrator.js`      | Fuzzy search, parallel processing, caching           | `game.settings.get()` (3 settings)                          | Partially: logic is testable with mocked settings     |
+| `TVACacheService.js`         | TVA integration, cache loading                       | `game.modules`, `game.settings`                             | Partially: pure cache parsing methods are testable    |
+| `IndexService.js`            | Hierarchical index, Worker management                | `game.settings.get()` (1 setting)                           | Partially: index build logic is testable              |
+| `ScanService.js`             | Directory scanning                                   | `game.settings`, `FilePicker`                               | Hard: FilePicker is Foundry-only                      |
+| `StorageService.js`          | IndexedDB / localStorage wrapper                     | `window.indexedDB`                                          | Testable with jsdom (IndexedDB mock exists)           |
+| `Constants.js`               | Configuration constants                              | None                                                        | Fully testable                                        |
+| `Utils.js`                   | Shared utility functions                             | `game.i18n`, `game.settings` (in 2 functions)               | Mostly testable; 2 functions need extraction          |
+| `IndexWorker.js`             | Background index building                            | None                                                        | Fully testable (Node-compatible)                      |
 
 ## Recommended Project Structure
 
@@ -124,6 +124,7 @@ token-replacer-fa/
 **Trade-offs:** Slightly more wiring at startup; dramatically better testability. Settings do not change during a single workflow run, so reading once at init is semantically correct anyway.
 
 **Example — current (untestable):**
+
 ```javascript
 // SearchOrchestrator.js — current pattern
 async searchLocalIndexDirectly(searchTerms, index, creatureType = null) {
@@ -133,6 +134,7 @@ async searchLocalIndexDirectly(searchTerms, index, creatureType = null) {
 ```
 
 **Example — refactored (testable):**
+
 ```javascript
 // SearchOrchestrator.js — refactored
 export class SearchOrchestrator {
@@ -173,6 +175,7 @@ const orchestrator = new SearchOrchestrator(settings);
 **Trade-offs:** One extra layer of indirection; makes the Foundry dependency boundary explicit. Worth the cost for `TokenService` because token grouping/extraction logic is complex enough to warrant unit tests.
 
 **Example — TokenService adapter:**
+
 ```javascript
 // TokenService.js — testable static methods with injected canvas
 export class TokenService {
@@ -184,9 +187,11 @@ export class TokenService {
     if (!canvasTokens?.placeables) return [];
     const selected = canvasTokens.controlled ?? [];
     if (selected.length > 0) {
-      return selected.filter(t => t.actor?.type === 'npc' || t.actor?.type === 'creature');
+      return selected.filter((t) => t.actor?.type === 'npc' || t.actor?.type === 'creature');
     }
-    return canvasTokens.placeables.filter(t => t.actor?.type === 'npc' || t.actor?.type === 'creature');
+    return canvasTokens.placeables.filter(
+      (t) => t.actor?.type === 'npc' || t.actor?.type === 'creature'
+    );
   }
 }
 
@@ -195,9 +200,15 @@ const mockCanvas = {
   tokens: {
     controlled: [],
     placeables: [
-      { actor: { type: 'npc', name: 'Goblin', system: { details: { type: { value: 'humanoid' } } } } }
-    ]
-  }
+      {
+        actor: {
+          type: 'npc',
+          name: 'Goblin',
+          system: { details: { type: { value: 'humanoid' } } },
+        },
+      },
+    ],
+  },
 };
 const tokens = TokenService.getSceneNPCTokens(mockCanvas.tokens);
 ```
@@ -211,6 +222,7 @@ const tokens = TokenService.getSceneNPCTokens(mockCanvas.tokens);
 **Trade-offs:** Mocks may drift from real Foundry API; test passes but production breaks. Mitigate by keeping mocks minimal and verified against real behavior.
 
 **Example — `tests/setup/foundry-mocks.js`:**
+
 ```javascript
 // tests/setup/foundry-mocks.js
 import { vi } from 'vitest';
@@ -257,6 +269,7 @@ export function createMockUI() {
 ```
 
 **`tests/setup/vitest.setup.js`:**
+
 ```javascript
 import { vi, beforeEach } from 'vitest';
 import { createMockGame, createMockCanvas, createMockUI } from './foundry-mocks.js';
@@ -279,6 +292,7 @@ beforeEach(() => {
 **Trade-offs:** Slightly more functions; the pure variants become trivially testable.
 
 **Example — `Utils.js` extraction:**
+
 ```javascript
 // Pure factory — no Foundry dependency
 export function createModuleErrorRaw(errorType, message, details, recoverySuggestions = []) {
@@ -288,7 +302,7 @@ export function createModuleErrorRaw(errorType, message, details, recoverySugges
 // Foundry-aware wrapper — stays in Utils.js but tested indirectly
 export function createModuleError(errorType, details, recoveryKeys = []) {
   const message = game.i18n.localize(`TOKEN_REPLACER_FA.errors.${errorType}`);
-  const recoverySuggestions = recoveryKeys.map(key =>
+  const recoverySuggestions = recoveryKeys.map((key) =>
     game.i18n.localize(`TOKEN_REPLACER_FA.recovery.${key}`)
   );
   return createModuleErrorRaw(errorType, message, details, recoverySuggestions);
@@ -304,6 +318,7 @@ export function createModuleError(errorType, details, recoveryKeys = []) {
 **Trade-offs:** JSDoc-only type safety (no compiler errors); test run is fast since no transpilation step. Aligns with the project constraint: "No build step currently."
 
 **`vitest.config.js` (minimal):**
+
 ```javascript
 import { defineConfig } from 'vitest/config';
 
@@ -320,6 +335,7 @@ export default defineConfig({
 ```
 
 **`package.json` (dev-only, not shipped in ZIP):**
+
 ```json
 {
   "name": "token-replacer-fa",
@@ -341,6 +357,7 @@ export default defineConfig({
 ### Test-Time vs. Production Data Flow
 
 **Production (unchanged):**
+
 ```
 User clicks button
     ↓
@@ -358,6 +375,7 @@ UIManager.createMainDialog()      ← foundry.applications.api.ApplicationV2
 ```
 
 **Test-time (after refactor):**
+
 ```
 Test creates mock data
     ↓
@@ -385,27 +403,27 @@ Test replaces plain object with test fixture — same code path
 
 ### Must Refactor (blocks testability)
 
-| Component | Issue | Refactoring Action |
-|-----------|-------|-------------------|
-| `SearchOrchestrator.js` | `game.settings.get()` called per search (3 locations) | Inject settings object via constructor; `_getSetting()` helper falls back to `game.settings` |
-| `TokenService.getSceneNPCTokens()` | Hard-coded `canvas.tokens` | Add optional parameter `canvasTokens = canvas?.tokens` |
-| `TVACacheService.init()` | `game.modules.get()` hardcoded | Accept optional `tvaAPI` parameter; fall back to `game.modules.get()` when null |
-| `Utils.createModuleError()` | Calls `game.i18n.localize()` | Extract pure `createModuleErrorRaw()` without i18n |
-| `Utils.createDebugLogger()` | Calls `game.settings.get()` | Keep try-catch wrapper (already has it); stub `game` in tests |
-| `IndexService` | `game.settings.get()` once in `build()` | Inject as constructor parameter |
-| `ScanService` | `FilePicker` (no mock available) | Define `FilePickerAdapter` interface; inject in constructor |
+| Component                          | Issue                                                 | Refactoring Action                                                                           |
+| ---------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `SearchOrchestrator.js`            | `game.settings.get()` called per search (3 locations) | Inject settings object via constructor; `_getSetting()` helper falls back to `game.settings` |
+| `TokenService.getSceneNPCTokens()` | Hard-coded `canvas.tokens`                            | Add optional parameter `canvasTokens = canvas?.tokens`                                       |
+| `TVACacheService.init()`           | `game.modules.get()` hardcoded                        | Accept optional `tvaAPI` parameter; fall back to `game.modules.get()` when null              |
+| `Utils.createModuleError()`        | Calls `game.i18n.localize()`                          | Extract pure `createModuleErrorRaw()` without i18n                                           |
+| `Utils.createDebugLogger()`        | Calls `game.settings.get()`                           | Keep try-catch wrapper (already has it); stub `game` in tests                                |
+| `IndexService`                     | `game.settings.get()` once in `build()`               | Inject as constructor parameter                                                              |
+| `ScanService`                      | `FilePicker` (no mock available)                      | Define `FilePickerAdapter` interface; inject in constructor                                  |
 
 ### Fine As-Is (no refactoring needed for testability)
 
-| Component | Why It Is Fine |
-|-----------|---------------|
-| `Constants.js` | Zero Foundry globals, pure data — test directly |
+| Component                   | Why It Is Fine                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `Constants.js`              | Zero Foundry globals, pure data — test directly                                                  |
 | `Utils.js` (most functions) | `isExcludedPath()`, `extractPathFromTVAResult()`, `parseSubtypeTerms()` are pure — test directly |
-| `IndexWorker.js` | No Foundry globals, uses postMessage — test with Worker mock or directly |
-| `StorageService.js` | Uses `window.indexedDB` — jsdom environment provides this |
-| `UIManager.js` | Correct to keep Foundry-dependent; verify via integration/manual testing |
-| `main.js` hooks | Correct to keep as imperative shell; not unit tested |
-| `ForgeBazaarService.js` | Intentional stub — leave alone |
+| `IndexWorker.js`            | No Foundry globals, uses postMessage — test with Worker mock or directly                         |
+| `StorageService.js`         | Uses `window.indexedDB` — jsdom environment provides this                                        |
+| `UIManager.js`              | Correct to keep Foundry-dependent; verify via integration/manual testing                         |
+| `main.js` hooks             | Correct to keep as imperative shell; not unit tested                                             |
+| `ForgeBazaarService.js`     | Intentional stub — leave alone                                                                   |
 
 ## Refactoring Order (Dependency-Aware)
 
@@ -455,6 +473,7 @@ Phase 8: IndexService and ScanService
 ```
 
 **Why this order:**
+
 - Phase 1-3 are zero-risk (no production code changes)
 - Phase 4 is additive (new function, existing callers unchanged)
 - Phase 5 is the highest-value test surface (search logic is the core feature)
@@ -499,23 +518,23 @@ Phase 8: IndexService and ScanService
 
 ### External Services
 
-| Service | Integration Pattern | Testability Notes |
-|---------|---------------------|-------------------|
-| Foundry `game` global | `vi.stubGlobal('game', mockGame)` in setup | Stub once; override per test where needed |
-| Foundry `canvas` global | `vi.stubGlobal('canvas', mockCanvas)` in setup | Stub with minimal token placeables |
-| TVA module (`token-variants`) | Inject `tvaAPI` object at construction time | Mock with `{ doImageSearch: vi.fn() }` |
-| Fuse.js (dynamic CDN load) | Mock `loadFuse()` in tests to return a real Fuse instance | Import Fuse.js directly in test; inject |
-| IndexedDB | jsdom v26 provides `window.indexedDB` | Fake-IndexedDB npm package as fallback |
-| Web Workers | `Worker` is unavailable in jsdom | Test `indexPathsDirectly()` (the fallback path) directly |
+| Service                       | Integration Pattern                                       | Testability Notes                                        |
+| ----------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+| Foundry `game` global         | `vi.stubGlobal('game', mockGame)` in setup                | Stub once; override per test where needed                |
+| Foundry `canvas` global       | `vi.stubGlobal('canvas', mockCanvas)` in setup            | Stub with minimal token placeables                       |
+| TVA module (`token-variants`) | Inject `tvaAPI` object at construction time               | Mock with `{ doImageSearch: vi.fn() }`                   |
+| Fuse.js (dynamic CDN load)    | Mock `loadFuse()` in tests to return a real Fuse instance | Import Fuse.js directly in test; inject                  |
+| IndexedDB                     | jsdom v26 provides `window.indexedDB`                     | Fake-IndexedDB npm package as fallback                   |
+| Web Workers                   | `Worker` is unavailable in jsdom                          | Test `indexPathsDirectly()` (the fallback path) directly |
 
 ### Internal Boundaries
 
-| Boundary | Communication | Refactoring Implication |
-|----------|---------------|------------------------|
-| `main.js` ↔ Services | Direct method calls after `init()` | `main.js` is the wiring point; read settings once here, pass to constructors |
-| `SearchService` ↔ `SearchOrchestrator` | `setDependencies()` already exists | Add settings parameter to `SearchOrchestrator` constructor; `SearchService.init()` reads and passes |
-| `IndexService` ↔ `IndexWorker` | `postMessage` / `onmessage` | Test `IndexService` without Worker by checking fallback path; test Worker logic via direct function export |
-| Services ↔ `StorageService` | Singleton import (`storageService`) | For tests, pass mock StorageService via constructor or use jsdom IndexedDB directly |
+| Boundary                               | Communication                       | Refactoring Implication                                                                                    |
+| -------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `main.js` ↔ Services                   | Direct method calls after `init()`  | `main.js` is the wiring point; read settings once here, pass to constructors                               |
+| `SearchService` ↔ `SearchOrchestrator` | `setDependencies()` already exists  | Add settings parameter to `SearchOrchestrator` constructor; `SearchService.init()` reads and passes        |
+| `IndexService` ↔ `IndexWorker`         | `postMessage` / `onmessage`         | Test `IndexService` without Worker by checking fallback path; test Worker logic via direct function export |
+| Services ↔ `StorageService`            | Singleton import (`storageService`) | For tests, pass mock StorageService via constructor or use jsdom IndexedDB directly                        |
 
 ## Sources
 
@@ -527,5 +546,6 @@ Phase 8: IndexService and ScanService
 - Direct codebase examination of `scripts/services/*.js`, `scripts/core/Utils.js` — Foundry global call sites inventoried (HIGH confidence)
 
 ---
-*Architecture research for: Foundry VTT module testability and maintainability refactor*
-*Researched: 2026-02-28*
+
+_Architecture research for: Foundry VTT module testability and maintainability refactor_
+_Researched: 2026-02-28_

@@ -18,6 +18,7 @@ The foundry-vtt-types FAQ explicitly documents this: `game.settings.get()` requi
 
 **How to avoid:**
 Create a `scripts/types/settings.d.ts` file that declares module augmentation of `ClientSettings.Values`:
+
 ```typescript
 declare global {
   namespace ClientSettings {
@@ -30,9 +31,11 @@ declare global {
   }
 }
 ```
+
 This file must be included in `tsconfig.json`'s `include` or referenced via triple-slash directives.
 
 **Warning signs:**
+
 - JSDoc annotations on service methods say `@returns {boolean}` but callers receive `any` in IDE tooltips
 - `@ts-check` reports no errors even when a number is passed where a boolean is expected
 - `getSetting('fuzzyThreshold')` autocompletes without type narrowing
@@ -51,18 +54,26 @@ Foundry VTT globals are browser-injected at runtime. The module's services (e.g.
 
 **How to avoid:**
 Use a Vitest `setupFiles` entry that runs before any test module is imported. The `rayners/foundry-test-utils` library provides 600+ lines of Foundry mock infrastructure for free. Alternatively, create `tests/setup/foundry-mocks.js` with:
+
 ```javascript
-global.game = { modules: { get: vi.fn() }, settings: { get: vi.fn(), register: vi.fn() }, i18n: { localize: vi.fn(k => k) } };
+global.game = {
+  modules: { get: vi.fn() },
+  settings: { get: vi.fn(), register: vi.fn() },
+  i18n: { localize: vi.fn((k) => k) },
+};
 global.canvas = { scene: null };
 global.ui = { notifications: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } };
 global.Hooks = { once: vi.fn(), on: vi.fn(), call: vi.fn() };
 ```
+
 Reference this in `vitest.config.js`:
+
 ```javascript
-setupFiles: ['./tests/setup/foundry-mocks.js']
+setupFiles: ['./tests/setup/foundry-mocks.js'];
 ```
 
 **Warning signs:**
+
 - Test output shows `ReferenceError: game is not defined` on the first import
 - `vi.mock()` for a service file still fails because the dependency chain imports a Foundry global
 - Tests pass individually but fail when the full suite runs (import side-effects)
@@ -81,9 +92,12 @@ jsdom intentionally does not implement Web Workers. The module's graceful fallba
 
 **How to avoid:**
 Mock the `Worker` constructor explicitly in the test setup:
+
 ```javascript
 class MockWorker {
-  constructor(url) { this.url = url; }
+  constructor(url) {
+    this.url = url;
+  }
   postMessage(data) {
     // Synchronously simulate worker response for unit tests
     setTimeout(() => this.onmessage?.({ data: { type: 'complete', result: {} } }), 0);
@@ -93,9 +107,11 @@ class MockWorker {
 }
 global.Worker = MockWorker;
 ```
+
 Test the worker-disabled fallback path separately by setting `indexService.worker = null` in the test setup. For the Worker code path, integration-test via Quench inside Foundry VTT where real Workers run.
 
 **Warning signs:**
+
 - `IndexService` unit tests run fast (< 10ms) for operations that should take longer — fallback path is being used
 - `indexService.worker` is `null` in every test despite no explicit `null` setup
 - Code coverage shows `indexPathsWithWorker()` at 0% even though it's "tested"
@@ -113,11 +129,13 @@ Foundry VTT resolves ES module imports and Handlebars template paths using its o
 ES module imports in Foundry are browser `<script type="module">` tags. The browser fetches each imported path as a URL. Refactoring tools (rename symbol, move file) in an IDE update `import` statements in JS files but do not update string literals in `loadTemplates()` calls, `new Worker(path)` constructor calls, or CSS `url()` references. These string-literal paths only break at runtime, not at lint/check time.
 
 **How to avoid:**
+
 - Define all module-relative path strings as named constants in `Constants.js` rather than inline strings: `WORKER_PATH = 'modules/token-replacer-fa/scripts/workers/IndexWorker.js'`
 - After any file move, search for the old filename in all `.js`, `.hbs`, `.css`, and `.json` files: `grep -r "OldFileName" scripts/ templates/ styles/`
 - The `esmodules` entry in `module.json` is the single entry point — only `main.js` is listed there, and all other imports flow from it. Do not add additional `esmodules` entries; all files must be reachable through the existing import graph
 
 **Warning signs:**
+
 - Browser console shows `Failed to load module script` with a 404 on a `.js` file
 - Handlebars template shows blank content without error (template path string was not updated)
 - `Worker` fails silently (constructor exception caught, falls back to `null`)
@@ -135,12 +153,14 @@ Any code that calls `game.settings.get(MODULE_ID, key)` before `game.settings.re
 The current codebase already solved this once (v2.11.1, documented in MEMORY.md): `registerSettings()` must be called as the very first operation in the `init` hook, before any `_debugLog()` call because `_debugLog` internally calls `getSetting('debugMode')`. A refactor that adds a new service singleton instantiated at module scope (outside a hook) could call `getSetting()` during module load — before any hook fires.
 
 **How to avoid:**
+
 - Never call `getSetting()` in a class constructor or at module scope. Only call it inside methods, hooks, or after `Hooks.once('init', ...)` has fired
 - Write a test that verifies `registerSettings()` is the first statement inside the `init` hook
 - If new services are added, enforce lazy initialization (only resolve `getSetting()` values when a method is called, not in the constructor)
 - Add a guard in `getSetting()` itself: log a warning if called before the settings registration flag is set
 
 **Warning signs:**
+
 - `Error: cannot access setting [key] before it is registered` in browser console on module load
 - Module works when loaded alone but fails when other modules load first (initialization race)
 - A new service class instantiated at module scope calls any Foundry API in its constructor
@@ -158,12 +178,14 @@ The module stores its index in IndexedDB under the key `'token-replacer-fa-index
 Cache key constants are defined in the service files as local `const` declarations (not exported from `Constants.js`). During a cleanup refactor, a developer might rename `CACHE_KEY` from `'token-replacer-fa-index-v3'` to `'token-replacer-fa-index'` for aesthetic reasons, or change `StorageService` method names, not realizing the string literal is the persistence identity.
 
 **How to avoid:**
+
 - Centralize ALL storage key strings in `Constants.js` as exported constants. Never use inline string literals for cache keys
 - Treat cache keys like database table names: only change them when intentionally invalidating existing caches, and document this in the changelog
 - If a key must change, add a migration: check for the old key, copy data to the new key, delete the old key
 - The `INDEX_VERSION` constant already handles schema invalidation within a key — use it, don't rename the key
 
 **Warning signs:**
+
 - A refactor PR changes a string that looks like a key but isn't annotated as "persistent storage key"
 - Index builds every time after a deploy even on machines that had a valid cache before
 - `storageService.has('token-replacer-fa-index-v3')` returns `false` after a refactor
@@ -183,12 +205,14 @@ The `@league-of-foundry-developers/foundry-vtt-types` package has only partial v
 The foundry-vtt-types README explicitly states: "versions 0.7, 0.8, and 9 are fully supported with partial support for versions 10, 11, and 12. Work on support for version 13 is currently underway." The v13 branch "has known bugs, issues in ergonomics, and unfinished work." This means annotating code against these types gives false confidence.
 
 **How to avoid:**
+
 - Use foundry-vtt-types for basic structure and common APIs only (e.g., `Actor`, `Token`, `Scene`), not for v13-specific APIs like `ApplicationV2`
 - For v13-specific types, write local `@typedef` declarations in the module rather than relying on the third-party package
 - Set realistic expectations: JSDoc types in this project provide IDE autocompletion and catch common mistakes, not full type safety
 - Install from the `main` branch, not npm, to get the most current stubs: `npm add -D fvtt-types@github:League-of-Foundry-Developers/foundry-vtt-types#main`
 
 **Warning signs:**
+
 - IDE shows no errors on code that accesses non-existent properties of `ApplicationV2`
 - Type-checking passes but the runtime throws `TypeError: app.render is not a function`
 - Autocomplete suggests methods that don't exist in the Foundry v13 API
@@ -206,12 +230,14 @@ Foundry VTT's `Hooks.on()` and `Hooks.once()` do not `await` async handler funct
 This is a documented architectural fact of Foundry: "Hooks do not await any registered callback that returns a Promise before moving on." The current codebase handles this correctly for the `getSceneControlButtons` hook (synchronous), and wraps the `ready` hook in an IIFE with its own error handling. A refactor that restructures these hooks could accidentally introduce an awaited call where synchronous code was expected.
 
 **How to avoid:**
+
 - All async operations triggered from hooks must have their own top-level `try/catch`
 - The `getSceneControlButtons` hook handler must remain synchronous — never add `await` inside it
 - When testing hook-triggered behavior, verify error handling by mocking a rejection and confirming the module doesn't silently swallow it
 - Add JSDoc `@returns {void}` (not `@returns {Promise}`) to hook handlers to make the synchronous contract explicit
 
 **Warning signs:**
+
 - A hook handler becomes `async` without a corresponding `try/catch`
 - `ui.notifications.error()` is never called even when a hook handler throws
 - Tests show the handler was called but side effects never happened
@@ -229,12 +255,14 @@ When `dialog.render()` is called without `{ force: true }`, ApplicationV2 silent
 This is documented in the project's MEMORY.md and was fixed in v2.11.3. ApplicationV2's `render()` is designed to be idempotent: calling `render()` on an already-rendered application is a no-op unless forced. On first render, the application has not yet been rendered, so the behavior is counterintuitive — you must force the first render explicitly. A refactor that changes how dialogs are created or that introduces a new dialog type will re-encounter this bug if `{ force: true }` is not applied consistently.
 
 **How to avoid:**
+
 - Create a module-internal wrapper `renderDialog(app)` that always passes `{ force: true }` and document why
 - Write a test that verifies `dialog.rendered === true` after the creation call
 - Add a linting rule or code comment at every `dialog.render()` call site explaining that `force: true` is required
 - Never call `render()` without the options argument on a newly-created ApplicationV2 instance
 
 **Warning signs:**
+
 - Dialog is created but nothing appears on screen
 - `uiManager.isDialogOpen()` returns `false` immediately after `createMainDialog()`
 - `dialog.rendered` is `false` after `await dialog.render()` returns
@@ -252,12 +280,14 @@ The module exports singletons (`export const searchService = new SearchService()
 ES module singletons are initialized exactly once per module load. In tests, if the Foundry global mock is incomplete when the module is imported, the singleton captures the incomplete state and all subsequent tests use a broken instance. Resetting between tests requires re-importing the module, which requires cache-busting — non-trivial in Vitest without explicit module mocking.
 
 **How to avoid:**
+
 - Ensure the global mock setup file (`tests/setup/foundry-mocks.js`) is comprehensive before writing any service tests
 - Use `vi.resetModules()` in `beforeEach` for service tests that need a fresh singleton: `const { searchService } = await import('../scripts/services/SearchService.js')`
 - Alternatively, test service classes directly (not singletons): `new SearchService()` — add a factory or test-only constructor if needed
 - The services are already class-based, making this approach viable without structural changes
 
 **Warning signs:**
+
 - Service singleton has unexpected state mid-test-suite that was set by a previous test
 - Changing the order of tests changes whether they pass or fail
 - Mock return values appear correct but the service method still returns wrong data
@@ -275,12 +305,14 @@ Foundry VTT downloads `module.json` from the manifest URL to discover the module
 A cleanup refactor might remove fields that look unused (e.g., `bugs`, `url`) or restructure nested objects for consistency. Foundry's manifest parser is strict about required fields and the `compatibility` object format. The `version` field must also remain a semver string matching the `download` URL path precisely.
 
 **How to avoid:**
+
 - Treat `module.json` as a read-only contract during refactoring — changes must be intentional (version bumps, new language files)
 - The `sync-version.sh` script is the only approved mechanism for version field changes
 - Never add or remove top-level fields without consulting Foundry's manifest documentation
 - Verify the manifest is valid after any change using the Foundry package validator
 
 **Warning signs:**
+
 - Foundry shows "Module update available" but clicking Update does nothing
 - Module fails to activate after a fresh install
 - Console shows `Error parsing module.json` or manifest validation failure
@@ -293,14 +325,14 @@ A cleanup refactor might remove fields that look unused (e.g., `bugs`, `url`) or
 
 Shortcuts that seem reasonable but create long-term problems.
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Skip declaration merging for `ClientSettings.Values` | Faster annotation | Type errors on every `getSetting()` call, defeating the purpose | Never — do it once up front |
-| Use `@ts-ignore` to silence type errors | Unblocks progress | Masks real issues; annotated code gives false safety | Never in refactor phase |
-| Test only the happy path for async services | Faster test writing | Error recovery code (quota exceeded, worker crash, TVA timeout) stays untested | Only in initial spike, fix before merge |
-| Add `any` cast to suppress TVACacheService types | Unblocks other tests | Cache data shape changes silently | Only with `// TODO: fix type` comment |
-| Inline cache key strings instead of constants | Saves one import | Cache key changes during cleanup break all existing caches | Never for persistent storage keys |
-| Skip `{ force: true }` on `render()` during refactor | Seems to work in quick test | Dialog never appears for users on first load | Never for ApplicationV2 instances |
+| Shortcut                                             | Immediate Benefit           | Long-term Cost                                                                 | When Acceptable                         |
+| ---------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------ | --------------------------------------- |
+| Skip declaration merging for `ClientSettings.Values` | Faster annotation           | Type errors on every `getSetting()` call, defeating the purpose                | Never — do it once up front             |
+| Use `@ts-ignore` to silence type errors              | Unblocks progress           | Masks real issues; annotated code gives false safety                           | Never in refactor phase                 |
+| Test only the happy path for async services          | Faster test writing         | Error recovery code (quota exceeded, worker crash, TVA timeout) stays untested | Only in initial spike, fix before merge |
+| Add `any` cast to suppress TVACacheService types     | Unblocks other tests        | Cache data shape changes silently                                              | Only with `// TODO: fix type` comment   |
+| Inline cache key strings instead of constants        | Saves one import            | Cache key changes during cleanup break all existing caches                     | Never for persistent storage keys       |
+| Skip `{ force: true }` on `render()` during refactor | Seems to work in quick test | Dialog never appears for users on first load                                   | Never for ApplicationV2 instances       |
 
 ---
 
@@ -308,13 +340,13 @@ Shortcuts that seem reasonable but create long-term problems.
 
 Common mistakes when connecting to external services.
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| TVA cache file direct access | Assume `TVA_CONFIG.staticCacheFile` is always a valid path | Validate path exists before fetch; handle null/undefined gracefully |
-| TVA `isCaching()` polling | Trust the return value absolutely | Add a timeout (already 30s); but also handle "still caching" as a non-fatal recoverable state |
-| Fuse.js CDN load | Assume CDN is always available | The `loadFuse()` utility already handles this; do not bypass it during refactoring |
-| IndexedDB in test environments | jsdom's IndexedDB is partially implemented | Mock `StorageService` entirely in unit tests; test real IndexedDB only via Quench integration tests |
-| Worker thread path (`modules/token-replacer-fa/scripts/workers/IndexWorker.js`) | Treat as a relative import string | It is a browser URL; must match the deployed file path exactly; never refactor without updating this string |
+| Integration                                                                     | Common Mistake                                             | Correct Approach                                                                                            |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| TVA cache file direct access                                                    | Assume `TVA_CONFIG.staticCacheFile` is always a valid path | Validate path exists before fetch; handle null/undefined gracefully                                         |
+| TVA `isCaching()` polling                                                       | Trust the return value absolutely                          | Add a timeout (already 30s); but also handle "still caching" as a non-fatal recoverable state               |
+| Fuse.js CDN load                                                                | Assume CDN is always available                             | The `loadFuse()` utility already handles this; do not bypass it during refactoring                          |
+| IndexedDB in test environments                                                  | jsdom's IndexedDB is partially implemented                 | Mock `StorageService` entirely in unit tests; test real IndexedDB only via Quench integration tests         |
+| Worker thread path (`modules/token-replacer-fa/scripts/workers/IndexWorker.js`) | Treat as a relative import string                          | It is a browser URL; must match the deployed file path exactly; never refactor without updating this string |
 
 ---
 
@@ -322,12 +354,12 @@ Common mistakes when connecting to external services.
 
 Patterns that work at small scale but fail as usage grows.
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Rebuild termIndex in main thread after every cache load | UI pause on first load post-version bump | Build termIndex in worker; or cache separately in IndexedDB | Libraries with >10k images |
-| Synchronous `indexOf`/`includes` search in categorizeImage() without pre-compiled patterns | Search gets slower as creature type mappings grow | Pre-compile regex at startup (already partially done); add to test coverage | When CREATURE_TYPE_MAPPINGS exceeds ~30 entries per category |
-| Unbounded `I18N_CACHE` Map in UIManager | Memory grows throughout session | Cap at 1000 entries; or accept current unbounded growth for module-lifetime scope | If module is run in very long sessions (12+ hours) |
-| Single Web Worker for both index building and search | One long search blocks another | Current architecture is single-worker; acceptable for this module's scope | When token library exceeds 100k images |
+| Trap                                                                                       | Symptoms                                          | Prevention                                                                        | When It Breaks                                               |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Rebuild termIndex in main thread after every cache load                                    | UI pause on first load post-version bump          | Build termIndex in worker; or cache separately in IndexedDB                       | Libraries with >10k images                                   |
+| Synchronous `indexOf`/`includes` search in categorizeImage() without pre-compiled patterns | Search gets slower as creature type mappings grow | Pre-compile regex at startup (already partially done); add to test coverage       | When CREATURE_TYPE_MAPPINGS exceeds ~30 entries per category |
+| Unbounded `I18N_CACHE` Map in UIManager                                                    | Memory grows throughout session                   | Cap at 1000 entries; or accept current unbounded growth for module-lifetime scope | If module is run in very long sessions (12+ hours)           |
+| Single Web Worker for both index building and search                                       | One long search blocks another                    | Current architecture is single-worker; acceptable for this module's scope         | When token library exceeds 100k images                       |
 
 ---
 
@@ -335,11 +367,11 @@ Patterns that work at small scale but fail as usage grows.
 
 Domain-specific security issues beyond general web security.
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| Adding `.innerHTML` assignments during refactoring without `escapeHtml()` | XSS via token names containing HTML | All dynamic HTML assignments must use `escapeHtml()`; templates use Handlebars auto-escape |
-| Logging token image paths to console unconditionally in debug mode | Path traversal disclosure in shared GM sessions | Debug logs are already gated on `debugMode` setting; never log paths outside this gate |
-| Exposing internal service instances on `window.TokenReplacerFA` | Direct manipulation of module state from browser console | Acceptable for a Foundry module in GM context; document that this is debug API only |
+| Mistake                                                                   | Risk                                                     | Prevention                                                                                 |
+| ------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Adding `.innerHTML` assignments during refactoring without `escapeHtml()` | XSS via token names containing HTML                      | All dynamic HTML assignments must use `escapeHtml()`; templates use Handlebars auto-escape |
+| Logging token image paths to console unconditionally in debug mode        | Path traversal disclosure in shared GM sessions          | Debug logs are already gated on `debugMode` setting; never log paths outside this gate     |
+| Exposing internal service instances on `window.TokenReplacerFA`           | Direct manipulation of module state from browser console | Acceptable for a Foundry module in GM context; document that this is debug API only        |
 
 ---
 
@@ -361,14 +393,14 @@ Things that appear complete but are missing critical pieces.
 
 When pitfalls occur despite prevention, how to recover.
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Cache key changed, users lose caches | MEDIUM | Deploy a one-time migration in `init` hook: check old key, copy to new key, delete old key |
-| `{ force: true }` missing, dialogs broken in prod | LOW | Single-line fix; hotfix release; users must reload once |
-| Settings registration order broken | LOW | Move `registerSettings()` back to first line of `init` hook; hotfix release |
-| module.json field removed, module uninstallable | HIGH | Restore field; requires new release AND users must reinstall (cannot auto-update from broken manifest) |
-| Type annotations wrong, no actual errors caught | MEDIUM | Re-annotate with declaration merging; add integration tests to verify types catch real bugs |
-| Web Worker tests passing but covering fallback path only | MEDIUM | Add MockWorker to global setup; re-run and fix tests that relied on fallback assumptions |
+| Pitfall                                                  | Recovery Cost | Recovery Steps                                                                                         |
+| -------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------ |
+| Cache key changed, users lose caches                     | MEDIUM        | Deploy a one-time migration in `init` hook: check old key, copy to new key, delete old key             |
+| `{ force: true }` missing, dialogs broken in prod        | LOW           | Single-line fix; hotfix release; users must reload once                                                |
+| Settings registration order broken                       | LOW           | Move `registerSettings()` back to first line of `init` hook; hotfix release                            |
+| module.json field removed, module uninstallable          | HIGH          | Restore field; requires new release AND users must reinstall (cannot auto-update from broken manifest) |
+| Type annotations wrong, no actual errors caught          | MEDIUM        | Re-annotate with declaration merging; add integration tests to verify types catch real bugs            |
+| Web Worker tests passing but covering fallback path only | MEDIUM        | Add MockWorker to global setup; re-run and fix tests that relied on fallback assumptions               |
 
 ---
 
@@ -376,18 +408,18 @@ When pitfalls occur despite prevention, how to recover.
 
 How roadmap phases should address these pitfalls.
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| JSDoc types don't flow through `getSetting()` | Type annotation phase | Run `tsc --noEmit` with strict mode; verify `getSetting()` return has concrete type |
-| Foundry globals undefined in tests | Test infrastructure phase (first) | `npm test` passes without `ReferenceError: game is not defined` |
-| Worker tests cover fallback not Worker path | Test infrastructure phase | Code coverage shows `indexPathsWithWorker()` > 0% |
-| File paths break after file moves | Structure refactoring phase | Grep for old filenames; load module in Foundry after every move |
-| Settings registration order | Error handling phase | Integration test: module loads cleanly when `registerSettings()` is 2nd statement |
-| Cache keys renamed during cleanup | Structure phase | Constants audit: all cache keys in `Constants.js`, reviewed in PR |
-| module.json corrupted | All phases | Foundry package validator run before every release |
-| `render({ force: true })` missing | Test infrastructure phase | Test asserts `dialog.rendered === true` after creation |
-| Singleton state bleeds between tests | Test infrastructure phase | `vi.resetModules()` pattern documented in test README |
-| Async hook handlers swallow errors | Error handling phase | Verify all hook handlers have `try/catch`; mock rejection to confirm error is surfaced |
+| Pitfall                                       | Prevention Phase                  | Verification                                                                           |
+| --------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------- |
+| JSDoc types don't flow through `getSetting()` | Type annotation phase             | Run `tsc --noEmit` with strict mode; verify `getSetting()` return has concrete type    |
+| Foundry globals undefined in tests            | Test infrastructure phase (first) | `npm test` passes without `ReferenceError: game is not defined`                        |
+| Worker tests cover fallback not Worker path   | Test infrastructure phase         | Code coverage shows `indexPathsWithWorker()` > 0%                                      |
+| File paths break after file moves             | Structure refactoring phase       | Grep for old filenames; load module in Foundry after every move                        |
+| Settings registration order                   | Error handling phase              | Integration test: module loads cleanly when `registerSettings()` is 2nd statement      |
+| Cache keys renamed during cleanup             | Structure phase                   | Constants audit: all cache keys in `Constants.js`, reviewed in PR                      |
+| module.json corrupted                         | All phases                        | Foundry package validator run before every release                                     |
+| `render({ force: true })` missing             | Test infrastructure phase         | Test asserts `dialog.rendered === true` after creation                                 |
+| Singleton state bleeds between tests          | Test infrastructure phase         | `vi.resetModules()` pattern documented in test README                                  |
+| Async hook handlers swallow errors            | Error handling phase              | Verify all hook handlers have `try/catch`; mock rejection to confirm error is surfaced |
 
 ---
 
@@ -406,5 +438,6 @@ How roadmap phases should address these pitfalls.
 - Project CLAUDE.md — module architecture, cache key constants, template path strings (HIGH confidence, authoritative project context)
 
 ---
-*Pitfalls research for: Foundry VTT module quality refactor (token-replacer-fa)*
-*Researched: 2026-02-28*
+
+_Pitfalls research for: Foundry VTT module quality refactor (token-replacer-fa)_
+_Researched: 2026-02-28_

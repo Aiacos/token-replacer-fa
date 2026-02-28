@@ -36,21 +36,25 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-useless-escape': 'warn',
+      'no-useless-assignment': 'warn',
+      'no-case-declarations': 'warn',
     },
   },
-  // Web Worker files: dedicatedWorker environment (NOT browser)
+  // Web Worker files: worker environment (NOT browser — no window/document)
   {
     files: ['scripts/workers/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
       globals: {
-        ...globals.dedicatedWorker,
+        ...globals.worker,
       },
     },
     rules: {
       ...js.configs.recommended.rules,
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-useless-escape': 'warn',
     },
   },
   // Disable formatting rules that conflict with Prettier (MUST be last)

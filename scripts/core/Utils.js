@@ -3,7 +3,13 @@
  * @module core/Utils
  */
 
-import { MODULE_ID, FUSE_CDN, GENERIC_SUBTYPE_INDICATORS, EXCLUDED_FOLDERS_SET, EXCLUDED_FILENAME_TERMS } from './Constants.js';
+import {
+  MODULE_ID,
+  FUSE_CDN,
+  GENERIC_SUBTYPE_INDICATORS,
+  EXCLUDED_FOLDERS_SET,
+  EXCLUDED_FILENAME_TERMS,
+} from './Constants.js';
 
 // Fuse.js instance cache
 let FuseClass = null;
@@ -13,7 +19,9 @@ let FuseClass = null;
  * Created once at module load time for 10-50x faster path filtering
  * compared to creating new RegExp objects on every isExcludedPath() call
  */
-const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(term => new RegExp(`\\b${term}\\b`, 'i'));
+const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(
+  (term) => new RegExp(`\\b${term}\\b`, 'i')
+);
 
 /**
  * Load Fuse.js library from CDN
@@ -112,8 +120,8 @@ export function parseFilterTerms(filterText) {
     .toLowerCase()
     .trim()
     .split(/[,\s:]+/)
-    .map(t => t.trim())
-    .filter(t => t.length > 0);
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
 }
 
 /**
@@ -125,7 +133,7 @@ export function parseFilterTerms(filterText) {
 export function matchesAllTerms(text, filterTerms) {
   if (!filterTerms || filterTerms.length === 0) return true;
   const textLower = (text || '').toLowerCase();
-  return filterTerms.every(term => textLower.includes(term));
+  return filterTerms.every((term) => textLower.includes(term));
 }
 
 /**
@@ -134,7 +142,7 @@ export function matchesAllTerms(text, filterTerms) {
  * @returns {Promise<void>}
  */
 export function yieldToMain(ms = 0) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -148,7 +156,7 @@ export function parseSubtypeTerms(subtype) {
 
   // Check if it's a generic subtype
   const subtypeLower = subtype.toLowerCase().trim();
-  if (GENERIC_SUBTYPE_INDICATORS.some(g => subtypeLower.includes(g))) {
+  if (GENERIC_SUBTYPE_INDICATORS.some((g) => subtypeLower.includes(g))) {
     return [];
   }
 
@@ -156,8 +164,8 @@ export function parseSubtypeTerms(subtype) {
   return subtype
     .toLowerCase()
     .split(/[,;\/&]+/)
-    .map(term => term.trim())
-    .filter(term => term.length > 0 && !GENERIC_SUBTYPE_INDICATORS.includes(term));
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0 && !GENERIC_SUBTYPE_INDICATORS.includes(term));
 }
 
 /**
@@ -169,8 +177,8 @@ export function hasGenericSubtype(subtype) {
   // No subtype means it's generic (show all)
   if (!subtype || subtype.trim() === '') return true;
   const subtypeLower = subtype.toLowerCase().trim();
-  return GENERIC_SUBTYPE_INDICATORS.some(indicator =>
-    subtypeLower === indicator || subtypeLower.includes(indicator)
+  return GENERIC_SUBTYPE_INDICATORS.some(
+    (indicator) => subtypeLower === indicator || subtypeLower.includes(indicator)
   );
 }
 
@@ -209,7 +217,12 @@ export function extractPathFromTVAResult(item) {
 
   // Direct string path
   if (typeof item === 'string') {
-    return item.startsWith('http') || item.startsWith('forge://') || item.includes('/') || item.includes('.') ? item : null;
+    return item.startsWith('http') ||
+      item.startsWith('forge://') ||
+      item.includes('/') ||
+      item.includes('.')
+      ? item
+      : null;
   }
 
   // Handle tuple format [path, config] from TVA
@@ -218,7 +231,12 @@ export function extractPathFromTVAResult(item) {
     if (item.length > 0) {
       const firstEl = item[0];
       if (typeof firstEl === 'string') {
-        return firstEl.startsWith('http') || firstEl.startsWith('forge://') || firstEl.includes('/') || firstEl.includes('.') ? firstEl : null;
+        return firstEl.startsWith('http') ||
+          firstEl.startsWith('forge://') ||
+          firstEl.includes('/') ||
+          firstEl.includes('.')
+          ? firstEl
+          : null;
       }
       if (typeof firstEl === 'object' && firstEl !== null) {
         return extractPathFromObject(firstEl);
@@ -252,7 +270,8 @@ export function extractPathFromObject(obj, depth = 0) {
   const pathProps = ['path', 'route', 'img', 'src', 'image', 'url', 'thumb', 'thumbnail', 'uri'];
 
   // Helper to validate path string
-  const isValidPath = (val) => val.startsWith('http') || val.startsWith('forge://') || val.includes('/') || val.includes('.');
+  const isValidPath = (val) =>
+    val.startsWith('http') || val.startsWith('forge://') || val.includes('/') || val.includes('.');
 
   for (const prop of pathProps) {
     if (obj[prop] && typeof obj[prop] === 'string') {
@@ -309,10 +328,7 @@ export function extractNameFromTVAResult(item, imagePath) {
   if (imagePath) {
     const fileName = imagePath.split('/').pop();
     const nameWithoutExt = fileName?.replace(/\.[^/.]+$/, '') || '';
-    return nameWithoutExt
-      .replace(/[-_]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim() || 'Unknown';
+    return nameWithoutExt.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
   }
 
   return 'Unknown';
@@ -323,9 +339,22 @@ export function extractNameFromTVAResult(item, imagePath) {
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
  */
 const CDN_SEGMENTS = new Set([
-  'https:', 'http:', '', 'bazaar', 'assets', 'modules', 'systems',
-  'assets.forge-vtt.com', 'forge-vtt.com', 'foundryvtt.com',
-  'www', 'cdn', 'static', 'public', 'uploads', 'files'
+  'https:',
+  'http:',
+  '',
+  'bazaar',
+  'assets',
+  'modules',
+  'systems',
+  'assets.forge-vtt.com',
+  'forge-vtt.com',
+  'foundryvtt.com',
+  'www',
+  'cdn',
+  'static',
+  'public',
+  'uploads',
+  'files',
 ]);
 
 /**
@@ -359,10 +388,10 @@ export function isExcludedPath(path) {
   const segments = pathLower.split('/');
 
   // Filter out CDN segments and check remaining folder names
-  const folderSegments = segments.filter(s => !CDN_SEGMENTS.has(s) && s.length > 0);
+  const folderSegments = segments.filter((s) => !CDN_SEGMENTS.has(s) && s.length > 0);
 
   // Check folder names against exclusion Set (O(1) per segment instead of O(N) array scan)
-  if (folderSegments.some(segment => EXCLUDED_FOLDERS_SET.has(segment))) {
+  if (folderSegments.some((segment) => EXCLUDED_FOLDERS_SET.has(segment))) {
     if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
     excludedPathCache.set(path, true);
     return true;
@@ -371,11 +400,14 @@ export function isExcludedPath(path) {
   // Also check filename for environmental/prop terms
   const filename = segments[segments.length - 1] || '';
   // Remove extension and convert separators to spaces for word matching
-  const filenameClean = filename.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').toLowerCase();
+  const filenameClean = filename
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[-_]/g, ' ')
+    .toLowerCase();
 
   // Check if filename contains excluded terms using precompiled patterns
   // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
-  const result = EXCLUDED_FILENAME_PATTERNS.some(pattern => pattern.test(filenameClean));
+  const result = EXCLUDED_FILENAME_PATTERNS.some((pattern) => pattern.test(filenameClean));
 
   if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
   excludedPathCache.set(path, result);
@@ -421,9 +453,9 @@ export function createModuleError(errorType, details, recoveryKeys = []) {
     errorType,
     message: game.i18n.localize(`TOKEN_REPLACER_FA.errors.${errorType}`),
     details,
-    recoverySuggestions: recoveryKeys.map(key =>
+    recoverySuggestions: recoveryKeys.map((key) =>
       game.i18n.localize(`TOKEN_REPLACER_FA.recovery.${key}`)
-    )
+    ),
   };
 }
 
@@ -434,7 +466,7 @@ export function createModuleError(errorType, details, recoveryKeys = []) {
  * @returns {Function} Logger function
  */
 export function createDebugLogger(servicePrefix) {
-  return function(message, ...args) {
+  return function (message, ...args) {
     try {
       if (game.settings.get(MODULE_ID, 'debugMode')) {
         console.log(`${MODULE_ID} | [${servicePrefix}] ${message}`, ...args);
