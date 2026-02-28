@@ -29,21 +29,27 @@ export class SearchOrchestrator {
     this.tvaCacheService = null;
     this.forgeBazaarService = null;
     this.worker = null;
+    this._workerInitialized = false;
     this._debugLog = createDebugLogger('SearchOrchestrator');
+  }
 
-    // TODO: [Performance] Lazy-init this Worker on first use instead of at import time.
-    // IndexService also creates a Worker from the same file — share a single instance.
+  /**
+   * Lazy-initialize the Web Worker on first use
+   * @private
+   */
+  _ensureWorker() {
+    if (this._workerInitialized) return;
+    this._workerInitialized = true;
+
     if (typeof Worker !== 'undefined') {
       try {
         const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
         this.worker = new Worker(workerPath);
-        console.log(`${MODULE_ID} | Web Worker initialized for background search operations`);
+        this._debugLog('Web Worker initialized for background search operations');
       } catch (error) {
         console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
         this.worker = null;
       }
-    } else {
-      console.warn(`${MODULE_ID} | Web Workers not supported in this browser, using fallback method`);
     }
   }
 
@@ -52,9 +58,6 @@ export class SearchOrchestrator {
    * @param {Object} tvaCacheService - TVACacheService instance
    * @param {Object} forgeBazaarService - ForgeBazaarService instance
    */
-  // TODO: [Architecture] Replace setDependencies() with constructor injection or lazy getters
-  // to eliminate temporal coupling. Currently, calling search methods before init() silently
-  // returns empty results via optional chaining (this.tvaCacheService?.hasTVA).
   setDependencies(tvaCacheService, forgeBazaarService) {
     this.tvaCacheService = tvaCacheService;
     this.forgeBazaarService = forgeBazaarService;
@@ -231,6 +234,9 @@ export class SearchOrchestrator {
    */
   async searchLocalIndex(searchTerms, index, creatureType = null, onProgress = null) {
     if (!index || index.length === 0) return [];
+
+    // Lazy-init Worker on first search
+    this._ensureWorker();
 
     // Use Web Worker if available, otherwise fallback to direct search
     if (this.worker) {

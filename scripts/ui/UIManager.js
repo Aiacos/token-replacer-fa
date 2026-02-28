@@ -402,10 +402,13 @@ export class UIManager {
    */
   async createProgressHTML(current, total, status, results) {
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-    // TODO: [Performance] Replace 3 filter passes with a single reduce loop
-    const successCount = results.filter(r => r.status === 'success').length;
-    const failedCount = results.filter(r => r.status === 'failed').length;
-    const skippedCount = results.filter(r => r.status === 'skipped').length;
+    const counts = results.reduce((acc, r) => {
+      if (r.status === 'success') acc.success++;
+      else if (r.status === 'failed') acc.failed++;
+      else if (r.status === 'skipped') acc.skipped++;
+      return acc;
+    }, { success: 0, failed: 0, skipped: 0 });
+    const { success: successCount, failed: failedCount, skipped: skippedCount } = counts;
 
     // Transform results array with icon classes
     const transformedResults = results.map(r => ({
@@ -481,9 +484,6 @@ export class UIManager {
    * @param {Function} resolve - Promise resolve for dblclick quick-apply
    * @param {Function} updateSelectionCount - Callback to update selection count display
    */
-  // TODO: [Performance] Use event delegation on gridEl instead of per-element listeners.
-  // Each filter keystroke re-attaches click/dblclick to all 200 items. A single delegated
-  // listener on gridEl with e.target.closest('.match-option') eliminates O(N) re-attachment.
   _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
     gridEl.innerHTML = matches.map((match, idx) => {
       const safeMatchName = escapeHtml(match.name);
@@ -503,10 +503,13 @@ export class UIManager {
       `;
     }).join('');
 
-    // Attach click/dblclick handlers to new DOM elements
-    const options = gridEl.querySelectorAll('.match-option');
-    options.forEach(option => {
-      option.addEventListener('click', () => {
+    // Event delegation: single click/dblclick handler on grid, not per-element
+    // Replaces innerHTML clears old child listeners; only the delegated one persists
+    if (!gridEl._delegateAttached) {
+      gridEl.addEventListener('click', (e) => {
+        const option = e.target.closest('.match-option');
+        if (!option) return;
+        const options = gridEl.querySelectorAll('.match-option');
         if (multiSelectEnabled) {
           option.classList.toggle('selected');
           const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
@@ -518,13 +521,18 @@ export class UIManager {
         }
       });
 
-      option.addEventListener('dblclick', () => {
+      gridEl.addEventListener('dblclick', (e) => {
+        const option = e.target.closest('.match-option');
+        if (!option) return;
+        this._pendingResolve = null;
         resolve({
           paths: [option.dataset.path],
           mode: 'sequential'
         });
       });
-    });
+
+      gridEl._delegateAttached = true;
+    }
 
     updateSelectionCount();
   }
@@ -649,6 +657,7 @@ export class UIManager {
         });
 
         option.addEventListener('dblclick', () => {
+          this._pendingResolve = null;
           resolve({
             paths: [option.dataset.path],
             mode: 'sequential'
@@ -664,6 +673,7 @@ export class UIManager {
         selectBtn.addEventListener('click', () => {
           const selectedOptions = container.querySelectorAll('.match-option.selected');
           const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+          this._pendingResolve = null;
           if (paths.length > 0) {
             resolve({ paths, mode: assignmentMode });
           } else {
@@ -674,6 +684,7 @@ export class UIManager {
 
       if (skipBtn) {
         skipBtn.addEventListener('click', () => {
+          this._pendingResolve = null;
           resolve(null);
         });
       }
@@ -752,12 +763,10 @@ export class UIManager {
 
         if (results.length === 0) {
           if (categoryFilter) categoryFilter.style.display = 'none';
-          // TODO: [Security] Escape i18n() output here — innerHTML with unescaped
-          // localization strings is safe only if lang/*.json is trusted.
           if (matchGrid) matchGrid.innerHTML = `
             <div class="no-results-message">
               <i class="fas fa-folder-open"></i>
-              <span>${i18n('dialog.noResultsInCategory')}</span>
+              <span>${escapeHtml(i18n('dialog.noResultsInCategory'))}</span>
             </div>
           `;
           return;
@@ -882,6 +891,7 @@ export class UIManager {
         selectBtn.addEventListener('click', () => {
           const selectedOptions = container.querySelectorAll('.match-option.selected');
           const paths = Array.from(selectedOptions).map(opt => opt.dataset.path);
+          this._pendingResolve = null;
           if (paths.length > 0) {
             resolve({ paths, mode: assignmentMode });
           } else {
@@ -893,6 +903,7 @@ export class UIManager {
       // Handle skip button
       if (skipBtn) {
         skipBtn.addEventListener('click', () => {
+          this._pendingResolve = null;
           resolve(null);
         });
       }

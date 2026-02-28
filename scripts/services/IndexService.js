@@ -183,6 +183,7 @@ export class IndexService {
     if (!text) return [];
 
     // Split by path separators (/, \), hyphens, underscores, spaces, dots
+    // Keep regex in sync with IndexWorker.js termIndex builder
     const terms = text
       .toLowerCase()
       .split(/[\/\\\-_\s\.]+/)
