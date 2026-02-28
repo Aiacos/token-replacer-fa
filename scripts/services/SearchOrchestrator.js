@@ -31,7 +31,8 @@ export class SearchOrchestrator {
     this.worker = null;
     this._debugLog = createDebugLogger('SearchOrchestrator');
 
-    // Initialize Web Worker if supported
+    // TODO: [Performance] Lazy-init this Worker on first use instead of at import time.
+    // IndexService also creates a Worker from the same file — share a single instance.
     if (typeof Worker !== 'undefined') {
       try {
         const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
@@ -51,6 +52,9 @@ export class SearchOrchestrator {
    * @param {Object} tvaCacheService - TVACacheService instance
    * @param {Object} forgeBazaarService - ForgeBazaarService instance
    */
+  // TODO: [Architecture] Replace setDependencies() with constructor injection or lazy getters
+  // to eliminate temporal coupling. Currently, calling search methods before init() silently
+  // returns empty results via optional chaining (this.tvaCacheService?.hasTVA).
   setDependencies(tvaCacheService, forgeBazaarService) {
     this.tvaCacheService = tvaCacheService;
     this.forgeBazaarService = forgeBazaarService;

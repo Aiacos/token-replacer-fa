@@ -194,7 +194,9 @@ export class StorageService {
         // Put data into object store
         const request = objectStore.put(record);
 
-        // Wait for transaction to complete
+        // TODO: [Reliability] Resolve on transaction.oncomplete instead of request.onsuccess
+        // for true durability. Also handle transaction.onabort — currently an aborted
+        // transaction (e.g., storage quota exceeded) leaves this Promise pending forever.
         await new Promise((resolve, reject) => {
           request.onsuccess = () => {
             console.log(`${MODULE_ID} | Saved to IndexedDB: ${key}`);

@@ -17,6 +17,20 @@ import { storageService } from './services/StorageService.js';
 import { uiManager, logI18nCacheStats as logUIManagerI18nCacheStats } from './ui/UIManager.js';
 
 /**
+ * Fisher-Yates shuffle for uniform random ordering
+ * @param {Array} arr - Array to shuffle
+ * @returns {Array} New shuffled array
+ */
+function fisherYatesShuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
  * TokenReplacerApp class - Main application controller
  * Manages module state and orchestrates token replacement workflow
  */
@@ -53,9 +67,9 @@ export class TokenReplacerApp {
       this.i18nCacheStats.hits++;
     }
 
-    // Apply placeholder replacements
+    // Apply placeholder replacements (replaceAll handles repeated placeholders)
     for (const [k, v] of Object.entries(data)) {
-      str = str.replace(`{${k}}`, v);
+      str = str.replaceAll(`{${k}}`, v);
     }
     return str;
   }
@@ -482,7 +496,7 @@ export class TokenReplacerApp {
           let pathIndex = 0;
 
           const shuffledPaths = assignmentMode === 'random'
-            ? [...selectedPaths].sort(() => Math.random() - 0.5)
+            ? fisherYatesShuffle(selectedPaths)
             : selectedPaths;
 
           for (const token of tokens) {
@@ -557,7 +571,7 @@ export class TokenReplacerApp {
       // Apply selected paths
       let pathIndex = 0;
       const shuffledPaths = assignmentMode === 'random' && selectedPaths
-        ? [...selectedPaths].sort(() => Math.random() - 0.5)
+        ? fisherYatesShuffle(selectedPaths)
         : selectedPaths;
 
       if (shuffledPaths?.length > 0) {

@@ -861,24 +861,14 @@ export class IndexService {
             break;
 
           case 'complete':
-            // Merge worker results into the index
+            // Merge worker results into the index (termIndex now built by Worker)
             this.index.categories = result.categories;
             this.index.allPaths = result.allPaths;
+            this.index.termIndex = result.termIndex || {};
 
-            // Build termIndex from allPaths (worker doesn't build it)
-            this.index.termIndex = {};
-            for (const [path, data] of Object.entries(this.index.allPaths)) {
-              const searchTerms = this.tokenizeSearchText(`${path} ${data.name}`);
-              for (const term of searchTerms) {
-                if (!this.index.termIndex[term]) {
-                  this.index.termIndex[term] = [];
-                }
-                this.index.termIndex[term].push(path);
-              }
-            }
-
-            // Clean up the message handler
+            // Clean up handlers
             this.worker.removeEventListener('message', messageHandler);
+            this.worker.removeEventListener('error', errorHandler);
 
             this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
             console.log(`${MODULE_ID} | Worker completed: ${imagesFound} images from ${total} paths`);
@@ -888,6 +878,7 @@ export class IndexService {
           case 'cancelled':
             // Clean up on cancellation
             this.worker.removeEventListener('message', messageHandler);
+            this.worker.removeEventListener('error', errorHandler);
             console.log(`${MODULE_ID} | Operation cancelled by user`);
             reject(new Error('Operation cancelled'));
             break;
@@ -895,6 +886,7 @@ export class IndexService {
           case 'error':
             // Clean up and reject on error
             this.worker.removeEventListener('message', messageHandler);
+            this.worker.removeEventListener('error', errorHandler);
             this._debugLog(`Worker error: ${message}`, stack);
             console.error(`${MODULE_ID} | Worker error:`, message);
 

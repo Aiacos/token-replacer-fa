@@ -40,9 +40,9 @@ function i18n(key, data = {}) {
     I18N_CACHE_STATS.hits++;
   }
 
-  // Apply placeholder replacements
+  // Apply placeholder replacements (replaceAll handles repeated placeholders)
   for (const [k, v] of Object.entries(data)) {
-    str = str.replace(`{${k}}`, v);
+    str = str.replaceAll(`{${k}}`, v);
   }
   return str;
 }
@@ -214,6 +214,7 @@ export class UIManager {
     this.mainDialog = null;
     this.cancelCallback = null;
     this._currentMatches = null;
+    this._pendingResolve = null; // Resolve function for pending selection Promise
   }
 
   /**
@@ -401,6 +402,7 @@ export class UIManager {
    */
   async createProgressHTML(current, total, status, results) {
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+    // TODO: [Performance] Replace 3 filter passes with a single reduce loop
     const successCount = results.filter(r => r.status === 'success').length;
     const failedCount = results.filter(r => r.status === 'failed').length;
     const skippedCount = results.filter(r => r.status === 'skipped').length;
@@ -479,6 +481,9 @@ export class UIManager {
    * @param {Function} resolve - Promise resolve for dblclick quick-apply
    * @param {Function} updateSelectionCount - Callback to update selection count display
    */
+  // TODO: [Performance] Use event delegation on gridEl instead of per-element listeners.
+  // Each filter keystroke re-attaches click/dblclick to all 200 items. A single delegated
+  // listener on gridEl with e.target.closest('.match-option') eliminates O(N) re-attachment.
   _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
     gridEl.innerHTML = matches.map((match, idx) => {
       const safeMatchName = escapeHtml(match.name);
@@ -531,9 +536,13 @@ export class UIManager {
    */
   setupMatchSelectionHandlers(dialogElement) {
     return new Promise((resolve) => {
+      // Store resolve so dialog close can trigger it (prevents Promise from hanging)
+      this._pendingResolve = resolve;
+
       const container = dialogElement.querySelector('.dialog-content');
       if (!container) {
         console.warn(`${MODULE_ID} | No dialog-content found`);
+        this._pendingResolve = null;
         resolve(null);
         return;
       }
@@ -682,8 +691,12 @@ export class UIManager {
    */
   setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCount, searchByCategory) {
     return new Promise((resolve) => {
+      // Store resolve so dialog close can trigger it (prevents Promise from hanging)
+      this._pendingResolve = resolve;
+
       const container = dialogElement.querySelector('.dialog-content');
       if (!container) {
+        this._pendingResolve = null;
         resolve(null);
         return;
       }
@@ -739,6 +752,8 @@ export class UIManager {
 
         if (results.length === 0) {
           if (categoryFilter) categoryFilter.style.display = 'none';
+          // TODO: [Security] Escape i18n() output here — innerHTML with unescaped
+          // localization strings is safe only if lang/*.json is trusted.
           if (matchGrid) matchGrid.innerHTML = `
             <div class="no-results-message">
               <i class="fas fa-folder-open"></i>
@@ -906,6 +921,11 @@ export class UIManager {
     this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
       onClose: () => {
+        // Resolve any pending selection Promise so processTokenReplacement doesn't hang
+        if (this._pendingResolve) {
+          this._pendingResolve(null);
+          this._pendingResolve = null;
+        }
         // Clear filter term on dialog close (session-only persistence)
         clearFilterTerm();
         onClose?.();
@@ -1005,6 +1025,11 @@ export class UIManager {
    * Close main dialog
    */
   async closeDialog() {
+    // Resolve any pending selection Promise
+    if (this._pendingResolve) {
+      this._pendingResolve(null);
+      this._pendingResolve = null;
+    }
     if (this.mainDialog) {
       try {
         await this.mainDialog.close();

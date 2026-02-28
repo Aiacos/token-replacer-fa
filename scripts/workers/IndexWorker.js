@@ -199,15 +199,22 @@ function handleIndexPaths(data) {
   // Send final progress update
   reportProgress(paths.length, paths.length, imagesFound);
 
-  // Send completion message with results
-  const result = {
-    categories,
-    allPaths
-  };
+  // Build termIndex from allPaths (O(1) search term lookups on main thread)
+  const termIndex = {};
+  for (const [path, data] of Object.entries(allPaths)) {
+    const searchText = `${path} ${data.name}`.toLowerCase();
+    const terms = searchText.split(/[\/\\\-_\s\.]+/).filter(t => t.length > 0);
+    // Deduplicate terms per path to avoid duplicate entries
+    for (const term of new Set(terms)) {
+      if (!termIndex[term]) termIndex[term] = [];
+      termIndex[term].push(path);
+    }
+  }
 
+  // Send completion message with results
   self.postMessage({
     type: 'complete',
-    result
+    result: { categories, allPaths, termIndex }
   });
 }
 

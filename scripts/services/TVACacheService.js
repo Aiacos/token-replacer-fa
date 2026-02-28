@@ -20,7 +20,8 @@ export class TVACacheService {
     this.hasTVA = false;
     // Direct TVA cache access
     this.tvaCacheLoaded = false;
-    this.tvaCacheImages = []; // Flat array of all images for fast search
+    this.tvaCacheImages = []; // Flat array of all images
+    this.tvaCacheSearchable = []; // Pre-filtered: excluded paths removed (used by search methods)
     this.tvaCacheByCategory = {}; // Original category structure
     this._loadPromise = null; // Promise deduplication for concurrent loads
     // Shared utilities
@@ -138,10 +139,12 @@ export class TVACacheService {
       if (cached) {
         this.tvaCacheByCategory = cached.tvaCacheByCategory;
         this.tvaCacheImages = cached.tvaCacheImages;
+        // Pre-filter excluded paths once (avoids repeated isExcludedPath calls in search methods)
+        this.tvaCacheSearchable = this.tvaCacheImages.filter(img => !isExcludedPath(img.path));
         this.tvaCacheLoaded = true;
         const categories = Object.keys(this.tvaCacheByCategory).length;
-        this._debugLog(`TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images in ${categories} categories`);
-        console.log(`${MODULE_ID} | TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images in ${categories} categories`);
+        this._debugLog(`TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
+        console.log(`${MODULE_ID} | TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
         return true;
       }
 
@@ -224,10 +227,13 @@ export class TVACacheService {
         );
       }
 
+      // Pre-filter excluded paths once (avoids 150K+ isExcludedPath calls during searches)
+      this.tvaCacheSearchable = this.tvaCacheImages.filter(img => !isExcludedPath(img.path));
+
       this.tvaCacheLoaded = true;
       const categories = Object.keys(this.tvaCacheByCategory).length;
-      this._debugLog(`TVA cache parsed from file: ${this.tvaCacheImages.length} images in ${categories} categories`);
-      console.log(`${MODULE_ID} | TVA cache parsed from file: ${this.tvaCacheImages.length} images in ${categories} categories`);
+      this._debugLog(`TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
+      console.log(`${MODULE_ID} | TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`);
 
       // Save to IndexedDB for next startup (fire-and-forget)
       this._persistToIndexedDB(staticCacheFile, lastModified, contentLength);
@@ -342,6 +348,7 @@ export class TVACacheService {
     this._debugLog('Reloading TVA cache...');
     this.tvaCacheLoaded = false;
     this.tvaCacheImages = [];
+    this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
     clearExcludedPathCache();
     // Clear IndexedDB cache to force fresh fetch
@@ -378,15 +385,8 @@ export class TVACacheService {
 
     const termLower = searchTerm.toLowerCase();
     const results = [];
-    let count = 0;
 
-    for (const img of this.tvaCacheImages) {
-      if (++count % 5000 === 0) await yieldToMain(0);
-
-      // Skip excluded paths
-      if (isExcludedPath(img.path)) continue;
-
-      // Simple string matching on name and path
+    for (const img of this.tvaCacheSearchable) {
       const nameLower = (img.name || '').toLowerCase();
       const pathLower = (img.path || '').toLowerCase();
 
@@ -439,18 +439,13 @@ export class TVACacheService {
 
     const results = [];
     const seenPaths = new Set();
-    let count = 0;
 
-    for (const img of this.tvaCacheImages) {
-      if (++count % 5000 === 0) await yieldToMain(0);
-
+    for (const img of this.tvaCacheSearchable) {
       if (seenPaths.has(img.path)) continue;
-      if (isExcludedPath(img.path)) continue;
 
       const nameLower = (img.name || '').toLowerCase();
-      // Extract meaningful path parts (last 2-3 folder names, excluding CDN structure)
       const pathParts = (img.path || '').toLowerCase().split('/');
-      const meaningfulPath = pathParts.slice(-4).join('/'); // Last 4 segments
+      const meaningfulPath = pathParts.slice(-4).join('/');
 
       // Check if matches any category term
       // Note: We intentionally DON'T check img.category (TVA folder name) as it's unreliable
@@ -500,13 +495,9 @@ export class TVACacheService {
     const termsLower = searchTerms.map(t => t.toLowerCase());
     const results = [];
     const seenPaths = new Set();
-    let count = 0;
 
-    for (const img of this.tvaCacheImages) {
-      if (++count % 5000 === 0) await yieldToMain(0);
-
+    for (const img of this.tvaCacheSearchable) {
       if (seenPaths.has(img.path)) continue;
-      if (isExcludedPath(img.path)) continue;
 
       const nameLower = (img.name || '').toLowerCase();
       const pathLower = (img.path || '').toLowerCase();

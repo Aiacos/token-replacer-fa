@@ -242,9 +242,12 @@ export function extractPathFromTVAResult(item) {
 /**
  * Extract path from an object with various property names
  * @param {Object} obj - Object to extract from
+ * @param {number} depth - Current recursion depth (max 3 to prevent stack overflow)
  * @returns {string|null} Path or null
  */
-export function extractPathFromObject(obj) {
+export function extractPathFromObject(obj, depth = 0) {
+  if (depth > 3) return null;
+
   // Include 'route' and 'uri' for TVA compatibility
   const pathProps = ['path', 'route', 'img', 'src', 'image', 'url', 'thumb', 'thumbnail', 'uri'];
 
@@ -272,12 +275,12 @@ export function extractPathFromObject(obj) {
     }
   }
 
-  // Check nested objects (general case)
+  // Check nested objects (general case, depth-limited)
   for (const key of Object.keys(obj)) {
     if (key === 'data') continue; // Already checked above
     const val = obj[key];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
-      const nestedPath = extractPathFromObject(val);
+      const nestedPath = extractPathFromObject(val, depth + 1);
       if (nestedPath) return nestedPath;
     }
   }
