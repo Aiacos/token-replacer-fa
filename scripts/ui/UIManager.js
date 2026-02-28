@@ -503,36 +503,36 @@ export class UIManager {
       `;
     }).join('');
 
-    // Event delegation: single click/dblclick handler on grid, not per-element
-    // Replaces innerHTML clears old child listeners; only the delegated one persists
-    if (!gridEl._delegateAttached) {
-      gridEl.addEventListener('click', (e) => {
-        const option = e.target.closest('.match-option');
-        if (!option) return;
-        const options = gridEl.querySelectorAll('.match-option');
-        if (multiSelectEnabled) {
-          option.classList.toggle('selected');
-          const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
-          if (selectedCount === 0) option.classList.add('selected');
-          updateSelectionCount();
-        } else {
-          options.forEach(o => o.classList.remove('selected'));
-          option.classList.add('selected');
-        }
-      });
+    // Event delegation with AbortController: fresh closures on each render,
+    // old listeners automatically cleaned up via abort signal
+    if (gridEl._delegateAbort) gridEl._delegateAbort.abort();
+    const ac = new AbortController();
+    gridEl._delegateAbort = ac;
 
-      gridEl.addEventListener('dblclick', (e) => {
-        const option = e.target.closest('.match-option');
-        if (!option) return;
-        this._pendingResolve = null;
-        resolve({
-          paths: [option.dataset.path],
-          mode: 'sequential'
-        });
-      });
+    gridEl.addEventListener('click', (e) => {
+      const option = e.target.closest('.match-option');
+      if (!option) return;
+      const options = gridEl.querySelectorAll('.match-option');
+      if (multiSelectEnabled) {
+        option.classList.toggle('selected');
+        const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
+        if (selectedCount === 0) option.classList.add('selected');
+        updateSelectionCount();
+      } else {
+        options.forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+      }
+    }, { signal: ac.signal });
 
-      gridEl._delegateAttached = true;
-    }
+    gridEl.addEventListener('dblclick', (e) => {
+      const option = e.target.closest('.match-option');
+      if (!option) return;
+      this._pendingResolve = null;
+      resolve({
+        paths: [option.dataset.path],
+        mode: 'sequential'
+      });
+    }, { signal: ac.signal });
 
     updateSelectionCount();
   }
@@ -641,29 +641,36 @@ export class UIManager {
         });
       });
 
-      // Bind click/dblclick on initial match options
-      const initialOptions = container.querySelectorAll('.match-option');
-      initialOptions.forEach(option => {
-        option.addEventListener('click', () => {
+      // Set up event delegation on initial match grid (same pattern as _renderMatchGrid)
+      if (matchGrid) {
+        const ac = new AbortController();
+        matchGrid._delegateAbort = ac;
+
+        matchGrid.addEventListener('click', (e) => {
+          const option = e.target.closest('.match-option');
+          if (!option) return;
+          const options = matchGrid.querySelectorAll('.match-option');
           if (multiSelectEnabled) {
             option.classList.toggle('selected');
-            const selectedCount = container.querySelectorAll('.match-option.selected').length;
+            const selectedCount = matchGrid.querySelectorAll('.match-option.selected').length;
             if (selectedCount === 0) option.classList.add('selected');
             updateSelectionCount();
           } else {
-            initialOptions.forEach(o => o.classList.remove('selected'));
+            options.forEach(o => o.classList.remove('selected'));
             option.classList.add('selected');
           }
-        });
+        }, { signal: ac.signal });
 
-        option.addEventListener('dblclick', () => {
+        matchGrid.addEventListener('dblclick', (e) => {
+          const option = e.target.closest('.match-option');
+          if (!option) return;
           this._pendingResolve = null;
           resolve({
             paths: [option.dataset.path],
             mode: 'sequential'
           });
-        });
-      });
+        }, { signal: ac.signal });
+      }
 
       // Handle button clicks
       const selectBtn = container.querySelector('.select-btn');

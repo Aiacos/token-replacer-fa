@@ -157,6 +157,7 @@ export class StorageService {
         const count = await new Promise((resolve, reject) => {
           request.onsuccess = () => resolve(request.result);
           request.onerror = () => reject(request.error);
+          transaction.onabort = () => reject(transaction.error || new Error('Transaction aborted'));
         });
 
         return count > 0;
@@ -256,7 +257,6 @@ export class StorageService {
         // Get data from object store
         const request = objectStore.get(key);
 
-        // Wait for request to complete
         const record = await new Promise((resolve, reject) => {
           request.onsuccess = () => {
             resolve(request.result);
@@ -268,6 +268,10 @@ export class StorageService {
           transaction.onerror = () => {
             console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
             reject(transaction.error);
+          };
+          transaction.onabort = () => {
+            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
+            reject(transaction.error || new Error('Transaction aborted'));
           };
         });
 
@@ -319,7 +323,6 @@ export class StorageService {
         // Delete data from object store
         const request = objectStore.delete(key);
 
-        // Wait for transaction to complete
         await new Promise((resolve, reject) => {
           request.onsuccess = () => {
             console.log(`${MODULE_ID} | Removed from IndexedDB: ${key}`);
@@ -332,6 +335,10 @@ export class StorageService {
           transaction.onerror = () => {
             console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
             reject(transaction.error);
+          };
+          transaction.onabort = () => {
+            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
+            reject(transaction.error || new Error('Transaction aborted'));
           };
         });
 
@@ -370,7 +377,6 @@ export class StorageService {
         // Clear all data from object store
         const request = objectStore.clear();
 
-        // Wait for transaction to complete
         await new Promise((resolve, reject) => {
           request.onsuccess = () => {
             console.log(`${MODULE_ID} | Cleared all data from IndexedDB`);
@@ -383,6 +389,10 @@ export class StorageService {
           transaction.onerror = () => {
             console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
             reject(transaction.error);
+          };
+          transaction.onabort = () => {
+            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
+            reject(transaction.error || new Error('Transaction aborted'));
           };
         });
 

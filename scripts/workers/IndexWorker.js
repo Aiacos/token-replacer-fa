@@ -49,9 +49,8 @@ self.addEventListener('message', (event) => {
         break;
 
       case 'cancel':
-        // Cancel the current operation
+        // Set flag — running functions detect it and post 'cancelled' message
         cancelled = true;
-        self.postMessage({ type: 'cancelled' });
         break;
 
       case 'ping':
@@ -129,8 +128,8 @@ function handleIndexPaths(data) {
 
   // Process each path
   for (let i = 0; i < paths.length; i++) {
-    // Check for cancellation (cancel handler already sent 'cancelled' message)
     if (cancelled) {
+      self.postMessage({ type: 'cancelled' });
       return;
     }
 
@@ -203,7 +202,10 @@ function handleIndexPaths(data) {
   // Uses same tokenization regex as IndexService.tokenizeSearchText() — keep in sync
   const termIndex = {};
   for (const [path, data] of Object.entries(allPaths)) {
-    if (cancelled) return;
+    if (cancelled) {
+      self.postMessage({ type: 'cancelled' });
+      return;
+    }
     const searchText = `${path} ${data.name}`.toLowerCase();
     const terms = searchText.split(/[\/\\\-_\s\.]+/).filter(t => t.length > 0);
     for (const term of new Set(terms)) {
@@ -294,8 +296,9 @@ async function handleFuzzySearch(data) {
     return;
   }
 
-  // Check for cancellation after async operation (cancel handler already sent message)
+  // Check for cancellation after async operation
   if (cancelled) {
+    self.postMessage({ type: 'cancelled' });
     return;
   }
 
@@ -314,8 +317,8 @@ async function handleFuzzySearch(data) {
 
   // Search for each term
   for (let i = 0; i < searchTerms.length; i++) {
-    // Check for cancellation (cancel handler already sent message)
     if (cancelled) {
+      self.postMessage({ type: 'cancelled' });
       return;
     }
 
