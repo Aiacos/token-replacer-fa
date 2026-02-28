@@ -35,7 +35,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `npm run lint` runs ESLint v9 flat config against scripts/ and reports results without crashing
   4. `npm run format` runs Prettier check without crashing
   5. `npm run typecheck` invokes `tsc --noEmit` against jsconfig.json without crashing (type errors expected, runner works)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 01-01-PLAN.md — Bootstrap dev tooling (package.json, Vitest, ESLint, Prettier, jsconfig.json)
 
 ### Phase 2: Foundry Mock Infrastructure
 **Goal**: Any test file can import a Foundry-dependent module without ReferenceError — all Foundry globals are stubbed in test setup
@@ -148,7 +150,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Tooling Foundation | 0/TBD | Not started | - |
+| 1. Tooling Foundation | 0/1 | Planning complete | - |
 | 2. Foundry Mock Infrastructure | 0/TBD | Not started | - |
 | 3. CI Pipeline | 0/TBD | Not started | - |
 | 4. Pure Logic Tests | 0/TBD | Not started | - |
