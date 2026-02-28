@@ -316,48 +316,55 @@ export class SearchOrchestrator {
     if (!index || index.length === 0) return [];
 
     return new Promise((resolve, reject) => {
+      const cleanup = () => {
+        this.worker.removeEventListener('message', messageHandler);
+        this.worker.removeEventListener('error', errorHandler);
+      };
+
       // Create a unique message handler for this search operation
       const messageHandler = (event) => {
         const { type, result, current, total, term, message, stack } = event.data;
 
         switch (type) {
           case 'progress':
-            // Call progress callback with worker's progress update
             if (onProgress) {
               onProgress(current, total);
             }
             break;
 
           case 'complete':
-            // Clean up the message handler
-            this.worker.removeEventListener('message', messageHandler);
+            cleanup();
             const results = result || [];
             console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
             resolve(results);
             break;
 
           case 'cancelled':
-            // Clean up on cancellation
-            this.worker.removeEventListener('message', messageHandler);
+            cleanup();
             console.log(`${MODULE_ID} | Search operation cancelled by user`);
             reject(new Error('Operation cancelled'));
             break;
 
           case 'error':
-            // Clean up and reject on error
-            this.worker.removeEventListener('message', messageHandler);
+            cleanup();
             console.error(`${MODULE_ID} | Worker search error:`, message);
             reject(new Error(message || 'Worker search error'));
             break;
 
           default:
-            // Ignore unknown message types
             break;
         }
       };
 
-      // Attach message handler
+      // Handle Worker crashes (unhandled exceptions, out-of-memory, import failures)
+      const errorHandler = (error) => {
+        cleanup();
+        console.error(`${MODULE_ID} | Worker crashed during search:`, error);
+        reject(new Error(`Worker crashed: ${error.message || 'Unknown error'}`));
+      };
+
       this.worker.addEventListener('message', messageHandler);
+      this.worker.addEventListener('error', errorHandler);
 
       // Get fuzzy threshold setting
       const threshold = game.settings.get(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
