@@ -109,56 +109,56 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TOOL-01 | — | Pending |
-| TOOL-02 | — | Pending |
-| TOOL-03 | — | Pending |
-| TOOL-04 | — | Pending |
-| TOOL-05 | — | Pending |
-| MOCK-01 | — | Pending |
-| MOCK-02 | — | Pending |
-| MOCK-03 | — | Pending |
-| MOCK-04 | — | Pending |
-| MOCK-05 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| TEST-04 | — | Pending |
-| TEST-05 | — | Pending |
-| TEST-06 | — | Pending |
-| TEST-07 | — | Pending |
-| TEST-08 | — | Pending |
-| TEST-09 | — | Pending |
-| TEST-10 | — | Pending |
-| TEST-11 | — | Pending |
-| TEST-12 | — | Pending |
-| TEST-13 | — | Pending |
-| INTG-01 | — | Pending |
-| INTG-02 | — | Pending |
-| INTG-03 | — | Pending |
-| DI-01 | — | Pending |
-| DI-02 | — | Pending |
-| DI-03 | — | Pending |
-| DI-04 | — | Pending |
-| DI-05 | — | Pending |
-| TYPE-01 | — | Pending |
-| TYPE-02 | — | Pending |
-| TYPE-03 | — | Pending |
-| TYPE-04 | — | Pending |
-| TYPE-05 | — | Pending |
-| TYPE-06 | — | Pending |
-| ERR-01 | — | Pending |
-| ERR-02 | — | Pending |
-| ERR-03 | — | Pending |
-| ERR-04 | — | Pending |
-| WORK-01 | — | Pending |
-| WORK-02 | — | Pending |
-| WORK-03 | — | Pending |
+| TOOL-01 | Phase 1 | Pending |
+| TOOL-02 | Phase 1 | Pending |
+| TOOL-03 | Phase 1 | Pending |
+| TOOL-04 | Phase 1 | Pending |
+| TOOL-05 | Phase 3 | Pending |
+| MOCK-01 | Phase 2 | Pending |
+| MOCK-02 | Phase 2 | Pending |
+| MOCK-03 | Phase 2 | Pending |
+| MOCK-04 | Phase 2 | Pending |
+| MOCK-05 | Phase 2 | Pending |
+| TEST-01 | Phase 4 | Pending |
+| TEST-02 | Phase 4 | Pending |
+| TEST-03 | Phase 4 | Pending |
+| TEST-04 | Phase 4 | Pending |
+| TEST-05 | Phase 4 | Pending |
+| TEST-06 | Phase 5 | Pending |
+| TEST-07 | Phase 7 | Pending |
+| TEST-08 | Phase 7 | Pending |
+| TEST-09 | Phase 7 | Pending |
+| TEST-10 | Phase 7 | Pending |
+| TEST-11 | Phase 7 | Pending |
+| TEST-12 | Phase 7 | Pending |
+| TEST-13 | Phase 7 | Pending |
+| INTG-01 | Phase 8 | Pending |
+| INTG-02 | Phase 8 | Pending |
+| INTG-03 | Phase 8 | Pending |
+| DI-01 | Phase 6 | Pending |
+| DI-02 | Phase 6 | Pending |
+| DI-03 | Phase 6 | Pending |
+| DI-04 | Phase 6 | Pending |
+| DI-05 | Phase 6 | Pending |
+| TYPE-01 | Phase 9 | Pending |
+| TYPE-02 | Phase 9 | Pending |
+| TYPE-03 | Phase 9 | Pending |
+| TYPE-04 | Phase 9 | Pending |
+| TYPE-05 | Phase 9 | Pending |
+| TYPE-06 | Phase 9 | Pending |
+| ERR-01 | Phase 10 | Pending |
+| ERR-02 | Phase 10 | Pending |
+| ERR-03 | Phase 10 | Pending |
+| ERR-04 | Phase 10 | Pending |
+| WORK-01 | Phase 10 | Pending |
+| WORK-02 | Phase 10 | Pending |
+| WORK-03 | Phase 10 | Pending |
 
 **Coverage:**
-- v1 requirements: 43 total
-- Mapped to phases: 0
-- Unmapped: 43 ⚠️
+- v1 requirements: 44 total
+- Mapped to phases: 44
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-28*
-*Last updated: 2026-02-28 after initial definition*
+*Last updated: 2026-02-28 after roadmap creation — all 44 requirements mapped*
