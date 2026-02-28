@@ -194,6 +194,9 @@ export class TVACacheService {
       // Yields every 5000 images to prevent main thread freeze with large caches
       let parseCount = 0;
       for (const category in json) {
+        // Skip non-array entries (metadata keys like "version", "timestamp")
+        if (!Array.isArray(json[category])) continue;
+
         this.tvaCacheByCategory[category] = [];
 
         for (const img of json[category]) {

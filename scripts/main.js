@@ -339,7 +339,7 @@ export class TokenReplacerApp {
       ui.notifications.info(this.i18n('notifications.started'));
 
       // Create main dialog
-      dialog = uiManager.createMainDialog(
+      dialog = await uiManager.createMainDialog(
         await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
         () => {
           this._debugLog('Dialog closed by user');

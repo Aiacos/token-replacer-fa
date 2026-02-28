@@ -325,7 +325,7 @@ export class StorageService {
         const request = objectStore.delete(key);
 
         await new Promise((resolve, reject) => {
-          request.onsuccess = () => {
+          transaction.oncomplete = () => {
             console.log(`${MODULE_ID} | Removed from IndexedDB: ${key}`);
             resolve();
           };
@@ -495,7 +495,13 @@ export class StorageService {
 
       if (success) {
         console.log(`${MODULE_ID} | Migration successful: ${dataSize}KB migrated from "${oldKey}" to "${newKey}"`);
-        console.log(`${MODULE_ID} | Note: Original localStorage data kept as backup`);
+        // Remove old localStorage data to prevent needsMigration from returning true on every call
+        try {
+          localStorage.removeItem(oldKey);
+          console.log(`${MODULE_ID} | Removed old localStorage key "${oldKey}" after successful migration`);
+        } catch (e) {
+          console.warn(`${MODULE_ID} | Failed to remove old localStorage key "${oldKey}":`, e);
+        }
         return true;
       } else {
         console.warn(`${MODULE_ID} | Migration failed: could not save data to new storage`);

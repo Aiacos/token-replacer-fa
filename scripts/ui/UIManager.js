@@ -641,35 +641,11 @@ export class UIManager {
         });
       });
 
-      // Set up event delegation on initial match grid (same pattern as _renderMatchGrid)
+      // Set up event delegation on initial match grid via _renderMatchGrid
+      // This uses the same AbortController pattern as filter re-renders (single code path)
       if (matchGrid) {
-        const ac = new AbortController();
-        matchGrid._delegateAbort = ac;
-
-        matchGrid.addEventListener('click', (e) => {
-          const option = e.target.closest('.match-option');
-          if (!option) return;
-          const options = matchGrid.querySelectorAll('.match-option');
-          if (multiSelectEnabled) {
-            option.classList.toggle('selected');
-            const selectedCount = matchGrid.querySelectorAll('.match-option.selected').length;
-            if (selectedCount === 0) option.classList.add('selected');
-            updateSelectionCount();
-          } else {
-            options.forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-          }
-        }, { signal: ac.signal });
-
-        matchGrid.addEventListener('dblclick', (e) => {
-          const option = e.target.closest('.match-option');
-          if (!option) return;
-          this._pendingResolve = null;
-          resolve({
-            paths: [option.dataset.path],
-            mode: 'sequential'
-          });
-        }, { signal: ac.signal });
+        const initialMatches = (this._currentMatches || []).slice(0, MAX_DISPLAY_RESULTS);
+        this._renderMatchGrid(initialMatches, matchGrid, multiSelectEnabled, resolve, updateSelectionCount);
       }
 
       // Handle button clicks
@@ -923,12 +899,18 @@ export class UIManager {
    * @param {Function} onClose - Close callback
    * @returns {TokenReplacerDialog} TokenReplacerDialog instance
    */
-  createMainDialog(initialContent, onClose) {
+  async createMainDialog(initialContent, onClose) {
     // Close existing dialog if still in DOM (prevents duplicate ID conflicts in ApplicationV2)
     if (this.mainDialog) {
+      // Detach _pendingResolve BEFORE closing to prevent the old dialog's onClose
+      // from resolving the new dialog's Promise (race condition)
+      const oldResolve = this._pendingResolve;
+      this._pendingResolve = null;
+      if (oldResolve) oldResolve(null);
+
       try {
         if (this.mainDialog.rendered) {
-          this.mainDialog.close();
+          await this.mainDialog.close();
         }
       } catch (e) {
         console.warn('token-replacer-fa | Failed to close existing dialog:', e);
@@ -999,16 +981,15 @@ export class UIManager {
     const cancelBtn = dialogEl.querySelector('.cancel-btn[data-action="cancel"]');
     if (!cancelBtn) return;
 
-    // Remove existing listener to avoid duplicates
-    const newCancelBtn = cancelBtn.cloneNode(true);
-    cancelBtn.replaceWith(newCancelBtn);
+    // Already wired — skip (AbortController handles cleanup on dialog close)
+    if (cancelBtn._cancelWired) return;
+    cancelBtn._cancelWired = true;
 
-    // Add new listener
-    newCancelBtn.addEventListener('click', async () => {
+    cancelBtn.addEventListener('click', async () => {
       if (this.cancelCallback) {
         console.log(`${MODULE_ID} | Cancel button clicked`);
-        newCancelBtn.disabled = true;
-        newCancelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelling...';
+        cancelBtn.disabled = true;
+        cancelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelling...';
 
         try {
           await this.cancelCallback();
