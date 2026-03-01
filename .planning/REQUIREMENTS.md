@@ -17,11 +17,11 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Foundry Mocks
 
-- [ ] **MOCK-01**: Global mock setup provides `game` object with settings, modules, i18n, and system stubs
-- [ ] **MOCK-02**: Global mock setup provides `ui` object with notifications stub
-- [ ] **MOCK-03**: Global mock setup provides `canvas` object with tokens collection stub
-- [ ] **MOCK-04**: Global mock setup provides `Hooks` registration and trigger stubs
-- [ ] **MOCK-05**: Mock Worker implementation for testing Worker-dependent code paths
+- [x] **MOCK-01**: Global mock setup provides `game` object with settings, modules, i18n, and system stubs
+- [x] **MOCK-02**: Global mock setup provides `ui` object with notifications stub
+- [x] **MOCK-03**: Global mock setup provides `canvas` object with tokens collection stub
+- [x] **MOCK-04**: Global mock setup provides `Hooks` registration and trigger stubs
+- [x] **MOCK-05**: Mock Worker implementation for testing Worker-dependent code paths
 
 ### Unit Tests — Pure Logic
 
@@ -114,11 +114,11 @@ Deferred to future release. Tracked but not in current roadmap.
 | TOOL-03     | Phase 1  | Complete |
 | TOOL-04     | Phase 1  | Complete |
 | TOOL-05     | Phase 3  | Pending  |
-| MOCK-01     | Phase 2  | Pending  |
-| MOCK-02     | Phase 2  | Pending  |
-| MOCK-03     | Phase 2  | Pending  |
-| MOCK-04     | Phase 2  | Pending  |
-| MOCK-05     | Phase 2  | Pending  |
+| MOCK-01     | Phase 2  | Complete |
+| MOCK-02     | Phase 2  | Complete |
+| MOCK-03     | Phase 2  | Complete |
+| MOCK-04     | Phase 2  | Complete |
+| MOCK-05     | Phase 2  | Complete |
 | TEST-01     | Phase 4  | Pending  |
 | TEST-02     | Phase 4  | Pending  |
 | TEST-03     | Phase 4  | Pending  |

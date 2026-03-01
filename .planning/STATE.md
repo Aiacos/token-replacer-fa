@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
-status: unknown
-last_updated: "2026-02-28T22:24:22.831Z"
+status: in-progress
+last_updated: "2026-03-01T07:36:48Z"
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 2
+  completed_plans: 2
 ---
 
 # Project State
@@ -18,35 +18,36 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 1 — Tooling Foundation
+**Current focus:** Phase 2 — Foundry Mock Infrastructure
 
 ## Current Position
 
-Phase: 1 of 10 (Tooling Foundation)
-Plan: 1 of 1 in current phase
-Status: Phase 1 complete
-Last activity: 2026-02-28 — Completed 01-01 Dev Tooling Bootstrap
+Phase: 2 of 10 (Foundry Mock Infrastructure)
+Plan: 1 of 2 in current phase
+Status: 02-01 complete, 02-02 next
+Last activity: 2026-03-01 — Completed 02-01 Global Foundry Mock Setup
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 15%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 1
-- Average duration: 6 min
-- Total execution time: 0.1 hours
+- Total plans completed: 2
+- Average duration: 5 min
+- Total execution time: 0.15 hours
 
 **By Phase:**
 
-| Phase                 | Plans | Total | Avg/Plan |
-| --------------------- | ----- | ----- | -------- |
-| 01-tooling-foundation | 1     | 6 min | 6 min    |
+| Phase                        | Plans | Total | Avg/Plan |
+| ---------------------------- | ----- | ----- | -------- |
+| 01-tooling-foundation        | 1     | 6 min | 6 min    |
+| 02-foundry-mock-infrastructure | 1     | 3 min | 3 min    |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (6 min)
-- Trend: baseline
+- Last 5 plans: 01-01 (6 min), 02-01 (3 min)
+- Trend: improving
 
 _Updated after each plan completion_
 
@@ -59,7 +60,10 @@ Recent decisions affecting current work:
 
 - [Init]: JSDoc + checkJs chosen over TypeScript migration (no build step constraint)
 - [Init]: Vitest ^2.2.x (not 4.x) — breaking changes in 4.x
-- [Init]: @rayners/foundry-test-utils as primary mock source, hand-written fallback if gaps found
+- [Init]: @rayners/foundry-test-utils as primary mock source, hand-written fallback if gaps found (superseded by 02-01)
+- [02-01]: Hand-written mocks over @rayners/foundry-test-utils (gaps in settings/Worker/ApplicationV2, GitHub Packages auth)
+- [02-01]: MockWorker uses async microtask dispatch matching real Worker behavior
+- [02-01]: Pre-register all 10 module settings defaults in setup file for import-time safety
 - [Init]: Phase 3 (CI) can start after Phase 2; Phase 4 and 5 can also start after Phase 2 (parallel opportunity)
 - [01-01]: Used Vitest ^3.2.4 (not 2.x as STATE originally noted; 2.2.x doesn't exist, research confirmed 3.x is correct)
 - [01-01]: globals.worker is the correct key for Web Worker ESLint globals (not globals.dedicatedWorker)
@@ -79,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-28
-Stopped at: Completed 01-01-PLAN.md (Dev Tooling Bootstrap) — Phase 1 complete, ready for Phase 2
+Last session: 2026-03-01
+Stopped at: Completed 02-01-PLAN.md (Global Foundry Mock Setup) — 02-02 next
 Resume file: None
