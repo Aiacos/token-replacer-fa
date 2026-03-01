@@ -44,12 +44,12 @@ Progress: [██████░░░░] 60%
 | 01-tooling-foundation        | 1     | 6 min | 6 min    |
 | 02-foundry-mock-infrastructure | 2     | 5 min | 2.5 min  |
 | 03-ci-pipeline                 | 1     | 2 min | 2 min    |
-| 04-pure-logic-tests            | 1     | 2 min | 2 min    |
+| 04-pure-logic-tests            | 2     | 4 min | 2 min    |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (6 min), 02-01 (3 min), 02-02 (2 min), 03-01 (2 min), 04-01 (2 min)
-- Trend: improving
+- Last 5 plans: 02-01 (3 min), 02-02 (2 min), 03-01 (2 min), 04-01 (2 min), 04-02 (2 min)
+- Trend: stable (consistently ~2 min)
 
 _Updated after each plan completion_
 
@@ -77,6 +77,8 @@ Recent decisions affecting current work:
 - [03-01]: Used if: always() && steps.install.outcome == 'success' pattern (not continue-on-error) to preserve job failure status
 - [03-01]: Added .planning/ to .prettierignore since tooling docs should not block CI format checks
 - [04-01]: Structural + representative sampling over exhaustive enumeration for Constants.js data export tests
+- [04-02]: vi.doMock with full CDN URL confirmed working for Fuse.js loader testing -- resolved open question from research
+- [04-02]: All Utils.js tests in single file per user decision (tests/core/Utils.test.js, 126 tests)
 
 ### Pending Todos
 
@@ -84,7 +86,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Research flag] Phase 6/7: Fuse.js CDN dynamic import mocking strategy not yet determined — needs spike in Phase 6
+- [RESOLVED] Phase 6/7: Fuse.js CDN dynamic import mocking confirmed working via vi.doMock with full URL (validated in 04-02)
 - [Research flag] Phase 5: jsdom IndexedDB completeness unknown — may need `fake-indexeddb` package
 - [Research flag] Phase 9: fvtt-types v13 gap count = 128 type errors (benchmarked in Phase 1) — strict mode not viable with current beta
 - [Critical] Settings registration must remain the FIRST operation in the init hook — any Phase 6 refactor that touches main.js must verify this
@@ -92,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 04-01-PLAN.md (Constants.js Tests) — Phase 04 plan 01 complete, 04-02 next
+Stopped at: Completed 04-02-PLAN.md (Utils.js Tests) — Phase 04 complete, Phase 05 next
 Resume file: None
