@@ -130,8 +130,14 @@ vi.stubGlobal('foundry', {
 // 7. v12 global fallbacks
 // ---------------------------------------------------------------------------
 
-vi.stubGlobal('renderTemplate', vi.fn(async (_path, _data) => '<div>mock template</div>'));
-vi.stubGlobal('loadTemplates', vi.fn(async (_paths) => {}));
+vi.stubGlobal(
+  'renderTemplate',
+  vi.fn(async (_path, _data) => '<div>mock template</div>')
+);
+vi.stubGlobal(
+  'loadTemplates',
+  vi.fn(async (_paths) => {})
+);
 
 // ---------------------------------------------------------------------------
 // 8. FilePicker

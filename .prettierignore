@@ -5,3 +5,4 @@ package-lock.json
 module.json
 templates/match-selection.hbs
 templates/no-match.hbs
+.planning/
