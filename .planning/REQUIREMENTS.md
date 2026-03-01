@@ -13,7 +13,7 @@ Requirements for quality refactor. Each maps to roadmap phases.
 - [x] **TOOL-02**: Vitest test runner configured with jsdom environment and working `npm test` command
 - [x] **TOOL-03**: ESLint v9 flat config with rules appropriate for Foundry VTT module development
 - [x] **TOOL-04**: Prettier formatting configured and integrated with ESLint
-- [ ] **TOOL-05**: GitHub Actions CI pipeline runs tests, linting, and type checking on PR
+- [x] **TOOL-05**: GitHub Actions CI pipeline runs tests, linting, and type checking on PR
 
 ### Foundry Mocks
 
@@ -113,7 +113,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | TOOL-02     | Phase 1  | Complete |
 | TOOL-03     | Phase 1  | Complete |
 | TOOL-04     | Phase 1  | Complete |
-| TOOL-05     | Phase 3  | Pending  |
+| TOOL-05     | Phase 3  | Complete |
 | MOCK-01     | Phase 2  | Complete |
 | MOCK-02     | Phase 2  | Complete |
 | MOCK-03     | Phase 2  | Complete |

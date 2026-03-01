@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-01T07:47:05.059Z"
+last_updated: "2026-03-01T08:58:13Z"
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -18,24 +18,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 2 complete — Phase 3 (CI) or Phase 4/5 (parallel) next
+**Current focus:** Phase 3 complete — Phase 4 (Constants tests) and Phase 5 (IndexService tests) can proceed in parallel
 
 ## Current Position
 
-Phase: 2 of 10 (Foundry Mock Infrastructure) -- COMPLETE
-Plan: 2 of 2 in current phase (all complete)
-Status: Phase 02 complete, Phase 03 next
-Last activity: 2026-03-01 — Completed 02-02 Mock Helper Utilities
+Phase: 3 of 10 (CI Pipeline) -- COMPLETE
+Plan: 1 of 1 in current phase (all complete)
+Status: Phase 03 complete, Phase 04/05 next (parallel)
+Last activity: 2026-03-01 — Completed 03-01 CI Pipeline
 
-Progress: [███░░░░░░░] 20%
+Progress: [████░░░░░░] 30%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 3
-- Average duration: 4 min
-- Total execution time: 0.18 hours
+- Total plans completed: 4
+- Average duration: 3.5 min
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
@@ -43,10 +43,11 @@ Progress: [███░░░░░░░] 20%
 | ---------------------------- | ----- | ----- | -------- |
 | 01-tooling-foundation        | 1     | 6 min | 6 min    |
 | 02-foundry-mock-infrastructure | 2     | 5 min | 2.5 min  |
+| 03-ci-pipeline                 | 1     | 2 min | 2 min    |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (6 min), 02-01 (3 min), 02-02 (2 min)
+- Last 5 plans: 01-01 (6 min), 02-01 (3 min), 02-02 (2 min), 03-01 (2 min)
 - Trend: improving
 
 _Updated after each plan completion_
@@ -72,6 +73,8 @@ Recent decisions affecting current work:
 - [02-02]: Mock helpers access game.settings._stores.values Map directly for synchronous per-test setting overrides
 - [02-02]: createMockActor uses destructured overrides matching TokenService's D&D 5e actor.system.details.type shape
 - [02-02]: addMockTokens replaces (not appends) canvas.tokens arrays for predictable test state
+- [03-01]: Used if: always() && steps.install.outcome == 'success' pattern (not continue-on-error) to preserve job failure status
+- [03-01]: Added .planning/ to .prettierignore since tooling docs should not block CI format checks
 
 ### Pending Todos
 
@@ -87,5 +90,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 02-02-PLAN.md (Mock Helper Utilities) — Phase 02 complete, Phase 03 next
+Stopped at: Completed 03-01-PLAN.md (CI Pipeline) — Phase 03 complete, Phase 04/05 next
 Resume file: None
