@@ -84,7 +84,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. `npm test` reports passing tests for Utils.js `extractPathFromTVAResult()` covering CDN URLs, nested paths, and empty input edge cases
 4. `npm test` reports passing tests for Utils.js `escapeHtml()` and `sanitizePath()` covering XSS-relevant inputs
 5. `npm test` reports passing tests for Fuse.js loader error handling covering CDN failure and fallback behavior
-   **Plans**: TBD
+   **Plans:** 2 plans
+   Plans:
+
+- [ ] 04-01-PLAN.md — Constants.js structural and representative tests (CREATURE_TYPE_MAPPINGS, EXCLUDED_FOLDERS, data exports)
+- [ ] 04-02-PLAN.md — Utils.js pure function, security, path extraction, CDN filtering, and Fuse.js loader tests
 
 ### Phase 5: Storage Tests
 
@@ -178,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Tooling Foundation                   | 0/1            | Planning complete | -         |
 | 2. Foundry Mock Infrastructure          | 0/TBD          | Not started       | -         |
 | 3. CI Pipeline                          | 0/1            | Planning complete | -         |
-| 4. Pure Logic Tests                     | 0/TBD          | Not started       | -         |
+| 4. Pure Logic Tests                     | 0/2            | Planning complete | -         |
 | 5. Storage Tests                        | 0/TBD          | Not started       | -         |
 | 6. Dependency Injection Refactor        | 0/TBD          | Not started       | -         |
 | 7. Service Layer Tests                  | 0/TBD          | Not started       | -         |
