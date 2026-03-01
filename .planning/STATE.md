@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-01T07:36:48Z"
+last_updated: "2026-03-01T07:43:49.160Z"
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -18,35 +18,35 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 2 — Foundry Mock Infrastructure
+**Current focus:** Phase 2 complete — Phase 3 (CI) or Phase 4/5 (parallel) next
 
 ## Current Position
 
-Phase: 2 of 10 (Foundry Mock Infrastructure)
-Plan: 1 of 2 in current phase
-Status: 02-01 complete, 02-02 next
-Last activity: 2026-03-01 — Completed 02-01 Global Foundry Mock Setup
+Phase: 2 of 10 (Foundry Mock Infrastructure) -- COMPLETE
+Plan: 2 of 2 in current phase (all complete)
+Status: Phase 02 complete, Phase 03 next
+Last activity: 2026-03-01 — Completed 02-02 Mock Helper Utilities
 
-Progress: [██░░░░░░░░] 15%
+Progress: [███░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 2
-- Average duration: 5 min
-- Total execution time: 0.15 hours
+- Total plans completed: 3
+- Average duration: 4 min
+- Total execution time: 0.18 hours
 
 **By Phase:**
 
 | Phase                        | Plans | Total | Avg/Plan |
 | ---------------------------- | ----- | ----- | -------- |
 | 01-tooling-foundation        | 1     | 6 min | 6 min    |
-| 02-foundry-mock-infrastructure | 1     | 3 min | 3 min    |
+| 02-foundry-mock-infrastructure | 2     | 5 min | 2.5 min  |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (6 min), 02-01 (3 min)
+- Last 5 plans: 01-01 (6 min), 02-01 (3 min), 02-02 (2 min)
 - Trend: improving
 
 _Updated after each plan completion_
@@ -69,6 +69,9 @@ Recent decisions affecting current work:
 - [01-01]: globals.worker is the correct key for Web Worker ESLint globals (not globals.dedicatedWorker)
 - [01-01]: ESLint 10 new rules (no-useless-assignment, no-useless-escape, no-case-declarations) set to warn on existing code
 - [01-01]: tsc --noEmit produces 128 type errors from fvtt-types beta — expected, tracked for Phase 9
+- [02-02]: Mock helpers access game.settings._stores.values Map directly for synchronous per-test setting overrides
+- [02-02]: createMockActor uses destructured overrides matching TokenService's D&D 5e actor.system.details.type shape
+- [02-02]: addMockTokens replaces (not appends) canvas.tokens arrays for predictable test state
 
 ### Pending Todos
 
@@ -84,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 02-01-PLAN.md (Global Foundry Mock Setup) — 02-02 next
+Stopped at: Completed 02-02-PLAN.md (Mock Helper Utilities) — Phase 02 complete, Phase 03 next
 Resume file: None
