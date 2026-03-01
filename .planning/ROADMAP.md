@@ -182,7 +182,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Tooling Foundation                   | 0/1            | Planning complete | -         |
 | 2. Foundry Mock Infrastructure          | 0/TBD          | Not started       | -         |
 | 3. CI Pipeline                          | 0/1            | Planning complete | -         |
-| 4. Pure Logic Tests                     | 0/2            | Planning complete | -         |
+| 4. Pure Logic Tests                     | 1/2            | In progress       | -         |
 | 5. Storage Tests                        | 0/TBD          | Not started       | -         |
 | 6. Dependency Injection Refactor        | 0/TBD          | Not started       | -         |
 | 7. Service Layer Tests                  | 0/TBD          | Not started       | -         |

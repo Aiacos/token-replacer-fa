@@ -25,7 +25,7 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Unit Tests — Pure Logic
 
-- [ ] **TEST-01**: Constants.js CREATURE_TYPE_MAPPINGS categorization is tested for all 14 categories
+- [x] **TEST-01**: Constants.js CREATURE_TYPE_MAPPINGS categorization is tested for all 14 categories
 - [ ] **TEST-02**: Constants.js EXCLUDED_FOLDERS filtering is tested with CDN and local paths
 - [ ] **TEST-03**: Utils.js path extraction functions are tested with edge cases (CDN URLs, nested paths, empty input)
 - [ ] **TEST-04**: Utils.js Fuse.js loader error handling is tested (CDN failure, fallback)
@@ -119,7 +119,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | MOCK-03     | Phase 2  | Complete |
 | MOCK-04     | Phase 2  | Complete |
 | MOCK-05     | Phase 2  | Complete |
-| TEST-01     | Phase 4  | Pending  |
+| TEST-01     | Phase 4  | Complete |
 | TEST-02     | Phase 4  | Pending  |
 | TEST-03     | Phase 4  | Pending  |
 | TEST-04     | Phase 4  | Pending  |
