@@ -21,6 +21,7 @@ import {
   extractNameFromTVAResult,
   yieldToMain,
   createDebugLogger,
+  createDefaultGetSetting,
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -29,11 +30,21 @@ import { indexService } from './IndexService.js';
  * Handles searchTokenArt with all its subtype logic, result aggregation, and search coordination
  */
 export class SearchOrchestrator {
-  constructor() {
+  constructor(deps = {}) {
+    const {
+      tvaCacheService: injectedTVACache,
+      forgeBazaarService: injectedForgeBazaar,
+      indexService: injectedIndex = indexService,
+      getSetting = createDefaultGetSetting(),
+      workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
+    } = deps;
+
     this.searchCache = new Map();
-    // Dependencies will be injected via setDependencies()
-    this.tvaCacheService = null;
-    this.forgeBazaarService = null;
+    this._tvaCacheService = injectedTVACache ?? null;
+    this._forgeBazaarService = injectedForgeBazaar ?? null;
+    this._indexService = injectedIndex;
+    this._getSetting = getSetting;
+    this._workerFactory = workerFactory;
     this.worker = null;
     this._workerInitialized = false;
     this._debugLog = createDebugLogger('SearchOrchestrator');
@@ -46,16 +57,12 @@ export class SearchOrchestrator {
   _ensureWorker() {
     if (this._workerInitialized) return;
     this._workerInitialized = true;
-
-    if (typeof Worker !== 'undefined') {
-      try {
-        const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
-        this.worker = new Worker(workerPath);
-        this._debugLog('Web Worker initialized for background search operations');
-      } catch (error) {
-        console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
-        this.worker = null;
-      }
+    try {
+      this.worker = this._workerFactory();
+      this._debugLog('Web Worker initialized for background search operations');
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
+      this.worker = null;
     }
   }
 
@@ -65,8 +72,8 @@ export class SearchOrchestrator {
    * @param {Object} forgeBazaarService - ForgeBazaarService instance
    */
   setDependencies(tvaCacheService, forgeBazaarService) {
-    this.tvaCacheService = tvaCacheService;
-    this.forgeBazaarService = forgeBazaarService;
+    this._tvaCacheService = tvaCacheService;
+    this._forgeBazaarService = forgeBazaarService;
   }
 
   /**
@@ -129,11 +136,11 @@ export class SearchOrchestrator {
    * @returns {Promise<Array>} Search results
    */
   async searchTVA(searchTerm) {
-    if (!this.tvaCacheService?.hasTVA || !this.tvaCacheService?.tvaAPI) return [];
+    if (!this._tvaCacheService?.hasTVA || !this._tvaCacheService?.tvaAPI) return [];
 
     // FAST PATH: Use direct cache access if available
-    if (this.tvaCacheService.tvaCacheLoaded) {
-      const directResults = await this.tvaCacheService.searchTVACacheDirect(searchTerm);
+    if (this._tvaCacheService.tvaCacheLoaded) {
+      const directResults = await this._tvaCacheService.searchTVACacheDirect(searchTerm);
       if (directResults.length > 0) {
         return directResults;
       }
@@ -147,7 +154,7 @@ export class SearchOrchestrator {
       const seenPaths = new Set();
 
       // Try different search configurations for TVA compatibility
-      let searchResults = await this.tvaCacheService.tvaAPI.doImageSearch(searchTerm, {
+      let searchResults = await this._tvaCacheService.tvaAPI.doImageSearch(searchTerm, {
         searchType: 'Portrait',
         simpleResults: false,
       });
@@ -158,7 +165,7 @@ export class SearchOrchestrator {
         (Array.isArray(searchResults) && searchResults.length === 0) ||
         (searchResults instanceof Map && searchResults.size === 0)
       ) {
-        searchResults = await this.tvaCacheService.tvaAPI.doImageSearch(searchTerm);
+        searchResults = await this._tvaCacheService.tvaAPI.doImageSearch(searchTerm);
       }
 
       this._debugLog(`TVA raw results for "${searchTerm}":`, searchResults);
@@ -279,7 +286,7 @@ export class SearchOrchestrator {
 
     const results = [];
     const seenPaths = new Set(); // Use Set for O(1) duplicate check
-    const threshold = game.settings.get(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
+    const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
 
     const fuseOptions = {
       keys: ['name', 'fileName', 'category'],
@@ -383,7 +390,7 @@ export class SearchOrchestrator {
       this.worker.addEventListener('error', errorHandler);
 
       // Get fuzzy threshold setting
-      const threshold = game.settings.get(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
+      const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
 
       // Post the search task to the worker
       this.worker.postMessage({
@@ -426,15 +433,15 @@ export class SearchOrchestrator {
     // Direct search term mode
     if (directSearchTerm) {
       // Get search priority setting
-      const priority = game.settings.get(MODULE_ID, 'searchPriority');
+      const priority = this._getSetting(MODULE_ID, 'searchPriority');
 
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: directSearchTerm, resultsFound: 0 });
       }
 
       // Priority: forgeBazaar - Try ForgeBazaarService first
-      if (priority === 'forgeBazaar' && this.forgeBazaarService?.isServiceAvailable()) {
-        const bazaarResults = await this.forgeBazaarService.search(directSearchTerm);
+      if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {
+        const bazaarResults = await this._forgeBazaarService.search(directSearchTerm);
         for (const result of bazaarResults) {
           if (!seenPaths.has(result.path)) {
             seenPaths.add(result.path);
@@ -444,10 +451,10 @@ export class SearchOrchestrator {
       }
       // Search TVA (when priority is faNexus, both, or forgeBazaar unavailable)
       else if (
-        this.tvaCacheService?.hasTVA &&
+        this._tvaCacheService?.hasTVA &&
         (priority === 'faNexus' ||
           priority === 'both' ||
-          !this.forgeBazaarService?.isServiceAvailable())
+          !this._forgeBazaarService?.isServiceAvailable())
       ) {
         const tvaResults = await this.searchTVA(directSearchTerm);
         for (const result of tvaResults) {
@@ -458,8 +465,8 @@ export class SearchOrchestrator {
         }
       }
       // Fallback to ForgeBazaarService when TVA is not available (unless priority is faNexus only)
-      else if (priority !== 'faNexus' && this.forgeBazaarService?.isServiceAvailable()) {
-        const bazaarResults = await this.forgeBazaarService.search(directSearchTerm);
+      else if (priority !== 'faNexus' && this._forgeBazaarService?.isServiceAvailable()) {
+        const bazaarResults = await this._forgeBazaarService.search(directSearchTerm);
         for (const result of bazaarResults) {
           if (!seenPaths.has(result.path)) {
             seenPaths.add(result.path);
@@ -506,16 +513,16 @@ export class SearchOrchestrator {
     console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
 
     // Get search priority setting
-    const priority = game.settings.get(MODULE_ID, 'searchPriority');
+    const priority = this._getSetting(MODULE_ID, 'searchPriority');
 
     // Try FAST mode using pre-built index first
-    if (indexService.isBuilt) {
+    if (this._indexService.isBuilt) {
       console.log(`${MODULE_ID} | Using pre-built index (FAST mode)`);
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'index lookup', resultsFound: 0 });
       }
 
-      const indexResults = indexService.searchByCategory(categoryType);
+      const indexResults = this._indexService.searchByCategory(categoryType);
       for (const result of indexResults) {
         // Double-check exclusion filter for safety
         if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
@@ -539,13 +546,13 @@ export class SearchOrchestrator {
       console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
     }
     // Priority: forgeBazaar - Try ForgeBazaarService first
-    else if (priority === 'forgeBazaar' && this.forgeBazaarService?.isServiceAvailable()) {
+    else if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {
       console.log(`${MODULE_ID} | Using ForgeBazaarService (priority: forgeBazaar)`);
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
       }
 
-      const bazaarResults = await this.forgeBazaarService.browseCategory(categoryType);
+      const bazaarResults = await this._forgeBazaarService.browseCategory(categoryType);
       for (const result of bazaarResults) {
         if (!seenPaths.has(result.path)) {
           seenPaths.add(result.path);
@@ -569,17 +576,17 @@ export class SearchOrchestrator {
     }
     // FAST PATH: Use TVA direct cache if loaded (when priority is not forgeBazaar, or when forgeBazaar unavailable)
     else if (
-      this.tvaCacheService?.tvaCacheLoaded &&
+      this._tvaCacheService?.tvaCacheLoaded &&
       (priority === 'faNexus' ||
         priority === 'both' ||
-        !this.forgeBazaarService?.isServiceAvailable())
+        !this._forgeBazaarService?.isServiceAvailable())
     ) {
       console.log(`${MODULE_ID} | Using TVA direct cache (FAST mode)`);
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'TVA cache lookup', resultsFound: 0 });
       }
 
-      const tvaCacheResults = await this.tvaCacheService.searchTVACacheByCategory(categoryType);
+      const tvaCacheResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
       for (const result of tvaCacheResults) {
         if (!seenPaths.has(result.path)) {
           seenPaths.add(result.path);
@@ -600,10 +607,10 @@ export class SearchOrchestrator {
     }
     // Fallback to SLOW mode - multiple TVA API calls (when priority is not forgeBazaar, or when forgeBazaar unavailable)
     else if (
-      this.tvaCacheService?.hasTVA &&
+      this._tvaCacheService?.hasTVA &&
       (priority === 'faNexus' ||
         priority === 'both' ||
-        !this.forgeBazaarService?.isServiceAvailable())
+        !this._forgeBazaarService?.isServiceAvailable())
     ) {
       const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
 
@@ -696,13 +703,13 @@ export class SearchOrchestrator {
       console.log(`${MODULE_ID} | TVA search complete, total unique results: ${results.length}`);
     }
     // Fallback to ForgeBazaarService when TVA is not available (unless priority is faNexus only)
-    else if (priority !== 'faNexus' && this.forgeBazaarService?.isServiceAvailable()) {
+    else if (priority !== 'faNexus' && this._forgeBazaarService?.isServiceAvailable()) {
       console.log(`${MODULE_ID} | Using ForgeBazaarService (TVA not available)`);
       if (progressCallback) {
         progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
       }
 
-      const bazaarResults = await this.forgeBazaarService.browseCategory(categoryType);
+      const bazaarResults = await this._forgeBazaarService.browseCategory(categoryType);
       for (const result of bazaarResults) {
         if (!seenPaths.has(result.path)) {
           seenPaths.add(result.path);
@@ -772,10 +779,10 @@ export class SearchOrchestrator {
       return this.searchCache.get(cacheKey);
     }
 
-    const priority = game.settings.get(MODULE_ID, 'searchPriority');
-    const useTVACache = game.settings.get(MODULE_ID, 'useTVACache');
+    const priority = this._getSetting(MODULE_ID, 'searchPriority');
+    const useTVACache = this._getSetting(MODULE_ID, 'useTVACache');
     const results = [];
-    const useTVAForAll = this.tvaCacheService?.hasTVA && useTVACache;
+    const useTVAForAll = this._tvaCacheService?.hasTVA && useTVACache;
 
     // Check for specific subtypes
     const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
@@ -791,12 +798,12 @@ export class SearchOrchestrator {
       const seenPaths = new Set();
 
       // Try FAST mode using pre-built index
-      if (indexService.isBuilt) {
+      if (this._indexService.isBuilt) {
         console.log(`${MODULE_ID} | Using index for subtype search (FAST mode)`);
 
         // First search for actor name (highest priority - exact matches)
         if (creatureInfo.actorName) {
-          const nameResults = indexService.search(creatureInfo.actorName.toLowerCase());
+          const nameResults = this._indexService.search(creatureInfo.actorName.toLowerCase());
           console.log(
             `${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`
           );
@@ -814,7 +821,7 @@ export class SearchOrchestrator {
         }
 
         // Then search for subtypes
-        const indexResults = indexService.searchMultiple(subtypeTerms);
+        const indexResults = this._indexService.searchMultiple(subtypeTerms);
         console.log(`${MODULE_ID} | Index returned ${indexResults.length} results for subtypes`);
 
         for (const result of indexResults) {
@@ -830,12 +837,12 @@ export class SearchOrchestrator {
         }
       }
       // FAST PATH: Use TVA direct cache if loaded
-      else if (this.tvaCacheService?.isTVACacheLoaded) {
+      else if (this._tvaCacheService?.isTVACacheLoaded) {
         console.log(`${MODULE_ID} | Using TVA direct cache for subtype search (FAST mode)`);
 
         // First search for actor name (highest priority)
         if (creatureInfo.actorName) {
-          const nameResults = await this.tvaCacheService.searchTVACacheDirect(
+          const nameResults = await this._tvaCacheService.searchTVACacheDirect(
             creatureInfo.actorName
           );
           console.log(
@@ -855,7 +862,7 @@ export class SearchOrchestrator {
         }
 
         // Then search for all subtypes at once (more efficient)
-        const subtypeResults = await this.tvaCacheService.searchTVACacheMultiple(subtypeTerms);
+        const subtypeResults = await this._tvaCacheService.searchTVACacheMultiple(subtypeTerms);
         console.log(
           `${MODULE_ID} | TVA direct cache returned ${subtypeResults.length} results for subtypes (${subtypeTerms.join(', ')})`
         );
@@ -872,7 +879,7 @@ export class SearchOrchestrator {
         }
       }
       // Fallback to SLOW mode - TVA API calls (only if cache not loaded)
-      else if (this.tvaCacheService?.hasTVA) {
+      else if (this._tvaCacheService?.hasTVA) {
         console.log(
           `${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode - cache not loaded)`
         );
@@ -993,7 +1000,7 @@ export class SearchOrchestrator {
     }
 
     if (
-      this.tvaCacheService?.hasTVA &&
+      this._tvaCacheService?.hasTVA &&
       (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')
     ) {
       for (const term of searchTerms) {
