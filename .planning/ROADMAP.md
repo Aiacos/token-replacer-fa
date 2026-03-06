@@ -192,6 +192,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. Worker is initialized lazily on first use and terminated via a `Hooks.once('closeAll')` or module teardown hook — no dangling Worker references after module unload
 4. Worker crashes fall back to direct indexing automatically and display a `ui.notifications.warn()` message to the user
 5. `recoverySuggestions` from ModuleError objects are surfaced to users via `ui.notifications.error({ permanent: true })` rather than being discarded
+   **Plans:** 2 plans
+   Plans:
+
+- [ ] 10-01-PLAN.md — Error handling standardization: hook try-catch, createModuleError consistency, recovery suggestion surfacing
+- [ ] 10-02-PLAN.md — Worker lifecycle cleanup: fallback notifications, beforeunload termination, lifecycle tests
 
 ## Progress
 
@@ -209,4 +214,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 7. Service Layer Tests                  | 3/4 | In Progress|  |
 | 8. Integration Tests                    | 2/2 | Complete   | 2026-03-06 |
 | 9. Type Safety                          | 2/2 | Complete   | 2026-03-06 |
-| 10. Error Handling and Worker Lifecycle | 0/TBD          | Not started       | -         |
+| 10. Error Handling and Worker Lifecycle | 0/2            | Planning complete | -         |
