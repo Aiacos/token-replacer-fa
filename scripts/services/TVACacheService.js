@@ -11,6 +11,7 @@ import {
   yieldToMain,
   createModuleError,
   createDebugLogger,
+  createDefaultGetSetting,
 } from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
@@ -21,7 +22,23 @@ const TVA_CACHE_KEY = 'tva-cache-v1';
  * Loads TVA cache file directly and provides fast search methods
  */
 export class TVACacheService {
-  constructor() {
+  /**
+   * @param {Object} [deps={}] - Dependency overrides for testing
+   * @param {function(): Object|null} [deps.getTvaAPI] - Returns TVA API object (default: reads from game.modules)
+   * @param {function(string, string): *} [deps.getSetting] - Settings accessor (default: game.settings.get)
+   * @param {Object} [deps.storageService] - Storage service instance (default: imported singleton)
+   */
+  constructor(deps = {}) {
+    const {
+      getTvaAPI = () => game.modules.get('token-variants')?.api,
+      getSetting = createDefaultGetSetting(),
+      storageService: injectedStorage = storageService,
+    } = deps;
+
+    this._getTvaAPI = getTvaAPI;
+    this._getSetting = getSetting;
+    this._storageService = injectedStorage;
+
     this.tvaAPI = null;
     this.hasTVA = false;
     // Direct TVA cache access
@@ -40,7 +57,7 @@ export class TVACacheService {
    * Call loadTVACache() separately after TVA has finished caching
    */
   init() {
-    this.tvaAPI = game.modules.get('token-variants')?.api;
+    this.tvaAPI = this._getTvaAPI();
     this.hasTVA = !!this.tvaAPI;
     console.log(`${MODULE_ID} | TVACacheService initialized. TVA available: ${this.hasTVA}`);
   }
@@ -289,7 +306,7 @@ export class TVACacheService {
    */
   async _tryRestoreFromIndexedDB(cacheFilePath) {
     try {
-      const cached = await storageService.load(TVA_CACHE_KEY);
+      const cached = await this._storageService.load(TVA_CACHE_KEY);
       if (!cached?.tvaCacheImages?.length || !cached?.tvaCacheByCategory) {
         this._debugLog('No valid TVA cache in IndexedDB');
         return null;
@@ -356,7 +373,7 @@ export class TVACacheService {
       timestamp: Date.now(),
     };
 
-    storageService
+    this._storageService
       .save(TVA_CACHE_KEY, data)
       .then((success) => {
         if (success) {
@@ -383,7 +400,7 @@ export class TVACacheService {
     this.tvaCacheByCategory = {};
     clearExcludedPathCache();
     // Clear IndexedDB cache to force fresh fetch
-    await storageService.remove(TVA_CACHE_KEY).catch(() => {});
+    await this._storageService.remove(TVA_CACHE_KEY).catch(() => {});
 
     try {
       const result = await this.loadTVACache();

@@ -476,3 +476,13 @@ export function createDebugLogger(servicePrefix) {
     }
   };
 }
+
+/**
+ * Create a default getSetting function that delegates to game.settings.get()
+ * Lazy: does NOT access `game` until the returned function is called,
+ * making it safe to use as a constructor default parameter.
+ * @returns {function(string, string): *} A function that calls game.settings.get(moduleId, key)
+ */
+export function createDefaultGetSetting() {
+  return (moduleId, key) => game.settings.get(moduleId, key);
+}
