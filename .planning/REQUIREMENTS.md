@@ -74,9 +74,9 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Worker Lifecycle
 
-- [ ] **WORK-01**: Worker initialization is lazy (deferred to first use)
-- [ ] **WORK-02**: Worker termination is clean (no dangling listeners or references)
-- [ ] **WORK-03**: Worker crash recovery falls back to direct indexing with user notification
+- [x] **WORK-01**: Worker initialization is lazy (deferred to first use)
+- [x] **WORK-02**: Worker termination is clean (no dangling listeners or references)
+- [x] **WORK-03**: Worker crash recovery falls back to direct indexing with user notification
 
 ## v2 Requirements
 
@@ -150,9 +150,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | ERR-02      | Phase 10 | Complete |
 | ERR-03      | Phase 10 | Complete |
 | ERR-04      | Phase 10 | Complete |
-| WORK-01     | Phase 10 | Pending  |
-| WORK-02     | Phase 10 | Pending  |
-| WORK-03     | Phase 10 | Pending  |
+| WORK-01     | Phase 10 | Complete |
+| WORK-02     | Phase 10 | Complete |
+| WORK-03     | Phase 10 | Complete |
 
 **Coverage:**
 
