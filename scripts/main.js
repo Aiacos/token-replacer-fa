@@ -121,7 +121,7 @@ export class TokenReplacerApp {
    * @returns {*} Setting value
    */
   getSetting(key) {
-    return game.settings.get(MODULE_ID, key);
+    return game.settings.get(MODULE_ID, /** @type {any} */ (key));
   }
 
   /**
@@ -754,7 +754,7 @@ export class TokenReplacerApp {
 export const tokenReplacerApp = new TokenReplacerApp();
 
 // Backward compatibility - expose on window
-window.TokenReplacerFA = tokenReplacerApp;
+window.TokenReplacerFA = /** @type {any} */ (tokenReplacerApp);
 
 /**
  * Module initialization
@@ -904,6 +904,7 @@ Hooks.once('ready', async () => {
 /**
  * Add button to scene controls
  */
+// @ts-expect-error fvtt-types beta does not include getSceneControlButtons hook type
 Hooks.on('getSceneControlButtons', (controls) => {
   if (!game.user.isGM) {
     tokenReplacerApp._debugLog('Skipping scene control button (user is not GM)');

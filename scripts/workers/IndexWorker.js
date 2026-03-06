@@ -305,6 +305,7 @@ async function handleFuzzySearch(data) {
   }
 
   // Create Fuse instance
+  // @ts-expect-error Fuse loaded dynamically via importScripts in Worker scope
   const fuse = new Fuse(index, options);
   const results = [];
   const seenPaths = new Set();

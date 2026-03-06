@@ -435,8 +435,10 @@ export async function renderModuleTemplate(path, data) {
  */
 export async function loadModuleTemplates(paths) {
   if (foundry?.applications?.handlebars?.loadTemplates) {
+    // @ts-expect-error Foundry v13 loadTemplates returns template array, not void
     return foundry.applications.handlebars.loadTemplates(paths);
   }
+  // @ts-expect-error Foundry v12 loadTemplates returns template array, not void per fvtt-types
   return loadTemplates(paths);
 }
 
@@ -484,5 +486,5 @@ export function createDebugLogger(servicePrefix) {
  * @returns {function(string, string): *} A function that calls game.settings.get(moduleId, key)
  */
 export function createDefaultGetSetting() {
-  return (moduleId, key) => game.settings.get(moduleId, key);
+  return (moduleId, key) => game.settings.get(/** @type {any} */ (moduleId), /** @type {any} */ (key));
 }

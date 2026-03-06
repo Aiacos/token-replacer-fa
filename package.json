@@ -10,7 +10,7 @@
     "lint": "eslint scripts/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit --project jsconfig.json || true"
+    "typecheck": "tsc --noEmit --project jsconfig.json"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
