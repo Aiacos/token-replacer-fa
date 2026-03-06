@@ -174,7 +174,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. All public methods on SearchOrchestrator, TokenService, TVACacheService, IndexService, and StorageService have `@param` and `@returns` JSDoc annotations
 4. `scripts/types/settings.d.ts` exists with `ClientSettings.Values` declaration merging for all module settings — typed `getSetting()` calls return specific types, not `unknown`
 5. fvtt-types is installed and Foundry API references in service files show IDE type information rather than `any`
-   **Plans**: TBD
+   **Plans:** 2 plans
+   Plans:
+
+- [ ] 09-01-PLAN.md — Type infrastructure: declaration files (settings.d.ts, modules.d.ts, globals.d.ts), JSDoc typedefs, jsconfig.json update
+- [ ] 09-02-PLAN.md — Service annotations: @param/@returns on all public methods, fix remaining tsc errors, enable typecheck gate
 
 ### Phase 10: Error Handling and Worker Lifecycle
 
@@ -204,5 +208,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 6. Dependency Injection Refactor        | 2/2 | Complete   | 2026-03-06 |
 | 7. Service Layer Tests                  | 3/4 | In Progress|  |
 | 8. Integration Tests                    | 2/2 | Complete   | 2026-03-06 |
-| 9. Type Safety                          | 0/TBD          | Not started       | -         |
+| 9. Type Safety                          | 0/2  | Planning complete | -         |
 | 10. Error Handling and Worker Lifecycle | 0/TBD          | Not started       | -         |
