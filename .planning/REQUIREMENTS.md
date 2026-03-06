@@ -67,10 +67,10 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Error Handling
 
-- [ ] **ERR-01**: All async hook handlers wrapped in try-catch with user-visible error reporting
-- [ ] **ERR-02**: All services use consistent createModuleError pattern with recovery suggestions
-- [ ] **ERR-03**: IndexedDB transaction abort handlers prevent silent data loss
-- [ ] **ERR-04**: Worker error/messageerror handlers surface failures to user
+- [x] **ERR-01**: All async hook handlers wrapped in try-catch with user-visible error reporting
+- [x] **ERR-02**: All services use consistent createModuleError pattern with recovery suggestions
+- [x] **ERR-03**: IndexedDB transaction abort handlers prevent silent data loss
+- [x] **ERR-04**: Worker error/messageerror handlers surface failures to user
 
 ### Worker Lifecycle
 
@@ -146,10 +146,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | TYPE-04     | Phase 9  | Complete |
 | TYPE-05     | Phase 9  | Complete |
 | TYPE-06     | Phase 9  | Complete |
-| ERR-01      | Phase 10 | Pending  |
-| ERR-02      | Phase 10 | Pending  |
-| ERR-03      | Phase 10 | Pending  |
-| ERR-04      | Phase 10 | Pending  |
+| ERR-01      | Phase 10 | Complete |
+| ERR-02      | Phase 10 | Complete |
+| ERR-03      | Phase 10 | Complete |
+| ERR-04      | Phase 10 | Complete |
 | WORK-01     | Phase 10 | Pending  |
 | WORK-02     | Phase 10 | Pending  |
 | WORK-03     | Phase 10 | Pending  |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
-status: completed
-stopped_at: Completed 09-02 Service Annotations
-last_updated: "2026-03-06T10:59:50.662Z"
-last_activity: 2026-03-06 — Completed 09-02 Service Annotations
+status: in-progress
+stopped_at: Completed 10-01 Error Handling Standardization
+last_updated: "2026-03-06T11:54:49.000Z"
+last_activity: 2026-03-06 — Completed 10-01 Error Handling Standardization
 progress:
   total_phases: 10
   completed_phases: 9
-  total_plans: 17
-  completed_plans: 17
-  percent: 94
+  total_plans: 19
+  completed_plans: 18
+  percent: 95
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 9 in progress (Type Safety) — Plan 02 complete
+**Current focus:** Phase 10 in progress (Error Handling & Worker Lifecycle) — Plan 01 complete
 
 ## Current Position
 
-Phase: 9 of 10 (Type Safety)
-Plan: 2 of 2 in current phase
-Status: 09-02 Service Annotations complete
-Last activity: 2026-03-06 — Completed 09-02 Service Annotations
+Phase: 10 of 10 (Error Handling & Worker Lifecycle)
+Plan: 1 of 2 in current phase
+Status: 10-01 Error Handling Standardization complete
+Last activity: 2026-03-06 — Completed 10-01 Error Handling Standardization
 
-Progress: [█████████░] 94%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ _Updated after each plan completion_
 | Phase 08 P01 | 2 min | 1 tasks | 1 files |
 | Phase 09 P01 | 3 min | 2 tasks | 5 files |
 | Phase 09 P02 | 6 min | 2 tasks | 14 files |
+| Phase 10 P01 | 3 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,9 @@ Recent decisions affecting current work:
 - [09-02]: CreatureInfo typedef updated to match actual runtime shape (type/subtype/searchTerms vs creatureType/creatureSubtype)
 - [09-02]: UIManager.js uses @ts-nocheck for 51 DOM errors (pragmatic, no value in Phase 9)
 - [09-02]: actor.name returns never in fvtt-types -- cast to string at assignment point
+- [10-01]: Recovery suggestions appended to notification text with 'Try: ' prefix, permanent flag only when suggestions present
+- [10-01]: StorageService abort handlers confirmed correct (all call reject()) -- no changes needed for ERR-03
+- [10-01]: token_replace_failed error key added for TokenService structured logging
 
 ### Pending Todos
 
@@ -127,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T10:55:34Z
-Stopped at: Completed 09-02 Service Annotations
-Resume file: .planning/phases/09-type-safety/09-02-SUMMARY.md
+Last session: 2026-03-06T11:54:49Z
+Stopped at: Completed 10-01 Error Handling Standardization
+Resume file: .planning/phases/10-error-handling-worker-lifecycle/10-01-SUMMARY.md
