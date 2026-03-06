@@ -2,7 +2,7 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.12.3
+ * @version 2.12.4
  */
 
 import { MODULE_ID } from './core/Constants.js';
@@ -766,7 +766,7 @@ window.TokenReplacerFA = /** @type {any} */ (tokenReplacerApp);
  */
 Hooks.once('init', async () => {
   try {
-    console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.3`);
+    console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.4`);
 
     // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
     tokenReplacerApp.registerSettings();
