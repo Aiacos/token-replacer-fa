@@ -11,6 +11,6 @@
     "strict": false,
     "skipLibCheck": true
   },
-  "include": ["scripts/**/*.js"],
+  "include": ["scripts/**/*.js", "scripts/**/*.d.ts"],
   "exclude": ["node_modules", "releases"]
 }
