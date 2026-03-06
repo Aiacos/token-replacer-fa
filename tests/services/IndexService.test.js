@@ -614,6 +614,100 @@ describe('IndexService', () => {
   });
 
   // -----------------------------------------------------------------------
+  // Worker fallback notification
+  // -----------------------------------------------------------------------
+  describe('worker fallback notification', () => {
+    /**
+     * Create a mock worker that fires an error when postMessage is called,
+     * simulating a Worker crash for fallback testing.
+     */
+    function createCrashingWorker() {
+      const worker = {
+        postMessage: vi.fn(() => {
+          if (worker._errorHandler) {
+            worker._errorHandler({ message: 'Worker crashed' });
+          }
+        }),
+        addEventListener: vi.fn((event, handler) => {
+          if (event === 'message') worker._messageHandler = handler;
+          if (event === 'error') worker._errorHandler = handler;
+        }),
+        removeEventListener: vi.fn(),
+        terminate: vi.fn(),
+        _messageHandler: null,
+        _errorHandler: null,
+      };
+      return worker;
+    }
+
+    it('calls ui.notifications.warn when Worker fails and falls back to direct indexing', async () => {
+      const mockWorker = createCrashingWorker();
+      const service = createService({
+        workerFactory: () => mockWorker,
+        getTvaAPI: vi.fn(() => ({ fileCaches: {} })),
+      });
+      service.index = service.createEmptyIndex();
+
+      ui.notifications.warn.mockClear();
+
+      // Use buildFromTVA with pre-loaded cache to trigger worker path
+      const tvaCacheImages = [
+        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', category: 'beast' },
+      ];
+      const count = await service.buildFromTVA(null, tvaCacheImages);
+
+      expect(count).toBeGreaterThan(0); // Fallback succeeded
+      expect(ui.notifications.warn).toHaveBeenCalled();
+      expect(service.worker).toBeNull(); // Worker disabled after fallback
+    });
+
+    it('sets worker to null after fallback', async () => {
+      const mockWorker = createCrashingWorker();
+      const service = createService({
+        workerFactory: () => mockWorker,
+        getTvaAPI: vi.fn(() => ({ fileCaches: {} })),
+      });
+      service.index = service.createEmptyIndex();
+
+      const tvaCacheImages = [
+        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', category: 'beast' },
+      ];
+      const count = await service.buildFromTVA(null, tvaCacheImages);
+
+      expect(service.worker).toBeNull();
+      expect(count).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // terminate()
+  // -----------------------------------------------------------------------
+  describe('terminate()', () => {
+    it('calls worker.terminate() and sets worker to null', () => {
+      const mockWorker = { terminate: vi.fn() };
+      const service = createService({
+        workerFactory: () => mockWorker,
+      });
+
+      // Initialize worker
+      service._ensureWorker();
+      expect(service.worker).toBe(mockWorker);
+
+      service.terminate();
+
+      expect(mockWorker.terminate).toHaveBeenCalled();
+      expect(service.worker).toBeNull();
+    });
+
+    it('is safe to call when no worker exists', () => {
+      const service = createService();
+      // No worker initialized
+      expect(service.worker).toBeNull();
+      expect(() => service.terminate()).not.toThrow();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Worker vs direct path parity (INTG-03)
   // -----------------------------------------------------------------------
   describe('Worker vs direct path parity (INTG-03)', () => {

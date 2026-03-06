@@ -156,6 +156,76 @@ describe('SearchOrchestrator', () => {
   });
 
   // -----------------------------------------------------------------------
+  // Worker fallback notification
+  // -----------------------------------------------------------------------
+  describe('worker fallback notification', () => {
+    it('calls ui.notifications.warn when Worker search fails and falls back', async () => {
+      // Create a mock worker that fires an error when postMessage is called
+      const mockWorker = {
+        postMessage: vi.fn(() => {
+          // Simulate worker error event
+          if (mockWorker._errorHandler) {
+            mockWorker._errorHandler({ message: 'Worker crashed' });
+          }
+        }),
+        addEventListener: vi.fn((event, handler) => {
+          if (event === 'message') mockWorker._messageHandler = handler;
+          if (event === 'error') mockWorker._errorHandler = handler;
+        }),
+        removeEventListener: vi.fn(),
+        terminate: vi.fn(),
+        _messageHandler: null,
+        _errorHandler: null,
+      };
+
+      const { orchestrator } = createOrchestrator({
+        workerFactory: () => mockWorker,
+      });
+
+      const index = createTestIndex();
+
+      // Clear any previous calls
+      ui.notifications.warn.mockClear();
+
+      // searchLocalIndex should try worker, fail, fallback to direct, and notify
+      const results = await orchestrator.searchLocalIndex(['wolf'], index);
+
+      expect(ui.notifications.warn).toHaveBeenCalled();
+      // Should still return results via fallback
+      expect(results.length).toBeGreaterThan(0);
+      // Worker should be nulled after failure
+      expect(orchestrator.worker).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // terminate()
+  // -----------------------------------------------------------------------
+  describe('terminate()', () => {
+    it('calls worker.terminate() and sets worker to null', () => {
+      const mockWorker = { terminate: vi.fn() };
+      const { orchestrator } = createOrchestrator({
+        workerFactory: () => mockWorker,
+      });
+
+      // Initialize worker
+      orchestrator._ensureWorker();
+      expect(orchestrator.worker).toBe(mockWorker);
+
+      orchestrator.terminate();
+
+      expect(mockWorker.terminate).toHaveBeenCalled();
+      expect(orchestrator.worker).toBeNull();
+    });
+
+    it('is safe to call when no worker exists', () => {
+      const { orchestrator } = createOrchestrator();
+      expect(orchestrator.worker).toBeNull();
+      expect(() => orchestrator.terminate()).not.toThrow();
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // folderMatchesCreatureType
   // -----------------------------------------------------------------------
   describe('folderMatchesCreatureType()', () => {
