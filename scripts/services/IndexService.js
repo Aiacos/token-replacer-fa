@@ -735,6 +735,13 @@ export class IndexService {
             this._debugLog('Worker indexing failed, falling back to direct indexing:', error);
             console.warn(`${MODULE_ID} | Worker failed, falling back to direct indexing:`, error);
             this.worker = null; // Disable worker for future attempts
+            try {
+              ui.notifications.warn(
+                game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
+                'Token Replacer FA: Background worker failed, using slower method.',
+                { permanent: false }
+              );
+            } catch { /* ui.notifications may not be ready during early init */ }
             return await this.indexPathsDirectly(allPaths, onProgress);
           }
         } else {

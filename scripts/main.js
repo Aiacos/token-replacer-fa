@@ -9,6 +9,7 @@ import { MODULE_ID } from './core/Constants.js';
 import { loadFuse, yieldToMain, loadModuleTemplates } from './core/Utils.js';
 import { tokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
+import { searchOrchestrator } from './services/SearchOrchestrator.js';
 import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
@@ -983,4 +984,17 @@ Hooks.on('getSceneControlButtons', (controls) => {
     console.error(`${MODULE_ID} | Failed to add scene control button:`, error);
     ui.notifications.error('Token Replacer FA: Failed to add scene control button.');
   }
+});
+
+/**
+ * Clean up Worker and storage on page unload
+ * Prevents dangling Worker references after module unload
+ */
+window.addEventListener('beforeunload', () => {
+  try {
+    indexService.terminate();
+  } catch { /* ignore cleanup errors */ }
+  try {
+    searchOrchestrator?.terminate();
+  } catch { /* ignore cleanup errors */ }
 });

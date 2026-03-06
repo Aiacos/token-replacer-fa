@@ -268,7 +268,21 @@ export class SearchOrchestrator {
     // Use Web Worker if available, otherwise fallback to direct search
     if (this.worker) {
       console.log(`${MODULE_ID} | Using Web Worker for fuzzy search`);
-      return this.searchLocalIndexWithWorker(searchTerms, index, creatureType, onProgress);
+      try {
+        return await this.searchLocalIndexWithWorker(searchTerms, index, creatureType, onProgress);
+      } catch (error) {
+        // Worker failed, fallback to direct search on main thread
+        console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
+        this.worker = null;
+        try {
+          ui.notifications.warn(
+            game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
+            'Token Replacer FA: Background worker failed, using slower method.',
+            { permanent: false }
+          );
+        } catch { /* ui.notifications may not be ready */ }
+        return this.searchLocalIndexDirectly(searchTerms, index, creatureType);
+      }
     } else {
       console.log(`${MODULE_ID} | Using fallback method (main thread)`);
       return this.searchLocalIndexDirectly(searchTerms, index, creatureType);
