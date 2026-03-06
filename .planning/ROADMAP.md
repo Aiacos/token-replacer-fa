@@ -153,10 +153,14 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Requirements**: INTG-01, INTG-02, INTG-03
 **Success Criteria** (what must be TRUE):
 
-1. `npm test` reports a passing integration test that exercises the full path: TVA cache load → index build → fuzzy search → result list
-2. `npm test` reports a passing integration test for the fallback path: no fuzzy match → category search → results
+1. `npm test` reports a passing integration test that exercises the full path: TVA cache load -> index build -> fuzzy search -> result list
+2. `npm test` reports a passing integration test for the fallback path: no fuzzy match -> category search -> results
 3. `npm test` reports a passing test that builds the index via Worker path and direct path and asserts both produce identical index structures
-   **Plans**: TBD
+   **Plans:** 2 plans
+   Plans:
+
+- [ ] 08-01-PLAN.md — SearchPipeline integration tests (full pipeline, fallback, Worker parity)
+- [ ] 08-02-PLAN.md — SearchService facade tests (init, delegation, validation, error wrapping)
 
 ### Phase 9: Type Safety
 
@@ -188,7 +192,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase                                   | Plans Complete | Status            | Completed |
 | --------------------------------------- | -------------- | ----------------- | --------- |
@@ -199,6 +203,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Storage Tests                        | 0/1            | Planning complete | -         |
 | 6. Dependency Injection Refactor        | 2/2 | Complete   | 2026-03-06 |
 | 7. Service Layer Tests                  | 3/4 | In Progress|  |
-| 8. Integration Tests                    | 0/TBD          | Not started       | -         |
+| 8. Integration Tests                    | 0/2          | Planning complete       | -         |
 | 9. Type Safety                          | 0/TBD          | Not started       | -         |
 | 10. Error Handling and Worker Lifecycle | 0/TBD          | Not started       | -         |
