@@ -138,7 +138,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 5. `npm test` reports passing tests for SearchOrchestrator fuzzy search with varying thresholds and result ordering
 6. `npm test` reports passing tests for SearchOrchestrator category-based fallback search
 7. `npm test` reports passing tests for SearchOrchestrator parallel search batching
-   **Plans**: TBD
+   **Plans:** 4 plans
+   Plans:
+
+- [ ] 07-01-PLAN.md — Shared mock TVA cache fixture + TokenService full behavior tests
+- [ ] 07-02-PLAN.md — TVACacheService full behavior tests (cache parsing, search methods)
+- [ ] 07-03-PLAN.md — IndexService full behavior tests (index building, categorization, Worker parity)
+- [ ] 07-04-PLAN.md — SearchOrchestrator full behavior tests (fuzzy search, category fallback, parallel batching)
 
 ### Phase 8: Integration Tests
 
@@ -192,7 +198,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. Pure Logic Tests                     | 1/2            | In progress       | -         |
 | 5. Storage Tests                        | 0/1            | Planning complete | -         |
 | 6. Dependency Injection Refactor        | 2/2 | Complete   | 2026-03-06 |
-| 7. Service Layer Tests                  | 0/TBD          | Not started       | -         |
+| 7. Service Layer Tests                  | 0/4            | Planning complete | -         |
 | 8. Integration Tests                    | 0/TBD          | Not started       | -         |
 | 9. Type Safety                          | 0/TBD          | Not started       | -         |
 | 10. Error Handling and Worker Lifecycle | 0/TBD          | Not started       | -         |
