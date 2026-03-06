@@ -21,7 +21,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Dependency Injection Refactor** - Add constructor DI to all services with backward-compatible defaults (completed 2026-03-06)
 - [ ] **Phase 7: Service Layer Tests** - Write tests for TokenService, TVACacheService, IndexService, SearchOrchestrator
 - [x] **Phase 8: Integration Tests** - Write end-to-end pipeline tests covering the full search workflow (completed 2026-03-06)
-- [ ] **Phase 9: Type Safety** - Configure jsconfig.json, add JSDoc typedefs, run tsc --noEmit
+- [x] **Phase 9: Type Safety** - Configure jsconfig.json, add JSDoc typedefs, run tsc --noEmit (completed 2026-03-06)
 - [ ] **Phase 10: Error Handling and Worker Lifecycle** - Standardize error patterns, surface recovery suggestions, clean up Worker lifecycle
 
 ## Phase Details
@@ -174,7 +174,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. All public methods on SearchOrchestrator, TokenService, TVACacheService, IndexService, and StorageService have `@param` and `@returns` JSDoc annotations
 4. `scripts/types/settings.d.ts` exists with `ClientSettings.Values` declaration merging for all module settings — typed `getSetting()` calls return specific types, not `unknown`
 5. fvtt-types is installed and Foundry API references in service files show IDE type information rather than `any`
-   **Plans:** 2 plans
+   **Plans:** 2/2 plans complete
    Plans:
 
 - [ ] 09-01-PLAN.md — Type infrastructure: declaration files (settings.d.ts, modules.d.ts, globals.d.ts), JSDoc typedefs, jsconfig.json update
@@ -208,5 +208,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 6. Dependency Injection Refactor        | 2/2 | Complete   | 2026-03-06 |
 | 7. Service Layer Tests                  | 3/4 | In Progress|  |
 | 8. Integration Tests                    | 2/2 | Complete   | 2026-03-06 |
-| 9. Type Safety                          | 0/2  | Planning complete | -         |
+| 9. Type Safety                          | 2/2 | Complete   | 2026-03-06 |
 | 10. Error Handling and Worker Lifecycle | 0/TBD          | Not started       | -         |

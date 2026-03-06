@@ -9,8 +9,8 @@ last_activity: 2026-03-06 — Completed 09-01 Type Infrastructure
 progress:
   total_phases: 10
   completed_phases: 8
-  total_plans: 17
-  completed_plans: 16
+  total_plans: 18
+  completed_plans: 17
   percent: 94
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 9 in progress (Type Safety) — Plan 01 complete
+**Current focus:** Phase 9 in progress (Type Safety) — Plan 02 complete
 
 ## Current Position
 
 Phase: 9 of 10 (Type Safety)
-Plan: 1 of 1 in current phase
-Status: 09-01 Type Infrastructure complete
-Last activity: 2026-03-06 — Completed 09-01 Type Infrastructure
+Plan: 2 of 2 in current phase
+Status: 09-02 Service Annotations complete
+Last activity: 2026-03-06 — Completed 09-02 Service Annotations
 
 Progress: [█████████░] 94%
 
@@ -66,6 +66,7 @@ _Updated after each plan completion_
 | Phase 08 P02 | 2 min | 1 tasks | 1 files |
 | Phase 08 P01 | 2 min | 1 tasks | 1 files |
 | Phase 09 P01 | 3 min | 2 tasks | 5 files |
+| Phase 09 P02 | 6 min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,9 @@ Recent decisions affecting current work:
 - [08-01]: buildPipeline() helper centralizes real service wiring for integration tests; Worker parity uses direct-path results as MockWorker response
 - [09-01]: Net error reduction 97->86 (not 97->75) because declaration merging exposed previously-masked type errors
 - [09-01]: game.forge augmentation deferred to Plan 02 via @ts-expect-error (fvtt-types complex Game type hierarchy)
+- [09-02]: CreatureInfo typedef updated to match actual runtime shape (type/subtype/searchTerms vs creatureType/creatureSubtype)
+- [09-02]: UIManager.js uses @ts-nocheck for 51 DOM errors (pragmatic, no value in Phase 9)
+- [09-02]: actor.name returns never in fvtt-types -- cast to string at assignment point
 
 ### Pending Todos
 
@@ -123,6 +127,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T10:46:13Z
-Stopped at: Completed 09-01 Type Infrastructure
-Resume file: .planning/phases/09-type-safety/09-01-SUMMARY.md
+Last session: 2026-03-06T10:55:34Z
+Stopped at: Completed 09-02 Service Annotations
+Resume file: .planning/phases/09-type-safety/09-02-SUMMARY.md
