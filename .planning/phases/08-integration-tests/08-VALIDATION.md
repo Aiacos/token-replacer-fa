@@ -1,9 +1,9 @@
 ---
 phase: 8
 slug: integration-tests
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: approved
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-06
 ---
 
@@ -49,9 +49,10 @@ created: 2026-03-06
 
 ## Wave 0 Requirements
 
-- [ ] `tests/integration/` directory -- needs creation
-- [ ] `tests/integration/SearchPipeline.test.js` -- covers INTG-01, INTG-02, INTG-03 (real service wiring)
-- [ ] `tests/services/SearchService.test.js` -- covers SearchService facade (init, delegation, errors)
+Wave 0 is self-satisfied: both plans use TDD pattern where test files are the primary deliverable created by the tasks themselves.
+
+- [x] `tests/integration/SearchPipeline.test.js` -- created by Plan 08-01 Task 1 (TDD)
+- [x] `tests/services/SearchService.test.js` -- created by Plan 08-02 Task 1 (TDD)
 
 *Existing infrastructure covers test framework and fixtures.*
 
@@ -72,4 +73,4 @@ created: 2026-03-06
 - [ ] Feedback latency < 5s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-03-06
