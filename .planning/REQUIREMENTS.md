@@ -44,9 +44,9 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Integration Tests
 
-- [ ] **INTG-01**: Full search pipeline tested: TVA cache load → index build → fuzzy search → results
-- [ ] **INTG-02**: Fallback path tested: no fuzzy match → category search → results
-- [ ] **INTG-03**: Worker path vs direct path produce identical index structures
+- [x] **INTG-01**: Full search pipeline tested: TVA cache load → index build → fuzzy search → results
+- [x] **INTG-02**: Fallback path tested: no fuzzy match → category search → results
+- [x] **INTG-03**: Worker path vs direct path produce identical index structures
 
 ### Constructor Dependency Injection
 
@@ -132,9 +132,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | TEST-11     | Phase 7  | Complete |
 | TEST-12     | Phase 7  | Complete |
 | TEST-13     | Phase 7  | Complete |
-| INTG-01     | Phase 8  | Pending  |
-| INTG-02     | Phase 8  | Pending  |
-| INTG-03     | Phase 8  | Pending  |
+| INTG-01     | Phase 8  | Complete |
+| INTG-02     | Phase 8  | Complete |
+| INTG-03     | Phase 8  | Complete |
 | DI-01       | Phase 6  | Complete |
 | DI-02       | Phase 6  | Complete |
 | DI-03       | Phase 6  | Complete |
