@@ -50,10 +50,10 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Constructor Dependency Injection
 
-- [ ] **DI-01**: SearchOrchestrator accepts injected dependencies (IndexService, TVACacheService, Fuse, settings)
+- [x] **DI-01**: SearchOrchestrator accepts injected dependencies (IndexService, TVACacheService, Fuse, settings)
 - [x] **DI-02**: TokenService accepts optional canvas injection for testability
 - [x] **DI-03**: TVACacheService accepts injected TVA API for testability
-- [ ] **DI-04**: IndexService accepts injected StorageService and Worker factory
+- [x] **DI-04**: IndexService accepts injected StorageService and Worker factory
 - [x] **DI-05**: All DI changes are backward-compatible (defaults to Foundry globals when no injection)
 
 ### Type Safety
@@ -135,10 +135,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | INTG-01     | Phase 8  | Pending  |
 | INTG-02     | Phase 8  | Pending  |
 | INTG-03     | Phase 8  | Pending  |
-| DI-01       | Phase 6  | Pending  |
+| DI-01       | Phase 6  | Complete |
 | DI-02       | Phase 6  | Complete |
 | DI-03       | Phase 6  | Complete |
-| DI-04       | Phase 6  | Pending  |
+| DI-04       | Phase 6  | Complete |
 | DI-05       | Phase 6  | Complete |
 | TYPE-01     | Phase 9  | Pending  |
 | TYPE-02     | Phase 9  | Pending  |

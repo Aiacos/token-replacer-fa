@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 06-01 Leaf Service DI
-last_updated: "2026-03-06T07:11:12Z"
-last_activity: 2026-03-06 — Completed 06-01 Leaf Service DI
+stopped_at: Completed 06-02 Dependent Service DI
+last_updated: "2026-03-06T07:19:47Z"
+last_activity: 2026-03-06 — Completed 06-02 Dependent Service DI (Phase 6 complete)
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 9
-  completed_plans: 8
-  percent: 73
+  completed_plans: 9
+  percent: 82
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 6 in progress (Dependency Injection Refactor) — Plan 01 complete, Plan 02 next
+**Current focus:** Phase 6 complete (Dependency Injection Refactor) — all plans done, Phase 7 next
 
 ## Current Position
 
-Phase: 6 of 10 (Dependency Injection Refactor)
-Plan: 1 of 2 in current phase
-Status: 06-01 complete, 06-02 next
-Last activity: 2026-03-06 — Completed 06-01 Leaf Service DI
+Phase: 6 of 10 (Dependency Injection Refactor) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase 6 complete, Phase 7 next
+Last activity: 2026-03-06 — Completed 06-02 Dependent Service DI
 
-Progress: [███████░░░] 73%
+Progress: [████████░░] 82%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
-- Average duration: 3.3 min
-- Total execution time: 0.42 hours
+- Total plans completed: 9
+- Average duration: 3.4 min
+- Total execution time: 0.5 hours
 
 **By Phase:**
 
@@ -49,11 +49,11 @@ Progress: [███████░░░] 73%
 | 03-ci-pipeline                 | 1     | 2 min | 2 min    |
 | 04-pure-logic-tests            | 2     | 4 min | 2 min    |
 | 05-storage-tests               | 1     | 5 min | 5 min    |
-| 06-dependency-injection-refactor | 1/2   | 3 min | 3 min    |
+| 06-dependency-injection-refactor | 2/2   | 8 min | 4 min    |
 
 **Recent Trend:**
 
-- Last 5 plans: 03-01 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (5 min), 06-01 (3 min)
+- Last 5 plans: 04-01 (2 min), 04-02 (2 min), 05-01 (5 min), 06-01 (3 min), 06-02 (5 min)
 - Trend: stable (~2-5 min)
 
 _Updated after each plan completion_
@@ -88,6 +88,8 @@ Recent decisions affecting current work:
 - [05-01]: fake-indexeddb/auto must be first setupFile entry (before foundry-mocks) for IndexedDB globals at import time
 - [06-01]: Lazy global pattern: constructor defaults use arrow functions so globals are never accessed at construction time
 - [06-01]: TokenService converted from static-only to instance class; singleton export preserves backward compatibility
+- [06-02]: IndexService Worker creation moved from eager (constructor) to lazy (_ensureWorker) via injected workerFactory
+- [06-02]: SearchOrchestrator _tryInternalCache simplified: removed game.modules.get since tvaAPI already covers module.api paths
 
 ### Pending Todos
 
@@ -102,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:11:12Z
-Stopped at: Completed 06-01 Leaf Service DI
-Resume file: .planning/phases/06-dependency-injection-refactor/06-02-PLAN.md
+Last session: 2026-03-06T07:19:47Z
+Stopped at: Completed 06-02 Dependent Service DI (Phase 6 complete)
+Resume file: Phase 7 next

@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 3: CI Pipeline** - GitHub Actions workflow runs tests, linting, and type checking on every PR
 - [ ] **Phase 4: Pure Logic Tests** - Write tests for Constants.js, Utils.js pure functions with zero Foundry dependencies
 - [ ] **Phase 5: Storage Tests** - Write tests for StorageService IndexedDB operations via jsdom
-- [ ] **Phase 6: Dependency Injection Refactor** - Add constructor DI to all services with backward-compatible defaults
+- [x] **Phase 6: Dependency Injection Refactor** - Add constructor DI to all services with backward-compatible defaults (completed 2026-03-06)
 - [ ] **Phase 7: Service Layer Tests** - Write tests for TokenService, TVACacheService, IndexService, SearchOrchestrator
 - [ ] **Phase 8: Integration Tests** - Write end-to-end pipeline tests covering the full search workflow
 - [ ] **Phase 9: Type Safety** - Configure jsconfig.json, add JSDoc typedefs, run tsc --noEmit
@@ -118,7 +118,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. `new TVACacheService({ tvaAPI: mockTVA })` works in a test using a mock TVA API object, not `game.modules.get()`
 4. `new IndexService({ storageService: mockStorage, workerFactory: mockFactory })` works in a test with injected dependencies
 5. Existing production behavior is unchanged — all services fall back to Foundry globals when no injection is provided
-   **Plans:** 2 plans
+   **Plans:** 2/2 plans complete
    Plans:
 
 - [ ] 06-01-PLAN.md — Leaf service DI: createDefaultGetSetting factory, TVACacheService + TokenService constructor injection
@@ -191,7 +191,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. CI Pipeline                          | 0/1            | Planning complete | -         |
 | 4. Pure Logic Tests                     | 1/2            | In progress       | -         |
 | 5. Storage Tests                        | 0/1            | Planning complete | -         |
-| 6. Dependency Injection Refactor        | 0/2            | Planning complete | -         |
+| 6. Dependency Injection Refactor        | 2/2 | Complete   | 2026-03-06 |
 | 7. Service Layer Tests                  | 0/TBD          | Not started       | -         |
 | 8. Integration Tests                    | 0/TBD          | Not started       | -         |
 | 9. Type Safety                          | 0/TBD          | Not started       | -         |
