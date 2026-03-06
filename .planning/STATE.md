@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
-status: completed
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-06T06:45:58.433Z"
-last_activity: 2026-03-06 — Completed 05-01 StorageService Tests
+status: in-progress
+stopped_at: Completed 06-01 Leaf Service DI
+last_updated: "2026-03-06T07:11:12Z"
+last_activity: 2026-03-06 — Completed 06-01 Leaf Service DI
 progress:
   total_phases: 10
   completed_phases: 5
-  total_plans: 7
-  completed_plans: 7
-  percent: 70
+  total_plans: 9
+  completed_plans: 8
+  percent: 73
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 5 complete (StorageService tests) — Phase 6 (Search tests) next
+**Current focus:** Phase 6 in progress (Dependency Injection Refactor) — Plan 01 complete, Plan 02 next
 
 ## Current Position
 
-Phase: 5 of 10 (Storage Tests) -- COMPLETE
-Plan: 1 of 1 in current phase (all complete)
-Status: Phase 05 complete, Phase 06 next
-Last activity: 2026-03-06 — Completed 05-01 StorageService Tests
+Phase: 6 of 10 (Dependency Injection Refactor)
+Plan: 1 of 2 in current phase
+Status: 06-01 complete, 06-02 next
+Last activity: 2026-03-06 — Completed 06-01 Leaf Service DI
 
-Progress: [███████░░░] 70%
+Progress: [███████░░░] 73%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 3.3 min
-- Total execution time: 0.37 hours
+- Total execution time: 0.42 hours
 
 **By Phase:**
 
@@ -49,10 +49,11 @@ Progress: [███████░░░] 70%
 | 03-ci-pipeline                 | 1     | 2 min | 2 min    |
 | 04-pure-logic-tests            | 2     | 4 min | 2 min    |
 | 05-storage-tests               | 1     | 5 min | 5 min    |
+| 06-dependency-injection-refactor | 1/2   | 3 min | 3 min    |
 
 **Recent Trend:**
 
-- Last 5 plans: 02-02 (2 min), 03-01 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (5 min)
+- Last 5 plans: 03-01 (2 min), 04-01 (2 min), 04-02 (2 min), 05-01 (5 min), 06-01 (3 min)
 - Trend: stable (~2-5 min)
 
 _Updated after each plan completion_
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - [04-02]: All Utils.js tests in single file per user decision (tests/core/Utils.test.js, 126 tests)
 - [05-01]: localStorage polyfill needed -- vitest jsdom provides bare object without Web Storage API methods
 - [05-01]: fake-indexeddb/auto must be first setupFile entry (before foundry-mocks) for IndexedDB globals at import time
+- [06-01]: Lazy global pattern: constructor defaults use arrow functions so globals are never accessed at construction time
+- [06-01]: TokenService converted from static-only to instance class; singleton export preserves backward compatibility
 
 ### Pending Todos
 
@@ -99,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T06:45:58.431Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-dependency-injection-refactor/06-CONTEXT.md
+Last session: 2026-03-06T07:11:12Z
+Stopped at: Completed 06-01 Leaf Service DI
+Resume file: .planning/phases/06-dependency-injection-refactor/06-02-PLAN.md
