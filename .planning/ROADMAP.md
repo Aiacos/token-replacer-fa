@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 5: Storage Tests** - Write tests for StorageService IndexedDB operations via jsdom
 - [x] **Phase 6: Dependency Injection Refactor** - Add constructor DI to all services with backward-compatible defaults (completed 2026-03-06)
 - [ ] **Phase 7: Service Layer Tests** - Write tests for TokenService, TVACacheService, IndexService, SearchOrchestrator
-- [ ] **Phase 8: Integration Tests** - Write end-to-end pipeline tests covering the full search workflow
+- [x] **Phase 8: Integration Tests** - Write end-to-end pipeline tests covering the full search workflow (completed 2026-03-06)
 - [ ] **Phase 9: Type Safety** - Configure jsconfig.json, add JSDoc typedefs, run tsc --noEmit
 - [ ] **Phase 10: Error Handling and Worker Lifecycle** - Standardize error patterns, surface recovery suggestions, clean up Worker lifecycle
 
@@ -156,7 +156,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 1. `npm test` reports a passing integration test that exercises the full path: TVA cache load -> index build -> fuzzy search -> result list
 2. `npm test` reports a passing integration test for the fallback path: no fuzzy match -> category search -> results
 3. `npm test` reports a passing test that builds the index via Worker path and direct path and asserts both produce identical index structures
-   **Plans:** 2 plans
+   **Plans:** 2/2 plans complete
    Plans:
 
 - [ ] 08-01-PLAN.md — SearchPipeline integration tests (full pipeline, fallback, Worker parity)
@@ -203,6 +203,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 5. Storage Tests                        | 0/1            | Planning complete | -         |
 | 6. Dependency Injection Refactor        | 2/2 | Complete   | 2026-03-06 |
 | 7. Service Layer Tests                  | 3/4 | In Progress|  |
-| 8. Integration Tests                    | 0/2          | Planning complete       | -         |
+| 8. Integration Tests                    | 2/2 | Complete   | 2026-03-06 |
 | 9. Type Safety                          | 0/TBD          | Not started       | -         |
 | 10. Error Handling and Worker Lifecycle | 0/TBD          | Not started       | -         |

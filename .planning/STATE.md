@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
-status: completed
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-06T09:13:36.591Z"
-last_activity: 2026-03-06 — Completed 07-04 SearchOrchestrator Tests
+status: in_progress
+stopped_at: Completed 08-01 SearchPipeline integration tests
+last_updated: "2026-03-06T09:36:55Z"
+last_activity: 2026-03-06 — Completed 08-01 SearchPipeline Integration Tests
 progress:
   total_phases: 10
-  completed_phases: 7
-  total_plans: 13
-  completed_plans: 13
+  completed_phases: 8
+  total_plans: 15
+  completed_plans: 15
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 7 complete (Service Layer Tests) — all 4 plans done
+**Current focus:** Phase 8 complete (Integration Tests) — all 2 plans done
 
 ## Current Position
 
-Phase: 7 of 10 (Service Layer Tests)
-Plan: 4 of 4 in current phase
-Status: 07-04 complete, phase 07 complete
-Last activity: 2026-03-06 — Completed 07-04 SearchOrchestrator Tests
+Phase: 8 of 10 (Integration Tests)
+Plan: 2 of 2 in current phase
+Status: Phase 8 complete (08-01 + 08-02)
+Last activity: 2026-03-06 — Completed 08-01 SearchPipeline Integration Tests
 
 Progress: [██████████] 100%
 
@@ -36,9 +36,9 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 10
-- Average duration: 3.3 min
-- Total execution time: 0.55 hours
+- Total plans completed: 14
+- Average duration: 3.1 min
+- Total execution time: 0.72 hours
 
 **By Phase:**
 
@@ -51,6 +51,7 @@ Progress: [██████████] 100%
 | 05-storage-tests               | 1     | 5 min | 5 min    |
 | 06-dependency-injection-refactor | 2/2   | 8 min | 4 min    |
 | 07-service-layer-tests           | 4/4   | 12 min | 3 min    |
+| 08-integration-tests             | 2/2   | 4 min  | 2 min    |
 
 **Recent Trend:**
 
@@ -61,6 +62,8 @@ _Updated after each plan completion_
 | Phase 07 P03 | 2 min | 2 tasks | 2 files |
 | Phase 07 P02 | 3 | 1 tasks | 2 files |
 | Phase 07 P04 | 4 min | 2 tasks | 2 files |
+| Phase 08 P02 | 2 min | 1 tasks | 1 files |
+| Phase 08 P01 | 2 min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -100,6 +103,8 @@ Recent decisions affecting current work:
 - [Phase 07]: Worker parity test simulates worker response using direct-path results for structural comparison
 - [Phase 07]: Merged DI smoke tests into unified TVACacheService.test.js; manual cache population for search tests avoids fetch overhead
 - [Phase 07]: Real Fuse.js via vi.mock partial override for authentic fuzzy search testing; StubFuse pattern for fallback path verification
+- [08-02]: Assert on details field (not message) since createModuleError uses i18n localization for message field
+- [08-01]: buildPipeline() helper centralizes real service wiring for integration tests; Worker parity uses direct-path results as MockWorker response
 
 ### Pending Todos
 
@@ -114,6 +119,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T09:13:36.589Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-integration-tests/08-CONTEXT.md
+Last session: 2026-03-06T09:36:55Z
+Stopped at: Completed 08-01 SearchPipeline integration tests (Phase 8 complete)
+Resume file: .planning/phases/08-integration-tests/08-01-SUMMARY.md
