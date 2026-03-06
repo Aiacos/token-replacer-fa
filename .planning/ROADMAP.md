@@ -101,7 +101,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 2. `npm test` reports passing tests for StorageService version check — stale cached index is rejected and returns null
 3. `npm test` reports passing tests for StorageService transaction abort scenario — no silent data loss
 4. If jsdom IndexedDB gaps are found, `fake-indexeddb` is installed and StorageService tests pass using it
-   **Plans**: TBD
+   **Plans:** 1 plan
+   Plans:
+
+- [ ] 05-01-PLAN.md — StorageService tests: all 11 methods, IndexedDB + localStorage fallback, migration, error scenarios
 
 ### Phase 6: Dependency Injection Refactor
 
@@ -183,7 +186,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Foundry Mock Infrastructure          | 0/TBD          | Not started       | -         |
 | 3. CI Pipeline                          | 0/1            | Planning complete | -         |
 | 4. Pure Logic Tests                     | 1/2            | In progress       | -         |
-| 5. Storage Tests                        | 0/TBD          | Not started       | -         |
+| 5. Storage Tests                        | 0/1            | Planning complete | -         |
 | 6. Dependency Injection Refactor        | 0/TBD          | Not started       | -         |
 | 7. Service Layer Tests                  | 0/TBD          | Not started       | -         |
 | 8. Integration Tests                    | 0/TBD          | Not started       | -         |
