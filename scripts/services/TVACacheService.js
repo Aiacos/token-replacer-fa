@@ -55,6 +55,7 @@ export class TVACacheService {
   /**
    * Initialize the TVA cache service (basic setup only)
    * Call loadTVACache() separately after TVA has finished caching
+   * @returns {void}
    */
   init() {
     this.tvaAPI = this._getTvaAPI();
@@ -415,7 +416,7 @@ export class TVACacheService {
   /**
    * Search TVA cache directly using simple string matching (FAST)
    * @param {string} searchTerm - Term to search
-   * @returns {Array} Matching images
+   * @returns {Promise<Array>} Matching images
    */
   async searchTVACacheDirect(searchTerm) {
     if (!this.tvaCacheLoaded) {
@@ -463,7 +464,7 @@ export class TVACacheService {
    * Search TVA cache by category (FAST)
    * Only matches on image name and meaningful path segments, not TVA folder category
    * @param {string} categoryType - Creature type category
-   * @returns {Array} Matching images
+   * @returns {Promise<Array>} Matching images
    */
   async searchTVACacheByCategory(categoryType) {
     if (!this.tvaCacheLoaded) {
@@ -526,7 +527,7 @@ export class TVACacheService {
   /**
    * Search TVA cache for multiple terms (OR logic) - FAST
    * @param {string[]} searchTerms - Terms to search (any match)
-   * @returns {Array} Matching images
+   * @returns {Promise<Array>} Matching images
    */
   async searchTVACacheMultiple(searchTerms) {
     if (!this.tvaCacheLoaded) {
@@ -594,7 +595,7 @@ export class TVACacheService {
 
   /**
    * Get TVA cache statistics
-   * @returns {Object}
+   * @returns {{loaded: boolean, totalImages: number, categories: number}}
    */
   getTVACacheStats() {
     const stats = {

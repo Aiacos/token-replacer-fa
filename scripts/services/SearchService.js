@@ -23,6 +23,7 @@ export class SearchService {
   /**
    * Initialize the search service and wire up dependencies
    * Idempotent - safe to call multiple times
+   * @returns {void}
    */
   init() {
     if (this._initialized) {
@@ -52,6 +53,7 @@ export class SearchService {
 
   /**
    * Clear all search caches
+   * @returns {void}
    */
   clearCache() {
     try {

@@ -38,18 +38,20 @@ export class TokenService {
   /**
    * Extract creature information from a token
    * @param {Token} token - Foundry VTT token
-   * @returns {Object|null} Creature info or null
+   * @returns {import('../types/typedefs.js').CreatureInfo | null} Creature info or null
    */
   extractCreatureInfo(token) {
     const actor = token.actor;
     if (!actor) return null;
 
+    /** @type {any} - D&D 5e system texture access */
+    const tokenTexture = token.texture;
     const info = {
       tokenId: token.id,
       tokenName: token.name,
-      actorName: actor.name,
+      actorName: /** @type {string} */ (actor.name),
       actorId: actor.id,
-      currentImage: token.document?.texture?.src || token.texture?.src,
+      currentImage: token.document?.texture?.src || tokenTexture?.src,
       type: null,
       subtype: null,
       race: null,
@@ -58,8 +60,10 @@ export class TokenService {
 
     // Get creature type from dnd5e system
     // Handle multiple formats: object with value property or direct string
-    if (actor.system?.details?.type) {
-      const typeData = actor.system.details.type;
+    /** @type {any} - D&D 5e system data (not typed by fvtt-types) */
+    const system = actor.system;
+    if (system?.details?.type) {
+      const typeData = system.details.type;
       if (typeof typeData === 'string') {
         // Parse "Type (Subtype)" format, e.g., "Humanoid (Tiefling)", "Humanoid (Elf)"
         const parenMatch = typeData.match(/^([^(]+)\s*\(([^)]+)\)$/);
@@ -78,8 +82,8 @@ export class TokenService {
     }
 
     // Fallback: check for creatureType field (some systems use this)
-    if (!info.type && actor.system?.details?.creatureType) {
-      const fallbackType = actor.system.details.creatureType;
+    if (!info.type && system?.details?.creatureType) {
+      const fallbackType = system.details.creatureType;
       info.type = typeof fallbackType === 'string' ? fallbackType.toLowerCase() : fallbackType;
     }
 
@@ -87,13 +91,13 @@ export class TokenService {
     if (!info.type) {
       console.warn(
         `${MODULE_ID} | Could not extract creature type for ${actor.name}. Details:`,
-        actor.system?.details
+        system?.details
       );
     }
 
     // Get race if available
-    if (actor.system?.details?.race) {
-      const race = actor.system.details.race;
+    if (system?.details?.race) {
+      const race = system.details.race;
       info.race = typeof race === 'string' ? race : race?.name || null;
     }
 
@@ -167,7 +171,7 @@ export class TokenService {
   /**
    * Group tokens by creature type for batch processing
    * @param {Token[]} tokens - Array of tokens
-   * @returns {Map} Map of cache key to group data
+   * @returns {Map<string, {creatureInfo: import('../types/typedefs.js').CreatureInfo, tokens: Token[], searchTerms: string[]}>} Map of cache key to group data
    */
   groupTokensByCreature(tokens) {
     const groups = new Map();
@@ -201,16 +205,18 @@ export class TokenService {
   async replaceTokenImage(token, imagePath) {
     try {
       // Update both the token document and the prototype token on the actor
-      await token.document.update({
+      // Foundry VTT dot-notation update path syntax ('texture.src')
+      await token.document.update(/** @type {any} */ ({
         'texture.src': imagePath,
-      });
+      }));
 
       // Also update the actor's prototype token if it exists
       const actor = token.actor;
       if (actor) {
-        await actor.update({
+        // Foundry VTT dot-notation update path syntax ('prototypeToken.texture.src')
+        await actor.update(/** @type {any} */ ({
           'prototypeToken.texture.src': imagePath,
-        });
+        }));
       }
 
       console.log(`${MODULE_ID} | Replaced token image for ${token.name}`);

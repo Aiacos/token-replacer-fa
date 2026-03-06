@@ -78,6 +78,7 @@ export class SearchOrchestrator {
 
   /**
    * Clear the search cache
+   * @returns {void}
    */
   clearCache() {
     this.searchCache.clear();
@@ -86,6 +87,7 @@ export class SearchOrchestrator {
   /**
    * Terminate the Web Worker and clean up resources
    * Should be called when the SearchOrchestrator is no longer needed
+   * @returns {void}
    */
   terminate() {
     if (this.worker) {
@@ -98,6 +100,7 @@ export class SearchOrchestrator {
   /**
    * Cancel the current worker operation
    * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
+   * @returns {void}
    */
   cancelOperation() {
     if (this.worker) {
@@ -295,6 +298,7 @@ export class SearchOrchestrator {
       minMatchCharLength: 2,
     };
 
+    // @ts-expect-error Fuse constructor injected via DI, type cannot express constructor constraint in JSDoc
     const fuse = new Fuse(index, fuseOptions);
 
     for (const term of searchTerms) {

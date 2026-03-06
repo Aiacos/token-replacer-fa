@@ -51,6 +51,7 @@ export class ForgeBazaarService {
   /**
    * Initialize the Forge Bazaar service
    * Checks for ForgeVTT module availability and loads cache
+   * @returns {void}
    */
   init() {
     // Check if ForgeVTT module is installed
@@ -58,6 +59,7 @@ export class ForgeBazaarService {
     this.hasForgeVTT = forgeModule?.active || false;
 
     // Check for game.forge API (only available on Forge-hosted games or with API key)
+    // @ts-expect-error Forge VTT platform extension — not typed by fvtt-types
     this.forgeAPI = game.forge || null;
 
     // Service is only "available" if we have API access
@@ -344,6 +346,7 @@ export class ForgeBazaarService {
 
   /**
    * Clear all caches (both memory and localStorage)
+   * @returns {void}
    */
   clearCache() {
     this.categoryCache = {};

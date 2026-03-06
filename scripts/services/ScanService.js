@@ -23,7 +23,8 @@ export class ScanService {
     const paths = [];
 
     // Get additional paths from settings
-    const additionalPathsSetting = game.settings.get(MODULE_ID, 'additionalPaths') || '';
+    /** @type {string} */
+    const additionalPathsSetting = /** @type {any} */ (game.settings.get(MODULE_ID, 'additionalPaths')) || '';
     if (additionalPathsSetting) {
       const additionalPaths = additionalPathsSetting
         .split(',')
@@ -234,9 +235,11 @@ export class ScanService {
               if (typeof item === 'string') {
                 imagePath = item;
               } else if (typeof item === 'object' && item !== null) {
+                /** @type {any} - TVA result item with dynamic properties */
+                const tvaItem = item;
                 imagePath =
-                  item.path || item.route || item.img || item.src || item.image || item.uri;
-                name = item.name || item.label || item.title || 'Unknown';
+                  tvaItem.path || tvaItem.route || tvaItem.img || tvaItem.src || tvaItem.image || tvaItem.uri;
+                name = tvaItem.name || tvaItem.label || tvaItem.title || 'Unknown';
               }
 
               // Skip if no path, already seen, or from excluded folder

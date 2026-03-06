@@ -10,9 +10,13 @@
  * @property {string} tokenId - Foundry token ID
  * @property {string} tokenName - Token display name
  * @property {string} actorName - Actor name
- * @property {string} creatureType - D&D 5e creature type (e.g., "humanoid")
- * @property {string} creatureSubtype - Creature subtype (e.g., "human")
+ * @property {string} actorId - Foundry actor ID
  * @property {string} currentImage - Current token image path
+ * @property {string|null} type - D&D 5e creature type (e.g., "humanoid")
+ * @property {string|null} subtype - Creature subtype (e.g., "human")
+ * @property {string|null} race - Character race if available
+ * @property {string} [custom] - Custom type string if available
+ * @property {string[]} searchTerms - Prioritized search terms
  */
 
 /**

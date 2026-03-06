@@ -96,7 +96,8 @@ export class StorageService {
       };
 
       request.onupgradeneeded = (event) => {
-        const db = event.target.result;
+        /** @type {IDBDatabase} */
+        const db = /** @type {IDBRequest} */ (event.target).result;
 
         // Create object store if it doesn't exist
         if (!db.objectStoreNames.contains(STORE_NAME)) {
