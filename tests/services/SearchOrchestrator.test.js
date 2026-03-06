@@ -628,4 +628,264 @@ describe('SearchOrchestrator', () => {
       expect(results[0].path).toBe('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
     });
   });
+
+  // -----------------------------------------------------------------------
+  // parallelSearchCreatures — parallel batching (TEST-13)
+  // -----------------------------------------------------------------------
+  describe('parallelSearchCreatures() -- parallel batching (TEST-13)', () => {
+    /** Create a creature group entry */
+    function makeGroup(name, type) {
+      return {
+        creatureInfo: {
+          actorName: name,
+          type,
+          subtype: '',
+          searchTerms: [name.toLowerCase()],
+        },
+        tokens: [{ id: `token-${name}`, name }],
+      };
+    }
+
+    it('returns Map with same keys as input groups (2 groups = 1 batch)', async () => {
+      const { orchestrator, deps } = createOrchestrator({
+        tvaCacheService: {
+          hasTVA: true,
+          tvaCacheLoaded: true,
+          isTVACacheLoaded: true,
+          tvaAPI: { doImageSearch: vi.fn(async () => []) },
+          searchTVACacheDirect: vi.fn(async (term) => [
+            { path: `FA_Pack/${term}.webp`, name: term, source: 'tva', score: 0.1 },
+          ]),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      const groups = new Map([
+        ['wolf', makeGroup('Wolf', 'beast')],
+        ['bandit', makeGroup('Bandit', 'humanoid')],
+      ]);
+
+      const results = await orchestrator.parallelSearchCreatures(groups, null);
+
+      expect(results).toBeInstanceOf(Map);
+      expect(results.size).toBe(2);
+      expect(results.has('wolf')).toBe(true);
+      expect(results.has('bandit')).toBe(true);
+    });
+
+    it('each result entry has { matches, tokens, creatureInfo }', async () => {
+      const { orchestrator } = createOrchestrator({
+        tvaCacheService: {
+          hasTVA: true,
+          tvaCacheLoaded: true,
+          isTVACacheLoaded: true,
+          tvaAPI: { doImageSearch: vi.fn(async () => []) },
+          searchTVACacheDirect: vi.fn(async () => [
+            { path: 'FA_Pack/test.webp', name: 'Test', source: 'tva', score: 0.1 },
+          ]),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      const groups = new Map([
+        ['wolf', makeGroup('Wolf', 'beast')],
+      ]);
+
+      const results = await orchestrator.parallelSearchCreatures(groups, null);
+      const entry = results.get('wolf');
+
+      expect(entry).toHaveProperty('matches');
+      expect(entry).toHaveProperty('tokens');
+      expect(entry).toHaveProperty('creatureInfo');
+      expect(Array.isArray(entry.matches)).toBe(true);
+      expect(Array.isArray(entry.tokens)).toBe(true);
+      expect(entry.creatureInfo.actorName).toBe('Wolf');
+    });
+
+    it('handles 5 groups (2 batches with PARALLEL_BATCH_SIZE=4)', async () => {
+      const { orchestrator } = createOrchestrator({
+        tvaCacheService: {
+          hasTVA: true,
+          tvaCacheLoaded: true,
+          isTVACacheLoaded: true,
+          tvaAPI: { doImageSearch: vi.fn(async () => []) },
+          searchTVACacheDirect: vi.fn(async () => []),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      const groups = new Map([
+        ['wolf', makeGroup('Wolf', 'beast')],
+        ['bandit', makeGroup('Bandit', 'humanoid')],
+        ['skeleton', makeGroup('Skeleton', 'undead')],
+        ['dragon', makeGroup('Dragon', 'dragon')],
+        ['beholder', makeGroup('Beholder', 'aberration')],
+      ]);
+
+      const results = await orchestrator.parallelSearchCreatures(groups, null);
+
+      expect(results.size).toBe(5);
+      for (const [key] of groups) {
+        expect(results.has(key)).toBe(true);
+      }
+    });
+
+    it('handles 8 groups (2 batches with PARALLEL_BATCH_SIZE=4)', async () => {
+      const { orchestrator } = createOrchestrator({
+        tvaCacheService: {
+          hasTVA: true,
+          tvaCacheLoaded: true,
+          isTVACacheLoaded: true,
+          tvaAPI: { doImageSearch: vi.fn(async () => []) },
+          searchTVACacheDirect: vi.fn(async () => []),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      const groups = new Map([
+        ['wolf', makeGroup('Wolf', 'beast')],
+        ['bandit', makeGroup('Bandit', 'humanoid')],
+        ['skeleton', makeGroup('Skeleton', 'undead')],
+        ['dragon', makeGroup('Dragon', 'dragon')],
+        ['beholder', makeGroup('Beholder', 'aberration')],
+        ['goblin', makeGroup('Goblin', 'humanoid')],
+        ['zombie', makeGroup('Zombie', 'undead')],
+        ['bear', makeGroup('Bear', 'beast')],
+      ]);
+
+      const results = await orchestrator.parallelSearchCreatures(groups, null);
+      expect(results.size).toBe(8);
+    });
+
+    it('progress callback receives batch info', async () => {
+      const { orchestrator } = createOrchestrator({
+        tvaCacheService: {
+          hasTVA: true,
+          tvaCacheLoaded: true,
+          isTVACacheLoaded: true,
+          tvaAPI: { doImageSearch: vi.fn(async () => []) },
+          searchTVACacheDirect: vi.fn(async () => []),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      const groups = new Map([
+        ['wolf', makeGroup('Wolf', 'beast')],
+        ['bandit', makeGroup('Bandit', 'humanoid')],
+      ]);
+
+      const progressCb = vi.fn();
+      await orchestrator.parallelSearchCreatures(groups, null, progressCb);
+
+      expect(progressCb).toHaveBeenCalled();
+      const callArg = progressCb.mock.calls[0][0];
+      expect(callArg).toHaveProperty('type', 'batch');
+      expect(callArg).toHaveProperty('total', 2);
+      expect(callArg).toHaveProperty('currentBatch');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Integration: full pipeline (INTG-01)
+  // -----------------------------------------------------------------------
+  describe('Integration: full pipeline (INTG-01)', () => {
+    it('searches via index and populates cache', async () => {
+      const indexNameResults = [
+        { path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_01.webp', name: 'City Guard', score: 0.1 },
+      ];
+      const indexSubtypeResults = [
+        { path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_02.webp', name: 'City Guard Variant', score: 0.3 },
+      ];
+
+      const { orchestrator, deps } = createOrchestrator({
+        indexService: {
+          isBuilt: true,
+          searchByCategory: vi.fn(() => []),
+          search: vi.fn(() => indexNameResults),
+          searchMultiple: vi.fn(() => indexSubtypeResults),
+        },
+        tvaCacheService: {
+          hasTVA: false,
+          tvaCacheLoaded: false,
+          isTVACacheLoaded: false,
+          tvaAPI: null,
+          searchTVACacheDirect: vi.fn(async () => []),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      const creatureInfo = {
+        actorName: 'City Guard',
+        type: 'humanoid',
+        subtype: 'human',
+        searchTerms: ['city guard'],
+      };
+
+      const results = await orchestrator.searchTokenArt(creatureInfo, null);
+
+      // Results should be returned and ordered (name before subtype)
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0].fromName).toBe(true);
+
+      // Cache should be populated
+      expect(orchestrator.searchCache.size).toBe(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Integration: fallback path (INTG-02)
+  // -----------------------------------------------------------------------
+  describe('Integration: fallback path (INTG-02)', () => {
+    it('falls back to category search when fuzzy returns nothing', async () => {
+      // Override loadFuse to return a Fuse stub that always returns empty
+      vi.mocked(loadFuse).mockResolvedValue(
+        class StubFuse { search() { return []; } }
+      );
+
+      const categoryResults = [
+        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf' },
+        { path: 'FA_Pack/Tokens/Beasts/Bear/Bear_Brown_01.webp', name: 'Brown Bear' },
+      ];
+
+      const { orchestrator, deps } = createOrchestrator({
+        indexService: {
+          isBuilt: true,
+          searchByCategory: vi.fn(() => categoryResults),
+          search: vi.fn(() => []),
+          searchMultiple: vi.fn(() => []),
+        },
+        tvaCacheService: {
+          hasTVA: false,
+          tvaCacheLoaded: false,
+          isTVACacheLoaded: false,
+          tvaAPI: null,
+          searchTVACacheDirect: vi.fn(async () => []),
+          searchTVACacheByCategory: vi.fn(async () => []),
+          searchTVACacheMultiple: vi.fn(async () => []),
+        },
+      });
+
+      // Generic subtype triggers category search
+      const creatureInfo = {
+        actorName: 'Wild Beast',
+        type: 'beast',
+        subtype: 'any',  // Generic
+        searchTerms: ['wild beast'],
+      };
+
+      const results = await orchestrator.searchTokenArt(creatureInfo, null);
+
+      // searchByCategory should have been called as fallback
+      expect(deps.indexService.searchByCategory).toHaveBeenCalledWith('beast');
+      // Results should come from category search
+      const catResults = results.filter((r) => r.fromCategory === true);
+      expect(catResults.length).toBeGreaterThan(0);
+    });
+  });
 });
