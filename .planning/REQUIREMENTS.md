@@ -58,12 +58,12 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Type Safety
 
-- [ ] **TYPE-01**: jsconfig.json configured with allowJs, checkJs, noEmit for IDE type checking
+- [x] **TYPE-01**: jsconfig.json configured with allowJs, checkJs, noEmit for IDE type checking
 - [ ] **TYPE-02**: JSDoc @typedef definitions for all service interfaces and data structures
 - [ ] **TYPE-03**: JSDoc @param and @returns annotations on all public service methods
-- [ ] **TYPE-04**: `tsc --noEmit` script validates type correctness without producing output
-- [ ] **TYPE-05**: foundry-vtt-types integrated for Foundry API type definitions
-- [ ] **TYPE-06**: ClientSettings.Values declaration merging for typed settings access
+- [x] **TYPE-04**: `tsc --noEmit` script validates type correctness without producing output
+- [x] **TYPE-05**: foundry-vtt-types integrated for Foundry API type definitions
+- [x] **TYPE-06**: ClientSettings.Values declaration merging for typed settings access
 
 ### Error Handling
 
@@ -140,12 +140,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | DI-03       | Phase 6  | Complete |
 | DI-04       | Phase 6  | Complete |
 | DI-05       | Phase 6  | Complete |
-| TYPE-01     | Phase 9  | Pending  |
+| TYPE-01     | Phase 9  | Complete |
 | TYPE-02     | Phase 9  | Pending  |
 | TYPE-03     | Phase 9  | Pending  |
-| TYPE-04     | Phase 9  | Pending  |
-| TYPE-05     | Phase 9  | Pending  |
-| TYPE-06     | Phase 9  | Pending  |
+| TYPE-04     | Phase 9  | Complete |
+| TYPE-05     | Phase 9  | Complete |
+| TYPE-06     | Phase 9  | Complete |
 | ERR-01      | Phase 10 | Pending  |
 | ERR-02      | Phase 10 | Pending  |
 | ERR-03      | Phase 10 | Pending  |
