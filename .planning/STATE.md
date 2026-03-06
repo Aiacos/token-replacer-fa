@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
-status: completed
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-06T07:55:04.642Z"
-last_activity: 2026-03-06 — Completed 06-02 Dependent Service DI
+status: in-progress
+stopped_at: Completed 07-01 TokenService Tests
+last_updated: "2026-03-06T08:41:12Z"
+last_activity: 2026-03-06 — Completed 07-01 TokenService Tests
 progress:
   total_phases: 10
   completed_phases: 6
-  total_plans: 9
-  completed_plans: 9
-  percent: 82
+  total_plans: 13
+  completed_plans: 10
+  percent: 77
 ---
 
 # Project State
@@ -21,24 +21,24 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** The module must continue to reliably replace token artwork exactly as it does today — every refactoring change is invisible to users.
-**Current focus:** Phase 6 complete (Dependency Injection Refactor) — all plans done, Phase 7 next
+**Current focus:** Phase 7 in progress (Service Layer Tests) — plan 1 of 4 complete
 
 ## Current Position
 
-Phase: 6 of 10 (Dependency Injection Refactor) -- COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase 6 complete, Phase 7 next
-Last activity: 2026-03-06 — Completed 06-02 Dependent Service DI
+Phase: 7 of 10 (Service Layer Tests)
+Plan: 1 of 4 in current phase
+Status: 07-01 complete, 07-02 next
+Last activity: 2026-03-06 — Completed 07-01 TokenService Tests
 
-Progress: [████████░░] 82%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9
-- Average duration: 3.4 min
-- Total execution time: 0.5 hours
+- Total plans completed: 10
+- Average duration: 3.3 min
+- Total execution time: 0.55 hours
 
 **By Phase:**
 
@@ -50,10 +50,11 @@ Progress: [████████░░] 82%
 | 04-pure-logic-tests            | 2     | 4 min | 2 min    |
 | 05-storage-tests               | 1     | 5 min | 5 min    |
 | 06-dependency-injection-refactor | 2/2   | 8 min | 4 min    |
+| 07-service-layer-tests           | 1/4   | 3 min | 3 min    |
 
 **Recent Trend:**
 
-- Last 5 plans: 04-01 (2 min), 04-02 (2 min), 05-01 (5 min), 06-01 (3 min), 06-02 (5 min)
+- Last 5 plans: 04-02 (2 min), 05-01 (5 min), 06-01 (3 min), 06-02 (5 min), 07-01 (3 min)
 - Trend: stable (~2-5 min)
 
 _Updated after each plan completion_
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 - [06-01]: TokenService converted from static-only to instance class; singleton export preserves backward compatibility
 - [06-02]: IndexService Worker creation moved from eager (constructor) to lazy (_ensureWorker) via injected workerFactory
 - [06-02]: SearchOrchestrator _tryInternalCache simplified: removed game.modules.get since tvaAPI already covers module.api paths
+- [07-01]: 33 mock TVA cache entries across 6 categories provides sufficient diversity for downstream service tests
+- [07-01]: Inline actor objects (not createMockActor) for edge cases like string type and creatureType fallback to match exact D&D 5e variants
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T07:55:04.638Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-service-layer-tests/07-CONTEXT.md
+Last session: 2026-03-06T08:41:12Z
+Stopped at: Completed 07-01 TokenService Tests
+Resume file: .planning/phases/07-service-layer-tests/07-01-SUMMARY.md
