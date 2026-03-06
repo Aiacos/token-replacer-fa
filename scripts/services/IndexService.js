@@ -17,6 +17,7 @@ import {
   isExcludedPath,
   createModuleError,
   createDebugLogger,
+  createDefaultGetSetting,
 } from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
@@ -48,30 +49,43 @@ const UPDATE_FREQUENCIES = {
  * }
  */
 export class IndexService {
-  constructor() {
+  constructor(deps = {}) {
+    const {
+      storageService: injectedStorage = storageService,
+      workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
+      getSetting = createDefaultGetSetting(),
+      getTvaAPI = () => game.modules.get('token-variants')?.api,
+    } = deps;
+
+    this._storageService = injectedStorage;
+    this._workerFactory = workerFactory;
+    this._getSetting = getSetting;
+    this._getTvaAPI = getTvaAPI;
+
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
     this.termCategoryMap = this.buildTermCategoryMap();
     this.worker = null;
+    this._workerInitialized = false;
     // Shared utilities
     this._createError = createModuleError;
     this._debugLog = createDebugLogger('IndexService');
+  }
 
-    // Initialize Web Worker if supported
-    if (typeof Worker !== 'undefined') {
-      try {
-        const workerPath = `modules/${MODULE_ID}/scripts/workers/IndexWorker.js`;
-        this.worker = new Worker(workerPath);
-        console.log(`${MODULE_ID} | Web Worker initialized for background index building`);
-      } catch (error) {
-        console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
-        this.worker = null;
-      }
-    } else {
-      console.warn(
-        `${MODULE_ID} | Web Workers not supported in this browser, using fallback method`
-      );
+  /**
+   * Lazy-initialize the Web Worker on first use
+   * @private
+   */
+  _ensureWorker() {
+    if (this._workerInitialized) return;
+    this._workerInitialized = true;
+    try {
+      this.worker = this._workerFactory();
+      console.log(`${MODULE_ID} | Web Worker initialized for background index building`);
+    } catch (error) {
+      console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
+      this.worker = null;
     }
   }
 
@@ -123,7 +137,7 @@ export class IndexService {
    */
   getUpdateFrequency() {
     try {
-      const setting = game.settings.get(MODULE_ID, 'indexUpdateFrequency');
+      const setting = this._getSetting(MODULE_ID, 'indexUpdateFrequency');
       return UPDATE_FREQUENCIES[setting] || UPDATE_FREQUENCIES.weekly;
     } catch (e) {
       return UPDATE_FREQUENCIES.weekly;
@@ -215,12 +229,12 @@ export class IndexService {
       this._debugLog('Attempting to load index from cache');
 
       // Check for migration from localStorage to IndexedDB
-      if (await storageService.needsMigration(CACHE_KEY, CACHE_KEY)) {
+      if (await this._storageService.needsMigration(CACHE_KEY, CACHE_KEY)) {
         console.log(`${MODULE_ID} | Detected localStorage cache, migrating to IndexedDB...`);
-        await storageService.migrateFromLocalStorage(CACHE_KEY, CACHE_KEY);
+        await this._storageService.migrateFromLocalStorage(CACHE_KEY, CACHE_KEY);
       }
 
-      const data = await storageService.load(CACHE_KEY);
+      const data = await this._storageService.load(CACHE_KEY);
       if (!data) return false;
 
       // Version check
@@ -229,7 +243,7 @@ export class IndexService {
           `Index version mismatch (cached: ${data.version}, current: ${INDEX_VERSION}), rebuilding`
         );
         console.log(`${MODULE_ID} | Index version mismatch, rebuilding`);
-        await storageService.remove(CACHE_KEY);
+        await this._storageService.remove(CACHE_KEY);
         return false;
       }
 
@@ -266,7 +280,7 @@ export class IndexService {
       console.warn(`${MODULE_ID} | Failed to load cache:`, error);
       // Clean up corrupted cache
       try {
-        await storageService.remove(CACHE_KEY);
+        await this._storageService.remove(CACHE_KEY);
       } catch (e) {
         // Ignore errors during cleanup
       }
@@ -290,7 +304,7 @@ export class IndexService {
       const json = JSON.stringify(this.index);
       const sizeKB = (json.length / 1024).toFixed(0);
 
-      await storageService.save(CACHE_KEY, this.index);
+      await this._storageService.save(CACHE_KEY, this.index);
       this._debugLog(`Saved index to cache: ${sizeKB}KB`);
       console.log(`${MODULE_ID} | Saved index to cache (${sizeKB}KB)`);
       return true;
@@ -556,7 +570,7 @@ export class IndexService {
     console.log(`${MODULE_ID} | Trying TVA game settings...`);
     try {
       // TVA stores static cache in game settings
-      const staticCache = game.settings.get('token-variants', 'staticCache');
+      const staticCache = this._getSetting('token-variants', 'staticCache');
       if (staticCache) {
         console.log(
           `${MODULE_ID} | Found staticCache in game settings, type:`,
@@ -574,7 +588,7 @@ export class IndexService {
     for (const name of settingNames) {
       if (allPaths.length > 0) break;
       try {
-        const data = game.settings.get('token-variants', name);
+        const data = this._getSetting('token-variants', name);
         if (data) {
           console.log(`${MODULE_ID} | Found ${name} in settings`);
           allPaths = this.extractPathsFromTVACache(data);
@@ -602,16 +616,15 @@ export class IndexService {
    */
   _tryInternalCache(tvaAPI) {
     console.log(`${MODULE_ID} | Trying to access TVA internal cache...`);
-    const tvaModule = game.modules.get('token-variants');
 
     // Try various internal cache locations
+    // tvaAPI is already game.modules.get('token-variants')?.api,
+    // so tvaAPI.cache covers both tvaModule?.api?.cache paths
     const possibleCaches = [
       tvaAPI.cache,
       tvaAPI._cache,
       tvaAPI.imageCache,
       tvaAPI.staticCache,
-      tvaModule?.cache,
-      tvaModule?.api?.cache,
       window.TVA?.cache,
       window.TVA?.staticCache,
       globalThis.TVA_CACHE,
@@ -652,7 +665,7 @@ export class IndexService {
    * @throws {Object} Structured error if TVA not available
    */
   async buildFromTVA(onProgress = null, tvaCacheImages = null) {
-    const tvaAPI = game.modules.get('token-variants')?.api;
+    const tvaAPI = this._getTvaAPI();
     if (!tvaAPI) {
       this._debugLog('TVA API not available');
       console.warn(`${MODULE_ID} | TVA API not available`);
@@ -707,6 +720,9 @@ export class IndexService {
       if (allPaths.length > 0) {
         this._debugLog(`Found ${allPaths.length} paths in TVA cache, indexing...`);
         console.log(`${MODULE_ID} | Found ${allPaths.length} paths in TVA cache, indexing...`);
+
+        // Lazy-init Worker on first use
+        this._ensureWorker();
 
         // Use Web Worker if available, otherwise fallback to direct indexing
         if (this.worker) {
@@ -1110,7 +1126,7 @@ export class IndexService {
    * @returns {Promise<number>} Number of images indexed
    */
   async buildFromTVASearch(onProgress = null) {
-    const tvaAPI = game.modules.get('token-variants')?.api;
+    const tvaAPI = this._getTvaAPI();
 
     // Collect all unique search terms
     const allTerms = new Set();
@@ -1637,7 +1653,7 @@ export class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
-    await storageService.remove(CACHE_KEY);
+    await this._storageService.remove(CACHE_KEY);
     console.log(`${MODULE_ID} | Index cleared`);
   }
 
