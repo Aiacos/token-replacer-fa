@@ -118,7 +118,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. `new TVACacheService({ tvaAPI: mockTVA })` works in a test using a mock TVA API object, not `game.modules.get()`
 4. `new IndexService({ storageService: mockStorage, workerFactory: mockFactory })` works in a test with injected dependencies
 5. Existing production behavior is unchanged — all services fall back to Foundry globals when no injection is provided
-   **Plans**: TBD
+   **Plans:** 2 plans
+   Plans:
+
+- [ ] 06-01-PLAN.md — Leaf service DI: createDefaultGetSetting factory, TVACacheService + TokenService constructor injection
+- [ ] 06-02-PLAN.md — Dependent service DI: IndexService + SearchOrchestrator constructor injection, SearchService wiring
 
 ### Phase 7: Service Layer Tests
 
@@ -187,7 +191,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. CI Pipeline                          | 0/1            | Planning complete | -         |
 | 4. Pure Logic Tests                     | 1/2            | In progress       | -         |
 | 5. Storage Tests                        | 0/1            | Planning complete | -         |
-| 6. Dependency Injection Refactor        | 0/TBD          | Not started       | -         |
+| 6. Dependency Injection Refactor        | 0/2            | Planning complete | -         |
 | 7. Service Layer Tests                  | 0/TBD          | Not started       | -         |
 | 8. Integration Tests                    | 0/TBD          | Not started       | -         |
 | 9. Type Safety                          | 0/TBD          | Not started       | -         |
