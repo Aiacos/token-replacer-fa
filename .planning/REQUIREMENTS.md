@@ -33,7 +33,7 @@ Requirements for quality refactor. Each maps to roadmap phases.
 
 ### Unit Tests — Service Layer
 
-- [ ] **TEST-06**: StorageService IndexedDB operations tested (save, load, delete, version check, transaction abort)
+- [x] **TEST-06**: StorageService IndexedDB operations tested (save, load, delete, version check, transaction abort)
 - [ ] **TEST-07**: TokenService creature info extraction tested with various D&D 5e actor structures
 - [ ] **TEST-08**: TokenService groupTokensByCreature tested with mixed creature types
 - [ ] **TEST-09**: IndexService index building tested (categorization, termIndex construction, cache loading)
@@ -124,7 +124,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | TEST-03     | Phase 4  | Complete |
 | TEST-04     | Phase 4  | Complete |
 | TEST-05     | Phase 4  | Complete |
-| TEST-06     | Phase 5  | Pending  |
+| TEST-06     | Phase 5  | Complete |
 | TEST-07     | Phase 7  | Pending  |
 | TEST-08     | Phase 7  | Pending  |
 | TEST-09     | Phase 7  | Pending  |
