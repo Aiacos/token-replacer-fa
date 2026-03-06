@@ -102,7 +102,10 @@
       "indexing": "Building index... {percent}% ({images} images)",
       "indexingComplete": "Index ready! {count} images indexed for fast search.",
       "fuseLoadFailed": "Failed to load search library. Check console for details.",
-      "processingError": "Token Replacer FA encountered an error: {error}. Check console for details."
+      "processingError": "Token Replacer FA encountered an error: {error}. Check console for details.",
+      "initFailed": "Token Replacer FA: Initialization failed. {error}",
+      "backgroundFailed": "Token Replacer FA: Background setup failed. {error}",
+      "workerFallback": "Token Replacer FA: Background worker failed, using slower method."
     },
     "errors": {
       "tva_missing": "Token Variant Art module is not installed or enabled",

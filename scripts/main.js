@@ -737,9 +737,13 @@ export class TokenReplacerApp {
         this._debugLog('Error displayed in dialog');
       } else {
         // Fallback to notification if dialog isn't available
-        ui.notifications.error(
-          this.i18n('notifications.processingError', { error: errorDisplay.message })
-        );
+        let notificationMsg = this.i18n('notifications.processingError', { error: errorDisplay.message });
+        if (errorDisplay.recoverySuggestions?.length > 0) {
+          notificationMsg += ` Try: ${errorDisplay.recoverySuggestions.join('. ')}`;
+          ui.notifications.error(notificationMsg, { permanent: true });
+        } else {
+          ui.notifications.error(notificationMsg);
+        }
         this._debugLog('Error displayed via notification');
       }
     } finally {
@@ -760,25 +764,37 @@ window.TokenReplacerFA = /** @type {any} */ (tokenReplacerApp);
  * Module initialization
  */
 Hooks.once('init', async () => {
-  console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.3`);
+  try {
+    console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.3`);
 
-  // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
-  tokenReplacerApp.registerSettings();
+    // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
+    tokenReplacerApp.registerSettings();
 
-  // Preload Handlebars templates
-  tokenReplacerApp._debugLog('Preloading Handlebars templates');
-  await loadModuleTemplates([
-    'modules/token-replacer-fa/templates/error.hbs',
-    'modules/token-replacer-fa/templates/tva-cache.hbs',
-    'modules/token-replacer-fa/templates/scan-progress.hbs',
-    'modules/token-replacer-fa/templates/search-progress.hbs',
-    'modules/token-replacer-fa/templates/parallel-search.hbs',
-    'modules/token-replacer-fa/templates/progress.hbs',
-    'modules/token-replacer-fa/templates/match-selection.hbs',
-    'modules/token-replacer-fa/templates/no-match.hbs',
-  ]);
-  tokenReplacerApp._debugLog('Templates preloaded successfully');
-  tokenReplacerApp._debugLog('Module initialization complete');
+    // Preload Handlebars templates
+    tokenReplacerApp._debugLog('Preloading Handlebars templates');
+    await loadModuleTemplates([
+      'modules/token-replacer-fa/templates/error.hbs',
+      'modules/token-replacer-fa/templates/tva-cache.hbs',
+      'modules/token-replacer-fa/templates/scan-progress.hbs',
+      'modules/token-replacer-fa/templates/search-progress.hbs',
+      'modules/token-replacer-fa/templates/parallel-search.hbs',
+      'modules/token-replacer-fa/templates/progress.hbs',
+      'modules/token-replacer-fa/templates/match-selection.hbs',
+      'modules/token-replacer-fa/templates/no-match.hbs',
+    ]);
+    tokenReplacerApp._debugLog('Templates preloaded successfully');
+    tokenReplacerApp._debugLog('Module initialization complete');
+  } catch (error) {
+    console.error(`${MODULE_ID} | Initialization failed:`, error);
+    const msg = game.i18n
+      ? game.i18n.localize('TOKEN_REPLACER_FA.notifications.initFailed').replace('{error}', error.message || String(error))
+      : `Token Replacer FA: Initialization failed. ${error.message || String(error)}`;
+    if (error.recoverySuggestions?.length > 0) {
+      ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, { permanent: true });
+    } else {
+      ui.notifications.error(msg);
+    }
+  }
 });
 
 Hooks.once('ready', async () => {
@@ -804,90 +820,100 @@ Hooks.once('ready', async () => {
     console.log(`${MODULE_ID} | Loading TVA cache and building index in background...`);
 
     (async () => {
-      // Phase 1: Load TVA cache
       try {
-        const cacheLoaded = await tvaCacheService.loadTVACache();
-        if (cacheLoaded) {
-          const stats = tvaCacheService.getTVACacheStats();
-          console.log(
-            `${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`
-          );
-          tokenReplacerApp._debugLog(
-            `TVA cache loaded - ${stats.totalImages} images in ${stats.categories} categories`
-          );
-        } else {
-          console.warn(
-            `${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`
-          );
-          tokenReplacerApp._debugLog('TVA cache load failed, will use fallback methods');
-        }
-      } catch (err) {
-        console.warn(`${MODULE_ID} | TVA cache load error:`, err);
-        tokenReplacerApp._debugLog('TVA cache load error:', err.message);
-      }
-
-      // Phase 2: Build image index (after cache is loaded)
-      try {
-        console.log(`${MODULE_ID} | Building image index in background...`);
-        tokenReplacerApp._debugLog('Starting background image index build');
-
-        const hasCache = await storageService.has('token-replacer-fa-index-v3');
-        tokenReplacerApp._debugLog(
-          `Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`
-        );
-
-        const onProgress = (current, total, images) => {
-          const percent = Math.round((current / total) * 100);
-          ui.notifications.info(
-            tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
-              `Token Replacer FA: Building index... ${percent}% (${images} images)`,
-            { permanent: false }
-          );
-        };
-
-        if (!hasCache) {
-          tokenReplacerApp._debugLog('Showing first-time index build notification');
-          ui.notifications.info(
-            tokenReplacerApp.i18n('notifications.indexingStart') ||
-              'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
-            { permanent: false }
-          );
+        // Phase 1: Load TVA cache
+        try {
+          const cacheLoaded = await tvaCacheService.loadTVACache();
+          if (cacheLoaded) {
+            const stats = tvaCacheService.getTVACacheStats();
+            console.log(
+              `${MODULE_ID} | TVA direct cache ready: ${stats.totalImages} images in ${stats.categories} categories`
+            );
+            tokenReplacerApp._debugLog(
+              `TVA cache loaded - ${stats.totalImages} images in ${stats.categories} categories`
+            );
+          } else {
+            console.warn(
+              `${MODULE_ID} | Failed to load TVA cache directly, will use fallback methods`
+            );
+            tokenReplacerApp._debugLog('TVA cache load failed, will use fallback methods');
+          }
+        } catch (err) {
+          console.warn(`${MODULE_ID} | TVA cache load error:`, err);
+          tokenReplacerApp._debugLog('TVA cache load error:', err.message);
         }
 
-        const tvaCacheImages = tvaCacheService.isTVACacheLoaded
-          ? tvaCacheService.tvaCacheImages
-          : null;
-        tokenReplacerApp._debugLog(
-          `Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`
-        );
-        const success = await indexService.build(
-          false,
-          hasCache ? null : onProgress,
-          tvaCacheImages
-        );
-        if (success) {
-          const stats = indexService.getStats();
-          console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
+        // Phase 2: Build image index (after cache is loaded)
+        try {
+          console.log(`${MODULE_ID} | Building image index in background...`);
+          tokenReplacerApp._debugLog('Starting background image index build');
+
+          const hasCache = await storageService.has('token-replacer-fa-index-v3');
           tokenReplacerApp._debugLog(
-            `Index build completed successfully - ${stats.totalImages} images indexed`
+            `Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`
           );
+
+          const onProgress = (current, total, images) => {
+            const percent = Math.round((current / total) * 100);
+            ui.notifications.info(
+              tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
+                `Token Replacer FA: Building index... ${percent}% (${images} images)`,
+              { permanent: false }
+            );
+          };
 
           if (!hasCache) {
-            tokenReplacerApp._debugLog('Showing index build completion notification');
+            tokenReplacerApp._debugLog('Showing first-time index build notification');
             ui.notifications.info(
-              tokenReplacerApp.i18n('notifications.indexingComplete', {
-                count: stats.totalImages,
-              }) || `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
+              tokenReplacerApp.i18n('notifications.indexingStart') ||
+                'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
               { permanent: false }
             );
           }
-        } else {
-          console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
-          tokenReplacerApp._debugLog('Index build failed, will fall back to direct API calls');
+
+          const tvaCacheImages = tvaCacheService.isTVACacheLoaded
+            ? tvaCacheService.tvaCacheImages
+            : null;
+          tokenReplacerApp._debugLog(
+            `Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`
+          );
+          const success = await indexService.build(
+            false,
+            hasCache ? null : onProgress,
+            tvaCacheImages
+          );
+          if (success) {
+            const stats = indexService.getStats();
+            console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
+            tokenReplacerApp._debugLog(
+              `Index build completed successfully - ${stats.totalImages} images indexed`
+            );
+
+            if (!hasCache) {
+              tokenReplacerApp._debugLog('Showing index build completion notification');
+              ui.notifications.info(
+                tokenReplacerApp.i18n('notifications.indexingComplete', {
+                  count: stats.totalImages,
+                }) || `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
+                { permanent: false }
+              );
+            }
+          } else {
+            console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
+            tokenReplacerApp._debugLog('Index build failed, will fall back to direct API calls');
+          }
+        } catch (err) {
+          console.warn(`${MODULE_ID} | Index build error:`, err);
+          tokenReplacerApp._debugLog('Index build error:', err.message);
         }
-      } catch (err) {
-        console.warn(`${MODULE_ID} | Index build error:`, err);
-        tokenReplacerApp._debugLog('Index build error:', err.message);
+      } catch (error) {
+        console.error(`${MODULE_ID} | Background initialization failed:`, error);
+        const msg = tokenReplacerApp.i18n('notifications.backgroundFailed', { error: error.message || String(error) });
+        if (error.recoverySuggestions?.length > 0) {
+          ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, { permanent: true });
+        } else {
+          ui.notifications.error(msg);
+        }
       }
     })();
   } else {
@@ -906,50 +932,55 @@ Hooks.once('ready', async () => {
  */
 // @ts-expect-error fvtt-types beta does not include getSceneControlButtons hook type
 Hooks.on('getSceneControlButtons', (controls) => {
-  if (!game.user.isGM) {
-    tokenReplacerApp._debugLog('Skipping scene control button (user is not GM)');
-    return;
-  }
+  try {
+    if (!game.user.isGM) {
+      tokenReplacerApp._debugLog('Skipping scene control button (user is not GM)');
+      return;
+    }
 
-  tokenReplacerApp._debugLog('Adding scene control button');
+    tokenReplacerApp._debugLog('Adding scene control button');
 
-  // Handle both v12 (array) and v13 (object) formats
-  if (Array.isArray(controls)) {
-    tokenReplacerApp._debugLog('Using v12 control format (array)');
-    const tokenControls = controls.find((c) => c.name === 'token');
-    if (tokenControls) {
-      tokenControls.tools.push({
+    // Handle both v12 (array) and v13 (object) formats
+    if (Array.isArray(controls)) {
+      tokenReplacerApp._debugLog('Using v12 control format (array)');
+      const tokenControls = controls.find((c) => c.name === 'token');
+      if (tokenControls) {
+        tokenControls.tools.push({
+          name: 'tokenReplacerFA',
+          title: game.i18n.localize('TOKEN_REPLACER_FA.button.title'),
+          icon: 'fas fa-wand-magic-sparkles',
+          button: true,
+          visible: true,
+          onChange: () => tokenReplacerApp.processTokenReplacement(), // v13+ uses onChange
+          onClick: () => tokenReplacerApp.processTokenReplacement(), // v12 fallback
+        });
+        tokenReplacerApp._debugLog('Scene control button added successfully');
+      } else {
+        tokenReplacerApp._debugLog('Token controls not found in array format');
+      }
+    } else {
+      tokenReplacerApp._debugLog('Using v13 control format (object)');
+      const tokenControls = controls.tokens;
+      if (!tokenControls) {
+        tokenReplacerApp._debugLog('Token controls not found in object format');
+        return;
+      }
+
+      const toolCount = Object.keys(tokenControls.tools || {}).length;
+      tokenControls.tools.tokenReplacerFA = {
         name: 'tokenReplacerFA',
         title: game.i18n.localize('TOKEN_REPLACER_FA.button.title'),
         icon: 'fas fa-wand-magic-sparkles',
+        order: toolCount + 1,
         button: true,
         visible: true,
         onChange: () => tokenReplacerApp.processTokenReplacement(), // v13+ uses onChange
         onClick: () => tokenReplacerApp.processTokenReplacement(), // v12 fallback
-      });
+      };
       tokenReplacerApp._debugLog('Scene control button added successfully');
-    } else {
-      tokenReplacerApp._debugLog('Token controls not found in array format');
     }
-  } else {
-    tokenReplacerApp._debugLog('Using v13 control format (object)');
-    const tokenControls = controls.tokens;
-    if (!tokenControls) {
-      tokenReplacerApp._debugLog('Token controls not found in object format');
-      return;
-    }
-
-    const toolCount = Object.keys(tokenControls.tools || {}).length;
-    tokenControls.tools.tokenReplacerFA = {
-      name: 'tokenReplacerFA',
-      title: game.i18n.localize('TOKEN_REPLACER_FA.button.title'),
-      icon: 'fas fa-wand-magic-sparkles',
-      order: toolCount + 1,
-      button: true,
-      visible: true,
-      onChange: () => tokenReplacerApp.processTokenReplacement(), // v13+ uses onChange
-      onClick: () => tokenReplacerApp.processTokenReplacement(), // v12 fallback
-    };
-    tokenReplacerApp._debugLog('Scene control button added successfully');
+  } catch (error) {
+    console.error(`${MODULE_ID} | Failed to add scene control button:`, error);
+    ui.notifications.error('Token Replacer FA: Failed to add scene control button.');
   }
 });

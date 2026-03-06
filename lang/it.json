@@ -102,7 +102,10 @@
       "indexing": "Costruzione indice... {percent}% ({images} immagini)",
       "indexingComplete": "Indice pronto! {count} immagini indicizzate per ricerca veloce.",
       "fuseLoadFailed": "Impossibile caricare la libreria di ricerca. Controlla la console per dettagli.",
-      "processingError": "Token Replacer FA ha riscontrato un errore: {error}. Controlla la console per dettagli."
+      "processingError": "Token Replacer FA ha riscontrato un errore: {error}. Controlla la console per dettagli.",
+      "initFailed": "Token Replacer FA: Inizializzazione fallita. {error}",
+      "backgroundFailed": "Token Replacer FA: Configurazione in background fallita. {error}",
+      "workerFallback": "Token Replacer FA: Worker in background fallito, utilizzo del metodo più lento."
     },
     "errors": {
       "tva_missing": "Il modulo Token Variant Art non è installato o abilitato",
