@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A Foundry VTT module (v2.12.3) that automatically replaces NPC token artwork with matching tokens from Forgotten Adventures and The Forge Bazaar. It integrates with Token Variant Art (TVA) for cache access and fuzzy search, uses Web Workers for non-blocking index builds, and provides a dialog-based UI for match selection. This project is a comprehensive quality uplift of the existing codebase — no user-facing behavior changes.
+A Foundry VTT module (v2.12.4) that automatically replaces NPC token artwork with matching tokens from Forgotten Adventures and The Forge Bazaar. It integrates with Token Variant Art (TVA) for cache access and fuzzy search, uses Web Workers for non-blocking index builds, and provides a dialog-based UI for match selection. Now includes 498 automated tests, JSDoc type safety, CI pipeline, and standardized error handling.
 
 ## Core Value
 
@@ -22,13 +22,16 @@ The module must continue to reliably replace token artwork exactly as it does to
 - ✓ Handlebars template-based UI with XSS protection — existing
 - ✓ Debug logging toggle via module settings — existing
 - ✓ D&D 5e creature type/subtype extraction — existing
+- ✓ Automated test suite (498 tests, Vitest + jsdom) — v2.12
+- ✓ Consistent error handling with structured errors and recovery suggestions — v2.12
+- ✓ Constructor dependency injection on all services — v2.12
+- ✓ JSDoc type safety with declaration merging — v2.12
+- ✓ GitHub Actions CI pipeline (tests, lint, typecheck) — v2.12
+- ✓ Worker lifecycle management (lazy init, clean termination, crash fallback) — v2.12
 
 ### Active
 
-- [ ] Automated test suite (unit tests for services, integration tests for key workflows)
-- [ ] Consistent error handling patterns across all services
-- [ ] Clean code structure with clear separation of concerns
-- [ ] Type safety via JSDoc annotations or TypeScript (approach TBD by research)
+(Ready for next milestone — use `/gsd:new-milestone` to define)
 
 ### Out of Scope
 
@@ -40,11 +43,11 @@ The module must continue to reliably replace token artwork exactly as it does to
 
 ## Context
 
-- Brownfield codebase at v2.12.3 on `develop` branch
-- Recent work (today) included performance optimizations, bug fixes for dialog races, promise lifecycle, IndexedDB durability, and code review cycles
-- Service-based architecture already in place: SearchService facade, SearchOrchestrator, TokenService (static), IndexService, TVACacheService, StorageService, UIManager
-- Web Worker integration for index building already functional
-- No existing test infrastructure — testing is manual via browser console
+- Codebase at v2.12.4 on `develop` branch
+- v2.12 Quality Refactor milestone complete: 498 tests, CI pipeline, type safety, DI, error handling
+- Service-based architecture with constructor DI: SearchService facade, SearchOrchestrator, TokenService, IndexService, TVACacheService, StorageService, UIManager
+- Web Worker integration with lazy init, clean termination, and crash fallback
+- 9,242 LOC source (scripts/) + 6,468 LOC tests (tests/)
 - Module runs entirely client-side in Foundry VTT browser runtime
 - Fuse.js loaded dynamically from CDN (jsDelivr)
 - TVA module is a hard dependency; FA Nexus and Forge are optional
@@ -63,10 +66,12 @@ The module must continue to reliably replace token artwork exactly as it does to
 
 | Decision               | Rationale                                                         | Outcome                          |
 | ---------------------- | ----------------------------------------------------------------- | -------------------------------- |
-| JSDoc vs TypeScript    | Trade-off between type safety strength and build complexity       | — Pending (research will inform) |
-| Test framework choice  | Need something compatible with Foundry VTT's browser-only runtime | — Pending (research will inform) |
-| Internal-only refactor | User wants quality uplift without disrupting existing users       | — Pending                        |
+| JSDoc over TypeScript  | No build step constraint; checkJs provides sufficient type safety | ✓ Good — 498 tests pass with JSDoc types |
+| Vitest 3.x + jsdom     | Browser-compatible, fast, ESM-native test runner                  | ✓ Good — sub-second test runs |
+| Hand-written mocks     | @rayners/foundry-test-utils had gaps in settings/Worker/ApplicationV2 | ✓ Good — full control over mock fidelity |
+| Constructor DI pattern | Backward-compatible defaults, testable in isolation               | ✓ Good — all services testable |
+| Internal-only refactor | Quality uplift without disrupting existing users                  | ✓ Good — zero behavior changes |
 
 ---
 
-_Last updated: 2026-02-28 after initialization_
+_Last updated: 2026-03-06 after v2.12 milestone_
