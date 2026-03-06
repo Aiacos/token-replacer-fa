@@ -5,6 +5,6 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['tests/**/*.test.js'],
-    setupFiles: ['tests/setup/foundry-mocks.js'],
+    setupFiles: ['fake-indexeddb/auto', 'tests/setup/foundry-mocks.js'],
   },
 });
