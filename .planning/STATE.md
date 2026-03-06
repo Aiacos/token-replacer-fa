@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.12
 milestone_name: milestone
 status: completed
-stopped_at: Completed 09-01 Type Infrastructure
-last_updated: "2026-03-06T10:48:01.532Z"
-last_activity: 2026-03-06 — Completed 09-01 Type Infrastructure
+stopped_at: Completed 09-02 Service Annotations
+last_updated: "2026-03-06T10:59:50.662Z"
+last_activity: 2026-03-06 — Completed 09-02 Service Annotations
 progress:
   total_phases: 10
-  completed_phases: 8
-  total_plans: 18
+  completed_phases: 9
+  total_plans: 17
   completed_plans: 17
   percent: 94
 ---
