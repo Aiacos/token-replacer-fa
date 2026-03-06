@@ -7,7 +7,7 @@
 
 import { MODULE_ID } from './core/Constants.js';
 import { loadFuse, yieldToMain, loadModuleTemplates } from './core/Utils.js';
-import { TokenService } from './services/TokenService.js';
+import { tokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
@@ -277,7 +277,7 @@ export class TokenReplacerApp {
         return true;
       }
       this._debugLog('Using direct token update (TVA not available)');
-      const result = await TokenService.replaceTokenImage(token, imagePath);
+      const result = await tokenService.replaceTokenImage(token, imagePath);
       this._debugLog(`Token update result: ${result ? 'success' : 'failed'}`);
       return result;
     } catch (error) {
@@ -327,7 +327,7 @@ export class TokenReplacerApp {
       this._debugLog('Active scene found:', canvas.scene.name);
 
       // Get NPC tokens
-      const npcTokens = TokenService.getSceneNPCTokens();
+      const npcTokens = tokenService.getSceneNPCTokens();
       if (npcTokens.length === 0) {
         ui.notifications.info(this.i18n('notifications.noTokens'));
         this._debugLog('No NPC tokens found on scene');
@@ -429,7 +429,7 @@ export class TokenReplacerApp {
       }
 
       // Group tokens by creature type
-      const creatureGroups = TokenService.groupTokensByCreature(npcTokens);
+      const creatureGroups = tokenService.groupTokensByCreature(npcTokens);
       const uniqueCreatures = creatureGroups.size;
 
       this._debugLog(

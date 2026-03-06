@@ -3,14 +3,9 @@
  * Handles token extraction, grouping, and image replacement
  * @module services/TokenService
  *
- * Design Note: This class uses static methods intentionally.
- * Unlike SearchService/IndexService which maintain state (caches, indexes),
- * TokenService performs stateless operations on Foundry token objects.
- * Each method is a pure function that depends only on its input parameters,
- * making static methods the appropriate pattern here.
- *
- * This follows the same utility pattern as Utils.js but groups related
- * token operations together in a class for organizational clarity.
+ * Design Note: This class uses instance methods with constructor dependency injection.
+ * The canvas global is injected via constructor for testability. A default singleton
+ * is exported for production use, while tests can create instances with mock canvas.
  */
 
 import { MODULE_ID } from '../core/Constants.js';
@@ -19,22 +14,33 @@ import { getCreatureCacheKey } from '../core/Utils.js';
 /**
  * TokenService class for handling token operations
  *
- * Static utility class - no instantiation required.
- * All methods are pure functions operating on Foundry VTT tokens.
+ * Instance class with dependency injection for testability.
  * @example
- * // Usage: call static methods directly on the class
- * const info = TokenService.extractCreatureInfo(token);
- * const tokens = TokenService.getSceneNPCTokens();
- * const groups = TokenService.groupTokensByCreature(tokens);
- * await TokenService.replaceTokenImage(token, imagePath);
+ * // Production: use exported singleton
+ * import { tokenService } from './services/TokenService.js';
+ * const info = tokenService.extractCreatureInfo(token);
+ * const tokens = tokenService.getSceneNPCTokens();
+ *
+ * // Testing: create instance with mock canvas
+ * const svc = new TokenService({ canvas: mockCanvas });
+ * const tokens = svc.getSceneNPCTokens();
  */
 export class TokenService {
+  /**
+   * @param {Object} [deps={}] - Dependency overrides for testing
+   * @param {Object} [deps.canvas] - Canvas object (default: global canvas)
+   */
+  constructor(deps = {}) {
+    const { canvas: injectedCanvas } = deps;
+    this._getCanvas = () => injectedCanvas ?? canvas;
+  }
+
   /**
    * Extract creature information from a token
    * @param {Token} token - Foundry VTT token
    * @returns {Object|null} Creature info or null
    */
-  static extractCreatureInfo(token) {
+  extractCreatureInfo(token) {
     const actor = token.actor;
     if (!actor) return null;
 
@@ -132,13 +138,14 @@ export class TokenService {
    * If tokens are selected, only process selected NPC tokens
    * @returns {Token[]} Array of NPC tokens
    */
-  static getSceneNPCTokens() {
-    if (!canvas?.tokens?.placeables) {
+  getSceneNPCTokens() {
+    const c = this._getCanvas();
+    if (!c?.tokens?.placeables) {
       return [];
     }
 
     // Check if there are selected tokens
-    const selectedTokens = canvas.tokens.controlled;
+    const selectedTokens = c.tokens.controlled;
 
     if (selectedTokens.length > 0) {
       // Filter selected tokens to only include NPCs
@@ -150,7 +157,7 @@ export class TokenService {
     }
 
     // No selection - get all NPC tokens on the scene
-    return canvas.tokens.placeables.filter((token) => {
+    return c.tokens.placeables.filter((token) => {
       const actor = token.actor;
       if (!actor) return false;
       return actor.type === 'npc' || actor.type === 'creature';
@@ -162,7 +169,7 @@ export class TokenService {
    * @param {Token[]} tokens - Array of tokens
    * @returns {Map} Map of cache key to group data
    */
-  static groupTokensByCreature(tokens) {
+  groupTokensByCreature(tokens) {
     const groups = new Map();
 
     for (const token of tokens) {
@@ -191,7 +198,7 @@ export class TokenService {
    * @param {string} imagePath - New image path
    * @returns {Promise<boolean>} Success status
    */
-  static async replaceTokenImage(token, imagePath) {
+  async replaceTokenImage(token, imagePath) {
     try {
       // Update both the token document and the prototype token on the actor
       await token.document.update({
@@ -214,3 +221,6 @@ export class TokenService {
     }
   }
 }
+
+// Export singleton instance (uses global canvas at runtime)
+export const tokenService = new TokenService();
