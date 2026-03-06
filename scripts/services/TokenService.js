@@ -9,7 +9,7 @@
  */
 
 import { MODULE_ID } from '../core/Constants.js';
-import { getCreatureCacheKey } from '../core/Utils.js';
+import { getCreatureCacheKey, createModuleError } from '../core/Utils.js';
 
 /**
  * TokenService class for handling token operations
@@ -222,7 +222,12 @@ export class TokenService {
       console.log(`${MODULE_ID} | Replaced token image for ${token.name}`);
       return true;
     } catch (error) {
-      console.error(`${MODULE_ID} | Error replacing token image:`, error);
+      const moduleError = createModuleError(
+        'token_replace_failed',
+        `Error replacing token image: ${error.message || String(error)}`,
+        ['check_console']
+      );
+      console.error(`${MODULE_ID} |`, moduleError.message, moduleError.details);
       return false;
     }
   }

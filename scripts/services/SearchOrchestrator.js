@@ -22,6 +22,7 @@ import {
   yieldToMain,
   createDebugLogger,
   createDefaultGetSetting,
+  createModuleError,
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -337,7 +338,11 @@ export class SearchOrchestrator {
    */
   async searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
     if (!this.worker) {
-      throw new Error('Web Worker not available');
+      throw createModuleError(
+        'worker_failed',
+        'Web Worker not available for background search',
+        ['reload_module']
+      );
     }
 
     if (!index || index.length === 0) return [];
@@ -375,7 +380,11 @@ export class SearchOrchestrator {
           case 'error':
             cleanup();
             console.error(`${MODULE_ID} | Worker search error:`, message);
-            reject(new Error(message || 'Worker search error'));
+            reject(createModuleError(
+              'worker_failed',
+              `Worker search error: ${message || 'Unknown error'}`,
+              ['reload_module', 'check_console']
+            ));
             break;
 
           default:
@@ -387,7 +396,11 @@ export class SearchOrchestrator {
       const errorHandler = (error) => {
         cleanup();
         console.error(`${MODULE_ID} | Worker crashed during search:`, error);
-        reject(new Error(`Worker crashed: ${error.message || 'Unknown error'}`));
+        reject(createModuleError(
+          'worker_failed',
+          `Worker crashed: ${error.message || 'Unknown error'}`,
+          ['reload_module', 'check_console']
+        ));
       };
 
       this.worker.addEventListener('message', messageHandler);

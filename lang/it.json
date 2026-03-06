@@ -120,6 +120,7 @@
       "index_build_failed": "Impossibile costruire l'indice di ricerca token",
       "localStorage_full": "Lo storage del browser è pieno, impossibile salvare l'indice in cache",
       "worker_failed": "Il worker di indicizzazione in background è fallito",
+      "token_replace_failed": "Impossibile sostituire l'immagine del token",
       "unknown": "Si è verificato un errore imprevisto",
       "no_tokens_selected": "Nessun token selezionato",
       "search_timeout": "Operazione di ricerca scaduta",

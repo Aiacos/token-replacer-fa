@@ -120,6 +120,7 @@
       "index_build_failed": "Failed to build token search index",
       "localStorage_full": "Browser storage is full, cannot cache index",
       "worker_failed": "Background indexing worker failed",
+      "token_replace_failed": "Failed to replace token image",
       "unknown": "An unexpected error occurred",
       "no_tokens_selected": "No tokens selected",
       "search_timeout": "Search operation timed out",
