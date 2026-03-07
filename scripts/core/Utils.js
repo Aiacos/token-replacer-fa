@@ -169,7 +169,7 @@ export function parseSubtypeTerms(subtype) {
   // Split by common delimiters and clean up
   return subtype
     .toLowerCase()
-    .split(/[,;\/&]+/)
+    .split(/[,;&/]+/)
     .map((term) => term.trim())
     .filter((term) => term.length > 0 && !GENERIC_SUBTYPE_INDICATORS.includes(term));
 }
@@ -279,6 +279,7 @@ export function extractPathFromObject(obj, depth = 0) {
   const isValidPath = (val) =>
     val.startsWith('http') || val.startsWith('forge://') || val.includes('/') || val.includes('.');
 
+  // TODO [MEDIUM]: Use Object.prototype.hasOwnProperty.call(obj, prop) to prevent prototype chain traversal (review C2)
   for (const prop of pathProps) {
     if (obj[prop] && typeof obj[prop] === 'string') {
       const val = obj[prop];

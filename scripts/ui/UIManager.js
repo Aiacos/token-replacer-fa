@@ -142,7 +142,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @param {Object} options - Render options
    * @returns {Promise<Object>} Context data for template
    */
-  async _prepareContext(options) {
+  async _prepareContext(_options) {
     return { content: this._dialogContent };
   }
 
@@ -153,7 +153,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @param {Object} options - Rendering options
    * @returns {Promise<HTMLElement>} Rendered DOM element
    */
-  async _renderHTML(context, options) {
+  async _renderHTML(context, _options) {
     const wrapper = document.createElement('div');
     wrapper.classList.add('dialog-content');
     wrapper.innerHTML = context.content;
@@ -167,7 +167,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @param {HTMLElement} content - The application's content element
    * @param {Object} options - Rendering options
    */
-  _replaceHTML(result, content, options) {
+  _replaceHTML(result, content, _options) {
     const existing = content.querySelector('.dialog-content');
     if (existing) {
       existing.replaceWith(result);
@@ -1090,7 +1090,7 @@ export class UIManager {
     try {
       this.mainDialog.updateContent(content);
       this._wireCancelButton();
-    } catch (e) {
+    } catch (_e) {
       // Dialog might be in transition
     }
   }
@@ -1159,7 +1159,7 @@ export class UIManager {
     if (this.mainDialog) {
       try {
         await this.mainDialog.close();
-      } catch (e) {
+      } catch (_e) {
         // Dialog might already be closed
       }
       this.mainDialog = null;

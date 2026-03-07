@@ -209,7 +209,7 @@ function handleIndexPaths(data) {
       return;
     }
     const searchText = `${path} ${data.name}`.toLowerCase();
-    const terms = searchText.split(/[\/\\\-_\s\.]+/).filter((t) => t.length > 0);
+    const terms = searchText.split(/[/\\\-_\s.]+/).filter((t) => t.length > 0);
     for (const term of new Set(terms)) {
       if (!termIndex[term]) termIndex[term] = [];
       termIndex[term].push(path);

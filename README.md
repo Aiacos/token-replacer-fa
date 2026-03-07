@@ -199,7 +199,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 ### Recent Highlights
 
 - **v2.12.4** — Security hardening: protocol validation, CSP-compatible event handlers, credential protection
-- **v2.12.0** — Quality refactor: 509 automated tests, CI pipeline, constructor DI, structured error handling, Worker lifecycle management
+- **v2.12.0** — Quality refactor: comprehensive test suite, CI pipeline, constructor DI, structured error handling, Worker lifecycle management
 - **v2.11.0** — ApplicationV2 dialog migration for Foundry v13 compatibility, service decomposition
 - **v2.10.0** — Handlebars templates, Web Worker index building, IndexedDB storage, skeleton loaders, O(1) search index
 

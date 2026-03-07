@@ -157,7 +157,7 @@ export class ScanService {
    * @param {Object} progressDialog - Optional progress dialog
    * @returns {Promise<Array>} Image index array
    */
-  async buildLocalTokenIndex(progressDialog = null) {
+  async buildLocalTokenIndex(_progressDialog = null) {
     console.log(`${MODULE_ID} | Building local token index...`);
 
     const paths = await this.discoverTokenPaths();
@@ -168,12 +168,10 @@ export class ScanService {
 
     const allImages = [];
     let dirsScanned = 0;
-    let filesFound = 0;
 
     const progressCallback = (info) => {
       if (info.currentDir) {
         dirsScanned++;
-        filesFound += info.filesFound || 0;
       }
     };
 

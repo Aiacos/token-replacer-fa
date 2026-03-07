@@ -342,6 +342,7 @@ export class TVACacheService {
       }
 
       // Check freshness: HEAD request to compare Content-Length
+      // TODO [MEDIUM]: Add credentials: 'omit' to HEAD request for consistency with hardened GET fetch (review C1)
       try {
         const headResponse = await fetch(cacheFilePath, { method: 'HEAD' });
         if (headResponse.ok) {

@@ -13,7 +13,6 @@ import { searchOrchestrator } from './services/SearchOrchestrator.js';
 import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
-import { forgeBazaarService } from './services/ForgeBazaarService.js';
 import { storageService } from './services/StorageService.js';
 import { uiManager, logI18nCacheStats as logUIManagerI18nCacheStats } from './ui/UIManager.js';
 
@@ -300,7 +299,7 @@ export class TokenReplacerApp {
     this.isProcessing = true;
     this._debugLog('Starting token replacement process');
 
-    let dialog = null;
+    let dialog;
 
     try {
       searchService.clearCache();
@@ -505,7 +504,7 @@ export class TokenReplacerApp {
 
       let tokenIndex = 0;
 
-      for (const [key, data] of searchResults) {
+      for (const [_key, data] of searchResults) {
         if (!uiManager.isDialogOpen()) break;
 
         const { matches, tokens, creatureInfo } = data;
@@ -724,6 +723,7 @@ export class TokenReplacerApp {
           recoverySuggestions = ['reload_module', 'check_network'];
         }
 
+        // TODO [MEDIUM]: Use error.message only (not error.stack) to avoid leaking file paths to GMs (review C3)
         errorDisplay = this._createError(
           errorType,
           error.stack || error.message || String(error),

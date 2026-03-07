@@ -139,7 +139,7 @@ export class IndexService {
     try {
       const setting = this._getSetting(MODULE_ID, 'indexUpdateFrequency');
       return UPDATE_FREQUENCIES[setting] || UPDATE_FREQUENCIES.weekly;
-    } catch (e) {
+    } catch (_e) {
       return UPDATE_FREQUENCIES.weekly;
     }
   }
@@ -213,7 +213,7 @@ export class IndexService {
     // Keep regex in sync with IndexWorker.js termIndex builder
     const terms = text
       .toLowerCase()
-      .split(/[\/\\\-_\s\.]+/)
+      .split(/[/\\\-_\s.]+/)
       .filter((term) => term.length > 0);
 
     // Return unique terms
@@ -314,7 +314,7 @@ export class IndexService {
       // Check if it's a QuotaExceededError (localStorage full)
       if (error.name === 'QuotaExceededError' || error.code === 22) {
         console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
-        // This is expected for large indices, not a critical error
+        // TODO [MEDIUM]: Surface QuotaExceededError to user via ui.notifications.warn (predict P5)
       } else {
         console.warn(`${MODULE_ID} | Failed to save cache:`, error);
       }
@@ -680,7 +680,7 @@ export class IndexService {
     console.log(`${MODULE_ID} | Building index from TVA cache...`);
 
     // Try to read TVA cache directly (much faster than doImageSearch)
-    let allPaths = [];
+    let allPaths = []; // eslint-disable-line no-useless-assignment -- defensive default for catch fallthrough
 
     try {
       // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
@@ -961,7 +961,7 @@ export class IndexService {
             reject(new Error('Operation cancelled'));
             break;
 
-          case 'error':
+          case 'error': {
             // Clean up and reject on error
             this.worker.removeEventListener('message', messageHandler);
             this.worker.removeEventListener('error', errorHandler);
@@ -976,6 +976,7 @@ export class IndexService {
             );
             reject(error);
             break;
+          }
 
           default:
             // Ignore unknown message types (e.g., 'pong' from ping)

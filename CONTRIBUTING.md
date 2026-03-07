@@ -80,7 +80,7 @@ lang/           Localization files (en.json, it.json)
 ### Running Tests
 
 ```bash
-npm test              # Run all 509 tests
+npm test              # Run all tests
 npm run test:watch    # Watch mode for development
 ```
 
@@ -107,8 +107,8 @@ tests/
 ### Writing Tests
 
 - Use Vitest with jsdom environment
-- Foundry VTT globals are mocked via `tests/__mocks__/foundry-mocks.js`
-- Mock TVA cache data is available in `tests/__fixtures__/mock-tva-cache.js`
+- Foundry VTT globals are mocked via `tests/setup/foundry-mocks.js`
+- Mock TVA cache data is available in `tests/helpers/mock-tva-cache.js`
 - Use `createMockActor()` and `addMockTokens()` helpers for token tests
 - Test files should be named `{Module}.test.js` matching the source file
 

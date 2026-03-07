@@ -101,7 +101,7 @@ export class StorageService {
 
         // Create object store if it doesn't exist
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
           console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
         }
       };
@@ -165,7 +165,7 @@ export class StorageService {
         });
 
         return count > 0;
-      } catch (error) {
+      } catch (_error) {
         // Fall through to localStorage
       }
     }
@@ -197,7 +197,7 @@ export class StorageService {
         };
 
         // Put data into object store
-        const request = objectStore.put(record);
+        objectStore.put(record);
 
         await new Promise((resolve, reject) => {
           transaction.oncomplete = () => {

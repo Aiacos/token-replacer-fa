@@ -40,6 +40,7 @@ export class SearchOrchestrator {
       workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
     } = deps;
 
+    // TODO [HIGH]: Add LRU eviction to searchCache (unbounded growth in long sessions) (predict P1)
     this.searchCache = new Map();
     this._tvaCacheService = injectedTVACache ?? null;
     this._forgeBazaarService = injectedForgeBazaar ?? null;
@@ -353,7 +354,7 @@ export class SearchOrchestrator {
    * @param {Function} onProgress - Optional progress callback
    * @returns {Promise<Array>} Search results
    */
-  async searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
+  async searchLocalIndexWithWorker(searchTerms, index, _creatureType = null, onProgress = null) {
     if (!this.worker) {
       throw createModuleError(
         'worker_failed',
@@ -364,6 +365,7 @@ export class SearchOrchestrator {
 
     if (!index || index.length === 0) return [];
 
+    // TODO [MEDIUM]: Add 60s timeout to prevent Promise hanging if Worker stalls (predict P4)
     return new Promise((resolve, reject) => {
       const cleanup = () => {
         this.worker.removeEventListener('message', messageHandler);
@@ -372,7 +374,7 @@ export class SearchOrchestrator {
 
       // Create a unique message handler for this search operation
       const messageHandler = (event) => {
-        const { type, result, current, total, term, message, stack } = event.data;
+        const { type, result, current, total, term: _term, message, stack: _stack } = event.data;
 
         switch (type) {
           case 'progress':
@@ -381,12 +383,13 @@ export class SearchOrchestrator {
             }
             break;
 
-          case 'complete':
+          case 'complete': {
             cleanup();
             const results = result || [];
             console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
             resolve(results);
             break;
+          }
 
           case 'cancelled':
             cleanup();
@@ -1141,7 +1144,7 @@ export class SearchOrchestrator {
           type: 'batch',
           completed: completed,
           total: totalGroups,
-          currentBatch: batch.map(([key, group]) => group.creatureInfo.actorName),
+          currentBatch: batch.map(([_key, group]) => group.creatureInfo.actorName),
         });
       }
 

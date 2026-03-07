@@ -13,7 +13,7 @@ Token Replacer FA is a Foundry VTT module that automatically replaces NPC token 
 
 ## Development Commands
 
-**Testing:** Load the module in Foundry VTT and test via browser console. No automated tests.
+**Testing:** Run `npm test` for the full Vitest suite (509 tests). Run `npm run test:watch` for watch mode. Manual UI testing requires Foundry VTT.
 
 ## Build & Release
 
@@ -68,10 +68,14 @@ scripts/
 │   ├── Constants.js     # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), EXCLUDED_FOLDERS
 │   └── Utils.js         # Path extraction from TVA results, Fuse.js loader
 ├── services/
-│   ├── SearchService.js # Main search orchestrator - TVA direct cache access (FAST PATH)
-│   ├── IndexService.js  # Hierarchical category index, localStorage caching with size limits
-│   ├── TokenService.js  # Extract creature info from Foundry actors (static methods)
-│   └── ScanService.js   # Directory scanning (fallback when TVA unavailable)
+│   ├── SearchService.js      # Thin facade delegating to SearchOrchestrator and TVACacheService
+│   ├── SearchOrchestrator.js # Search logic: TVA search, category search, parallel batching
+│   ├── TVACacheService.js    # TVA cache loading, direct cache search, IndexedDB persistence
+│   ├── IndexService.js       # Hierarchical category index, Web Worker + IndexedDB caching
+│   ├── TokenService.js       # Extract creature info from D&D 5e actors (instance class with DI)
+│   ├── StorageService.js     # IndexedDB/localStorage abstraction layer
+│   ├── ScanService.js        # Directory scanning (fallback when TVA unavailable)
+│   └── ForgeBazaarService.js # Forge Bazaar API stub (non-functional, placeholder)
 ├── workers/
 │   └── IndexWorker.js   # Web Worker for background index building (non-blocking)
 └── ui/
@@ -189,6 +193,6 @@ Files in `lang/en.json` and `lang/it.json`. All UI strings use `TOKEN_REPLACER_F
 
 ## Known Constraints
 
-- Index caching limited to ~4.5MB localStorage - larger indices rebuild on page load
+- Index caching uses IndexedDB (primary) with localStorage fallback (~4.5MB limit)
 - D&D 5e system only (creature type extraction is system-specific)
-- TokenService uses static methods (intentional for stateless token operations)
+- ForgeBazaarService is a non-functional stub (no public Forge API exists)
