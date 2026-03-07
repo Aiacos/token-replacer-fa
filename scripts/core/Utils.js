@@ -76,6 +76,12 @@ export function sanitizePath(path) {
   const trimmed = path.trim();
   if (!trimmed) return null;
 
+  // Reject dangerous URI protocols (javascript:, data:, vbscript:)
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+    console.warn('token-replacer-fa | Rejected path with dangerous protocol:', path);
+    return null;
+  }
+
   // Check for null bytes (could be used to bypass validation)
   if (trimmed.includes('\0')) {
     console.warn('token-replacer-fa | Rejected path with null byte:', path);
@@ -296,7 +302,7 @@ export function extractPathFromObject(obj, depth = 0) {
 
   // Check nested objects (general case, depth-limited)
   for (const key of Object.keys(obj)) {
-    if (key === 'data') continue; // Already checked above
+    if (key === 'data' || key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     const val = obj[key];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
       const nestedPath = extractPathFromObject(val, depth + 1);

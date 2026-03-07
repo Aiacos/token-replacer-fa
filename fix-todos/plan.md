@@ -1,47 +1,63 @@
-# Fix Plan — Review Findings (Cycle 9)
+# Fix Plan — Security Scan TODOs (Cycle 10)
 
-No TODO comments found. Fixing functional bugs from 4-agent review.
+Session: security-scan-todos
+Total: 11 TODOs (2 HIGH, 6 MEDIUM, 2 LOW, 1 deferred)
 
-## Items to Fix
+## Fixable Now
 
-### R1. Dialog close race condition [HIGH - Logic]
-
-- **File:** UIManager.js:930-936
-- **Issue:** Old dialog close not awaited; \_onClose can resolve NEW dialog's \_pendingResolve
-- **Fix:** Await old dialog close before creating new one
+### T1. SearchOrchestrator: Fuse.js silent failure [HIGH]
+- **File:** SearchOrchestrator.js:302
+- **Fix:** Add console.warn before returning empty results when Fuse is null
 - **Status:** PENDING
 
-### R2. Duplicate event delegation on initial render [MEDIUM - Perf]
-
-- **File:** UIManager.js:644-673
-- **Issue:** setupMatchSelectionHandlers sets up click/dblclick delegation, then \_renderMatchGrid sets up identical delegation again
-- **Fix:** Remove duplicate block in setupMatchSelectionHandlers; let \_renderMatchGrid handle it
+### T2. main.js: Failed replacement warning [HIGH]
+- **File:** main.js:689
+- **Fix:** Replace _debugLog with ui.notifications.warn, fix misleading message
 - **Status:** PENDING
 
-### R3. \_wireCancelButton clones DOM on every progress update [MEDIUM - Perf]
-
-- **File:** UIManager.js:993-1004
-- **Issue:** cancelBtn cloneNode+replaceWith on every progress update causes reflows
-- **Fix:** Use AbortController pattern, wire once
+### T3. main.js: loadFuse() unchecked return [MEDIUM]
+- **File:** main.js:809
+- **Fix:** Check return value, warn user if Fuse.js failed to load
 - **Status:** PENDING
 
-### R4. StorageService.remove() resolves on request.onsuccess not transaction.oncomplete [MEDIUM - Logic]
-
-- **File:** StorageService.js:325-344
-- **Issue:** Inconsistent with save() which uses transaction.oncomplete
-- **Fix:** Switch to transaction.oncomplete like save()
+### T4. Utils.test.js: Protocol rejection tests [MEDIUM - Test]
+- **File:** tests/core/Utils.test.js:218
+- **Fix:** Add tests for javascript:/data:/vbscript: rejection
 - **Status:** PENDING
 
-### R5. Non-array TVA cache categories crash for...of loop [MEDIUM - Logic]
-
-- **File:** TVACacheService.js:196-218
-- **Issue:** If JSON contains metadata keys (non-array values), for...of throws TypeError
-- **Fix:** Add Array.isArray guard before iterating category
+### T5. Utils.test.js: Prototype pollution tests [MEDIUM - Test]
+- **File:** tests/core/Utils.test.js:484
+- **Fix:** Add tests for __proto__/constructor/prototype key filtering
 - **Status:** PENDING
 
-### R6. Migration check returns true every time (old data kept) [MEDIUM - Logic]
-
-- **File:** IndexService.js:200-207
-- **Issue:** needsMigration always true because localStorage backup is kept after migration
-- **Fix:** After successful migration, remove old localStorage key
+### T6. TVACacheService.test.js: Origin validation tests [MEDIUM - Test]
+- **File:** tests/services/TVACacheService.test.js:413
+- **Fix:** Add tests for cross-origin rejection and credentials:omit
 - **Status:** PENDING
+
+### T7. TokenService: Error propagation [MEDIUM]
+- **File:** TokenService.js:225
+- **Fix:** Throw structured error instead of returning false
+- **Status:** PENDING
+
+### T8. UIManager: AbortController in setupMatchSelectionHandlers [LOW]
+- **File:** UIManager.js:591
+- **Fix:** Add AbortController signal to image load/error listeners
+- **Status:** PENDING
+
+### T9. UIManager: AbortController in setupNoMatchHandlers [LOW]
+- **File:** UIManager.js:772
+- **Fix:** Add AbortController signal (same pattern as T8)
+- **Status:** PENDING
+
+## Deferred (Needs User Decision)
+
+### HIGH-001. Fuse.js CDN integrity [HIGH - Architecture]
+- **File:** Constants.js:8
+- **Action:** User must decide: bundle locally vs SRI vs post-load verification
+- **Status:** DEFERRED
+
+### MED-007. StorageService schema validation [MEDIUM - Refactor]
+- **File:** StorageService.js:250
+- **Action:** Larger refactor — JSON.parse reviver + shape validation
+- **Status:** DEFERRED

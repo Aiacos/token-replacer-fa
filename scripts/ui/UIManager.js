@@ -6,7 +6,7 @@
  * @module ui/UIManager
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, MAX_DISPLAY_RESULTS } from '../core/Constants.js';
+import { MODULE_ID, CREATURE_TYPE_MAPPINGS, MAX_DISPLAY_RESULTS, FALLBACK_IMAGE } from '../core/Constants.js';
 import {
   escapeHtml,
   parseFilterTerms,
@@ -87,7 +87,8 @@ function saveFilterTerm(filterTerm) {
  */
 function loadFilterTerm() {
   try {
-    return localStorage.getItem(FILTER_CACHE_KEY) || '';
+    const term = localStorage.getItem(FILTER_CACHE_KEY) || '';
+    return term.length <= 200 ? term : term.slice(0, 200);
   } catch (error) {
     console.warn(`${MODULE_ID} | Failed to load filter term:`, error);
     return '';
@@ -495,7 +496,7 @@ export class UIManager {
         return `
         <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
           <div class="skeleton-loader skeleton-72">
-            <img src="${safePath}" alt="${safeMatchName}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+            <img src="${safePath}" alt="${safeMatchName}" loading="lazy">
           </div>
           <div class="match-name">${safeMatchName}</div>
           <div class="match-score">${scoreDisplay}</div>
@@ -510,6 +511,28 @@ export class UIManager {
     if (gridEl._delegateAbort) gridEl._delegateAbort.abort();
     const ac = new AbortController();
     gridEl._delegateAbort = ac;
+
+    // Image load/error delegation (replaces inline onerror/onload handlers)
+    gridEl.addEventListener(
+      'load',
+      (e) => {
+        if (e.target.tagName === 'IMG') {
+          e.target.parentElement?.classList.add('loaded');
+        }
+      },
+      { signal: ac.signal, capture: true }
+    );
+
+    gridEl.addEventListener(
+      'error',
+      (e) => {
+        if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
+          e.target.dataset.fallback = '1';
+          e.target.src = FALLBACK_IMAGE;
+        }
+      },
+      { signal: ac.signal, capture: true }
+    );
 
     gridEl.addEventListener(
       'click',
@@ -564,6 +587,33 @@ export class UIManager {
         resolve(null);
         return;
       }
+
+      // AbortController for cleanup — abort on dialog close
+      if (container._dialogAbort) container._dialogAbort.abort();
+      const ac = new AbortController();
+      container._dialogAbort = ac;
+
+      // Image load/error delegation for template-rendered preview images
+      container.addEventListener(
+        'load',
+        (e) => {
+          if (e.target.tagName === 'IMG') {
+            e.target.parentElement?.classList.add('loaded');
+          }
+        },
+        { signal: ac.signal, capture: true }
+      );
+
+      container.addEventListener(
+        'error',
+        (e) => {
+          if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
+            e.target.dataset.fallback = '1';
+            e.target.src = FALLBACK_IMAGE;
+          }
+        },
+        { signal: ac.signal, capture: true }
+      );
 
       let assignmentMode = 'sequential';
       const matchGrid = container.querySelector('.token-replacer-fa-match-select');
@@ -719,6 +769,33 @@ export class UIManager {
         resolve(null);
         return;
       }
+
+      // AbortController for cleanup — abort on dialog close
+      if (container._dialogAbort) container._dialogAbort.abort();
+      const ac = new AbortController();
+      container._dialogAbort = ac;
+
+      // Image load/error delegation for template-rendered preview images
+      container.addEventListener(
+        'load',
+        (e) => {
+          if (e.target.tagName === 'IMG') {
+            e.target.parentElement?.classList.add('loaded');
+          }
+        },
+        { signal: ac.signal, capture: true }
+      );
+
+      container.addEventListener(
+        'error',
+        (e) => {
+          if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
+            e.target.dataset.fallback = '1';
+            e.target.src = FALLBACK_IMAGE;
+          }
+        },
+        { signal: ac.signal, capture: true }
+      );
 
       let assignmentMode = 'sequential';
       const multiSelectEnabled = tokenCount > 1;

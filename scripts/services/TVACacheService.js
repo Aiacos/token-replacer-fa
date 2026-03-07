@@ -183,7 +183,29 @@ export class TVACacheService {
       // IndexedDB miss — full fetch + parse
       this._debugLog(`Loading TVA cache from file: ${staticCacheFile}`);
 
-      const response = await fetch(staticCacheFile);
+      // Validate cache file path: must be relative or same-origin
+      if (staticCacheFile.startsWith('//') || /^[a-z]+:/i.test(staticCacheFile)) {
+        try {
+          const cacheUrl = new URL(staticCacheFile, globalThis.location?.origin);
+          if (globalThis.location && cacheUrl.origin !== globalThis.location.origin) {
+            throw this._createError(
+              'invalid_cache_path',
+              `TVA cache file URL points to external origin: ${cacheUrl.origin}`,
+              ['check_tva_config', 'rebuild_cache']
+            );
+          }
+        } catch (urlError) {
+          if (urlError.errorType === 'invalid_cache_path') throw urlError;
+          // Malformed URL — reject
+          throw this._createError(
+            'invalid_cache_path',
+            `Invalid TVA cache file path: ${staticCacheFile}`,
+            ['check_tva_config', 'rebuild_cache']
+          );
+        }
+      }
+
+      const response = await fetch(staticCacheFile, { credentials: 'omit' });
       if (!response.ok) {
         this._debugLog(`Failed to load TVA cache file: HTTP ${response.status}`);
         throw this._createError(
@@ -401,7 +423,9 @@ export class TVACacheService {
     this.tvaCacheByCategory = {};
     clearExcludedPathCache();
     // Clear IndexedDB cache to force fresh fetch
-    await this._storageService.remove(TVA_CACHE_KEY).catch(() => {});
+    await this._storageService.remove(TVA_CACHE_KEY).catch((e) => {
+      console.warn(`${MODULE_ID} | Failed to clear IndexedDB cache:`, e);
+    });
 
     try {
       const result = await this.loadTVACache();

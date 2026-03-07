@@ -300,7 +300,10 @@ export class SearchOrchestrator {
     if (!index || index.length === 0) return [];
 
     const Fuse = await loadFuse();
-    if (!Fuse) return [];
+    if (!Fuse) {
+      console.warn(`${MODULE_ID} | Fuse.js unavailable — search skipped. Results will be empty.`);
+      return [];
+    }
 
     const results = [];
     const seenPaths = new Set(); // Use Set for O(1) duplicate check

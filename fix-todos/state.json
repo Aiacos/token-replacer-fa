@@ -1,15 +1,23 @@
 {
-  "session": "cycle-9-review-fixes",
-  "created": "2026-02-28T15:20:00Z",
-  "total": 6,
-  "resolved": 6,
+  "session": "security-scan-todos",
+  "created": "2026-03-07T14:00:00Z",
+  "total": 11,
+  "resolved": 9,
+  "deferred": 2,
   "current": null,
   "items": {
-    "R1": "resolved",
-    "R2": "resolved",
-    "R3": "resolved",
-    "R4": "resolved",
-    "R5": "resolved",
-    "R6": "resolved"
-  }
+    "T1": "resolved",
+    "T2": "resolved",
+    "T3": "resolved",
+    "T4": "resolved",
+    "T5": "resolved",
+    "T6": "resolved",
+    "T7": "resolved",
+    "T8": "resolved",
+    "T9": "resolved",
+    "HIGH-001": "deferred",
+    "MED-007": "deferred"
+  },
+  "testsBefore": 498,
+  "testsAfter": 509
 }

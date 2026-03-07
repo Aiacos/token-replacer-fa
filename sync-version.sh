@@ -40,6 +40,13 @@ if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
     exit 1
 fi
 
+# Validate version format (prevent injection via crafted version strings)
+if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+    echo -e "${RED}ERROR: Invalid version format: ${VERSION}${NC}"
+    echo -e "${RED}Expected: X.Y.Z or X.Y.Z-prerelease${NC}"
+    exit 1
+fi
+
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Version Sync Script${NC}"
 echo -e "${BLUE}========================================${NC}"

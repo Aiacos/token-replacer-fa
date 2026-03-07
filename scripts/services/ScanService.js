@@ -51,7 +51,7 @@ export class ScanService {
           }
         }
       } catch (e) {
-        // Path doesn't exist, skip
+        console.warn(`${MODULE_ID} | Path check failed for "${path}":`, e);
       }
     }
 
@@ -263,7 +263,7 @@ export class ScanService {
             }
           }
         } catch (e) {
-          // Continue with next search
+          console.warn(`${MODULE_ID} | TVA search failed for term:`, e);
         }
 
         await yieldToMain(50);

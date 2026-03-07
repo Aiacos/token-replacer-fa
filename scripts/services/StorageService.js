@@ -247,6 +247,11 @@ export class StorageService {
     }
   }
 
+  // TODO [MEDIUM]: Validate shape/types of data loaded from IndexedDB and localStorage
+  // (security-scan MED-007). Another extension or devtools user could inject malicious
+  // structures. At minimum: verify expected object shape, sanitize paths via sanitizePath(),
+  // and strip __proto__ keys during JSON.parse with a reviver function.
+
   /**
    * Load data from storage (IndexedDB or localStorage fallback)
    * @param {string} key - Storage key (used as record ID)

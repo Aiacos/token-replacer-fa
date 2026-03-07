@@ -43,7 +43,6 @@ self.addEventListener('message', (event) => {
           self.postMessage({
             type: 'error',
             message: error.message,
-            stack: error.stack,
           });
         });
         break;
@@ -59,16 +58,17 @@ self.addEventListener('message', (event) => {
         break;
 
       default:
+        console.warn(`IndexWorker: unknown command "${command}"`);
         self.postMessage({
           type: 'error',
           message: `Unknown command: ${command}`,
         });
     }
   } catch (error) {
+    console.error('IndexWorker error:', error);
     self.postMessage({
       type: 'error',
       message: error.message,
-      stack: error.stack,
     });
   }
 });
@@ -253,10 +253,10 @@ async function loadFuse() {
     FuseClass = module.default;
     return FuseClass;
   } catch (error) {
+    console.error('IndexWorker: Failed to load Fuse.js:', error);
     self.postMessage({
       type: 'error',
       message: `Failed to load Fuse.js: ${error.message}`,
-      stack: error.stack,
     });
     return null;
   }

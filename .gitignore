@@ -22,6 +22,11 @@ releases/
 *.tmp
 *.bak
 
+# Environment files (secrets)
+.env
+.env.*
+*.env
+
 # Auto Claude data directory
 .auto-claude/
 

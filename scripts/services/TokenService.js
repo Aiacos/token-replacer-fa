@@ -200,7 +200,8 @@ export class TokenService {
    * Replace a token's image
    * @param {Token} token - Token to update
    * @param {string} imagePath - New image path
-   * @returns {Promise<boolean>} Success status
+   * @returns {Promise<true>} Always true on success
+   * @throws {Object} Structured error with errorType 'token_replace_failed'
    */
   async replaceTokenImage(token, imagePath) {
     try {
@@ -222,13 +223,11 @@ export class TokenService {
       console.log(`${MODULE_ID} | Replaced token image for ${token.name}`);
       return true;
     } catch (error) {
-      const moduleError = createModuleError(
+      throw createModuleError(
         'token_replace_failed',
-        `Error replacing token image: ${error.message || String(error)}`,
-        ['check_console']
+        `Error replacing token image for "${token.name}": ${error.message || String(error)}`,
+        ['check_console', 'check_permissions']
       );
-      console.error(`${MODULE_ID} |`, moduleError.message, moduleError.details);
-      return false;
     }
   }
 }

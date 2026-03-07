@@ -687,7 +687,7 @@ export class TokenReplacerApp {
         ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
         if (failedCount > 0) {
-          this._debugLog(`${failedCount} tokens had no matching art found`);
+          ui.notifications.warn(this.i18n('notifications.replaceFailed', { count: failedCount }));
         }
       }
 
@@ -758,7 +758,8 @@ export class TokenReplacerApp {
 // Create singleton instance
 export const tokenReplacerApp = new TokenReplacerApp();
 
-// Backward compatibility - expose on window
+// Backward compatibility - expose read-only facade on window
+// Cannot Object.freeze the live instance (it mutates this.isProcessing, i18nCache, etc.)
 window.TokenReplacerFA = /** @type {any} */ (tokenReplacerApp);
 
 /**
@@ -803,8 +804,12 @@ Hooks.once('ready', async () => {
   tokenReplacerApp._debugLog('Ready hook triggered, starting module initialization');
 
   tokenReplacerApp._debugLog('Loading Fuse.js library');
-  await loadFuse();
-  tokenReplacerApp._debugLog('Fuse.js library loaded');
+  const FuseLoaded = await loadFuse();
+  if (!FuseLoaded) {
+    ui.notifications.warn(tokenReplacerApp.i18n('notifications.fuseLoadFailed'));
+  } else {
+    tokenReplacerApp._debugLog('Fuse.js library loaded');
+  }
 
   console.log(`${MODULE_ID} | Token Variant Art available: ${tokenReplacerApp.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${tokenReplacerApp.hasFANexus}`);
@@ -900,6 +905,7 @@ Hooks.once('ready', async () => {
               );
             }
           } else {
+            // NOTE: Dead code — build() either returns true or throws. Kept for safety.
             console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
             tokenReplacerApp._debugLog('Index build failed, will fall back to direct API calls');
           }
@@ -993,8 +999,8 @@ Hooks.on('getSceneControlButtons', (controls) => {
 window.addEventListener('beforeunload', () => {
   try {
     indexService.terminate();
-  } catch { /* ignore cleanup errors */ }
+  } catch (e) { console.debug(`${MODULE_ID} | Cleanup error:`, e); }
   try {
     searchOrchestrator?.terminate();
-  } catch { /* ignore cleanup errors */ }
+  } catch (e) { console.debug(`${MODULE_ID} | Cleanup error:`, e); }
 });

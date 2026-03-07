@@ -1,6 +1,6 @@
 <div class="token-replacer-fa-token-preview">
   <div class="skeleton-loader skeleton-52">
-    <img src="{{currentImage}}" alt="{{actorName}}" onload="this.parentElement.classList.add('loaded')">
+    <img src="{{currentImage}}" alt="{{actorName}}">
   </div>
   <div class="token-info">
     <div class="token-name">{{actorName}}</div>
@@ -43,7 +43,7 @@
   {{#each matches}}
     <div class="match-option{{#if isFirst}} selected{{/if}}" data-index="{{index}}" data-path="{{path}}" data-name="{{nameLower}}">
       <div class="skeleton-loader skeleton-72">
-        <img src="{{path}}" alt="{{name}}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+        <img src="{{path}}" alt="{{name}}" loading="lazy">
       </div>
       <div class="match-name">{{name}}</div>
       <div class="match-score">{{scoreDisplay}}</div>

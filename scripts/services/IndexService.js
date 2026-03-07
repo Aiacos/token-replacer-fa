@@ -282,7 +282,7 @@ export class IndexService {
       try {
         await this._storageService.remove(CACHE_KEY);
       } catch (e) {
-        // Ignore errors during cleanup
+        console.warn(`${MODULE_ID} | Cache cleanup failed:`, e);
       }
       return false;
     }
@@ -594,7 +594,7 @@ export class IndexService {
           allPaths = this.extractPathsFromTVACache(data);
         }
       } catch (e) {
-        // Setting doesn't exist
+        console.warn(`${MODULE_ID} | Setting "${name}" not accessible:`, e);
       }
     }
 
@@ -925,7 +925,7 @@ export class IndexService {
     return new Promise((resolve, reject) => {
       // Create a unique message handler for this indexing operation
       const messageHandler = (event) => {
-        const { type, processed, total, imagesFound, result, message, stack } = event.data;
+        const { type, processed, total, imagesFound, result, message } = event.data;
 
         switch (type) {
           case 'progress':
@@ -965,7 +965,7 @@ export class IndexService {
             // Clean up and reject on error
             this.worker.removeEventListener('message', messageHandler);
             this.worker.removeEventListener('error', errorHandler);
-            this._debugLog(`Worker error: ${message}`, stack);
+            this._debugLog(`Worker error: ${message}`);
             console.error(`${MODULE_ID} | Worker error:`, message);
 
             // Create structured error

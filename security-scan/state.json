@@ -1,0 +1,163 @@
+{
+  "version": "1.0.0",
+  "projectVersion": "2.12.4",
+  "scanDate": "2026-03-07",
+  "remediationDate": "2026-03-07",
+  "totalVulnerabilities": 18,
+  "fixed": 13,
+  "pending": 5,
+  "breakdown": {
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 2
+  },
+  "findings": [
+    {
+      "id": "CRIT-001",
+      "severity": "critical",
+      "title": "GitHub OAuth Token in Plaintext .env",
+      "file": ".auto-claude/.env:21",
+      "status": "user_action_required",
+      "notes": "Token must be revoked by user at github.com/settings/tokens. .env patterns added to .gitignore."
+    },
+    {
+      "id": "HIGH-001",
+      "severity": "high",
+      "title": "CDN Dependency Without SRI",
+      "file": "scripts/core/Constants.js:8",
+      "status": "pending",
+      "todo": "scripts/core/Constants.js",
+      "notes": "Awaiting user decision: bundle locally vs SRI vs post-load verification. TODO added in code."
+    },
+    {
+      "id": "HIGH-002",
+      "severity": "high",
+      "title": "Inline Event Handlers (CSP Bypass)",
+      "file": "scripts/ui/UIManager.js, templates/*.hbs",
+      "status": "fixed",
+      "notes": "Replaced with addEventListener delegation using capture:true for load/error events"
+    },
+    {
+      "id": "HIGH-003",
+      "severity": "high",
+      "title": ".env Files Not Excluded in .gitignore",
+      "file": ".gitignore",
+      "status": "fixed",
+      "notes": "Added .env, .env.*, *.env patterns"
+    },
+    {
+      "id": "MED-001",
+      "severity": "medium",
+      "title": "No URL Validation on TVA Cache Fetch",
+      "file": "scripts/services/TVACacheService.js:186",
+      "status": "fixed",
+      "notes": "Added origin validation and credentials:'omit'. Review fix: urlError.errorType (not .code)."
+    },
+    {
+      "id": "MED-002",
+      "severity": "medium",
+      "title": "Worker Message Handler Without Input Validation",
+      "file": "scripts/workers/IndexWorker.js:32",
+      "status": "fixed",
+      "notes": "Already had switch/default with validation; added console.warn for unknown commands"
+    },
+    {
+      "id": "MED-003",
+      "severity": "medium",
+      "title": "Error Stack Traces Exposed",
+      "file": "scripts/workers/IndexWorker.js",
+      "status": "fixed",
+      "notes": "Removed stack from postMessage, log full error to console only. Review fix: cleaned stale stack destructuring in IndexService."
+    },
+    {
+      "id": "MED-004",
+      "severity": "medium",
+      "title": "tinymce XSS (transitive dev dep)",
+      "file": "package.json",
+      "status": "accepted_risk",
+      "notes": "Dev dependency only, not shipped. No production impact."
+    },
+    {
+      "id": "MED-005",
+      "severity": "medium",
+      "title": "No Protocol Validation on Image Paths",
+      "file": "scripts/core/Utils.js:sanitizePath",
+      "status": "fixed",
+      "notes": "Added javascript:/data:/vbscript: protocol rejection in sanitizePath()"
+    },
+    {
+      "id": "MED-006",
+      "severity": "medium",
+      "title": "Prototype Key Traversal in extractPathFromObject",
+      "file": "scripts/core/Utils.js:298",
+      "status": "fixed",
+      "notes": "Added __proto__, constructor, prototype key filtering"
+    },
+    {
+      "id": "MED-007",
+      "severity": "medium",
+      "title": "IndexedDB/localStorage Data Without Schema Validation",
+      "file": "scripts/services/StorageService.js",
+      "status": "deferred",
+      "todo": "scripts/services/StorageService.js",
+      "notes": "Larger refactor needed. TODO added in code. Existing JSON.parse try-catch provides baseline protection."
+    },
+    {
+      "id": "MED-008",
+      "severity": "medium",
+      "title": "Build Script Variable Injection Risk",
+      "file": "build.sh, sync-version.sh",
+      "status": "fixed",
+      "notes": "Added strict regex validation for VERSION and MODULE_ID before use"
+    },
+    {
+      "id": "MED-009",
+      "severity": "medium",
+      "title": "Silent Error Handling Patterns",
+      "file": "multiple",
+      "status": "fixed",
+      "notes": "Added console.warn to all empty catch blocks. Review fix: use full error objects, not e.message."
+    },
+    {
+      "id": "LOW-001",
+      "severity": "low",
+      "title": "Hardcoded Fallback Image Path",
+      "file": "scripts/core/Constants.js",
+      "status": "fixed",
+      "notes": "Extracted to FALLBACK_IMAGE constant, used via addEventListener"
+    },
+    {
+      "id": "LOW-002",
+      "severity": "low",
+      "title": "Console Logging Sensitive Paths",
+      "file": "scripts/core/Utils.js",
+      "status": "accepted_risk",
+      "notes": "console.warn in sanitizePath() is intentional for security debugging"
+    },
+    {
+      "id": "LOW-003",
+      "severity": "low",
+      "title": "Window Global Exposure",
+      "file": "scripts/main.js:765",
+      "status": "deferred",
+      "notes": "Object.freeze reverted during review (breaks mutable singleton). Standard Foundry practice. Would need proxy/facade pattern for proper isolation."
+    },
+    {
+      "id": "LOW-004",
+      "severity": "low",
+      "title": "package.json Version Mismatch",
+      "file": "package.json:3",
+      "status": "fixed",
+      "notes": "Updated to 2.12.4 to match module.json"
+    },
+    {
+      "id": "LOW-005",
+      "severity": "low",
+      "title": "Filter Term localStorage Without Length Limit",
+      "file": "scripts/ui/UIManager.js",
+      "status": "fixed",
+      "notes": "Added 200-char max length check in loadFilterTerm()"
+    }
+  ]
+}
