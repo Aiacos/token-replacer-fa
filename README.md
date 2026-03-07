@@ -176,9 +176,10 @@ TokenReplacerFA.isProcessing;
 
 ### Browser freezing
 
-- The module uses yielding to prevent freezing
-- Large directories may take longer to scan
-- Progress dialogs show current scanning status
+- Index building runs in a Web Worker (background thread) to keep the UI responsive
+- If the Worker is unavailable, the module falls back to main-thread processing with yielding
+- Large directories may take longer to scan — progress dialogs show current status
+- Results are capped at 200 per search to prevent rendering slowdowns
 
 ### Console Debugging
 
@@ -193,168 +194,14 @@ token-replacer-fa | Optimized search: Found 50 images in humanoid category
 
 ## Changelog
 
-### v2.9.0
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
-- **Enhanced Filtering**: Exclude environmental assets (maps, tiles, portraits) from token searches
-- **Comprehensive FA Library Filtering**: Better filtering of non-token assets
-- **Category Fallback**: When subtype search returns no results, automatically falls back to broader category search
+### Recent Highlights
 
-### v2.8.0
-
-- **Direct TVA Cache Access**: Fast path for searching using TVA's static cache file directly
-- **Performance**: Searches complete much faster by reading TVA cache directly instead of using API
-- **CDN Path Handling**: Properly filter CDN URL segments from folder exclusion checks
-
-### v2.7.0
-
-- **UI Responsiveness**: Improved parallelization and UI responsiveness during search
-- **Progress Notifications**: Better cache key handling for progress notifications
-- **Index Storage**: Index now stores all images for general search
-
-### v2.6.0
-
-- **Hierarchical JSON Index**: Configurable update frequency for index rebuilding
-- **Critical Bug Fixes**: Fixed index initialization issues
-- **Better Organization**: Improved index structure for faster lookups
-
-### v2.5.0
-
-- **Persistent Cache**: localStorage caching for faster subsequent searches
-- **Improved TVA Access**: Better integration with Token Variant Art cache
-- **Extended Exclusion Filters**: Non-blocking index build with extended folder exclusion
-- **Subtype Parsing**: Parse subtype from string format like "Humanoid (Tiefling)"
-
-### v2.4.0
-
-- **Pre-built Keyword Index**: O(1) search performance using hash table lookups
-- **Asset Folder Exclusion**: Exclude non-token asset folders from index
-
-### v2.3.0
-
-- **Direct TVA Search**: Remove custom IndexService, use TVA doImageSearch directly
-- **Critical Bug Fix**: Fixed TVA Map result parsing to extract all results
-
-### v2.2.0
-
-- **Performance Optimization**: Pre-built keyword index for O(1) searches
-- **Direct CACHED_IMAGES Access**: Faster performance by accessing TVA cache directly
-
-### v2.1.0
-
-- **OR Logic for Subtypes**: Subtype search now uses OR logic (show all matching subtypes)
-- **UI Cleanup**: Removed quick search buttons for cleaner interface
-
-### v2.0.0
-
-- **Major Refactoring**: Complete OOP architecture with modular services
-- **Service Architecture**: Separate services for Token, Search, Index, Scan, and UI
-- **Code Optimization**: O(1) Set lookups, improved performance
-- **TVA Compatibility**: Better handling of various TVA result formats
-- **Creature Type Extraction**: Improved actor data parsing
-
-### v1.5.0
-
-- **AND Logic Filter**: Text filter uses AND logic for multiple search terms
-- **Progress Bar**: Visual progress bar during category search
-- **Search Filter UI**: Debounced filter input with delimiter support
-- **Dialog Improvements**: Taller dialog that adapts to content
-
-### v1.4.0
-
-- **Category Browser on No Match**: When no fuzzy search matches are found, a dropdown menu now appears allowing you to browse artwork by creature type (Humanoid, Aberration, Beast, Undead, etc.)
-- **Creature Type Detection**: The dropdown pre-selects the creature type from the token's character sheet
-- **Multi-Select in Category Browser**: When browsing by category with multiple tokens, you can select multiple artworks with sequential/random assignment
-- **Improved UX**: Users can now always find artwork even when automatic search fails
-
-### v1.3.0
-
-- **Multi-Select Variations**: When multiple artwork variations exist, you can now select multiple and assign them to tokens
-- **Assignment Modes**: Choose between Sequential (default) or Random assignment for variations
-- **Improved UI**: Completely redesigned dialog layout with better sizing, scrolling, and visibility
-- **Visual Checkmarks**: Selected artworks now show clear checkmark indicators
-- **Token Count Display**: Shows how many tokens will be affected when selecting artwork
-
-### v1.2.1
-
-- **Selected Token Support**: If tokens are selected, only processes selected NPC tokens instead of all NPCs on the scene
-
-### v1.2.0
-
-- **Fixed TVA Result Parsing**: Now properly handles TVA's tuple format `[path, config]` which was causing "no matches found" issues
-- **Improved UI Contrast**: Fixed text visibility for failed/skipped items (was showing black text on dark backgrounds)
-- **Enhanced Debug Logging**: Added comprehensive debug logging to help troubleshoot TVA integration issues
-- **CSS Improvements**: Refactored styles for better dialog layout and visual consistency
-
-### v1.1.0
-
-- **Major Performance Optimization**: Added TVA cache integration
-  - Skips manual directory scanning when Token Variant Art is available
-  - Leverages TVA's pre-built image index for much faster searches
-  - New "Use TVA Cache" setting (enabled by default)
-  - New "Refresh TVA Cache Before Search" setting for fresh image detection
-- Uses TVA's `updateTokenImage()` API to apply custom token configurations (scale, lighting, effects)
-- Improved search logic when TVA cache mode is enabled
-
-### v1.0.9
-
-- Fixed UI glitching caused by multiple dialog windows
-- Refactored to use single dialog throughout entire replacement process
-- Added inline selection buttons for match selection
-- Improved error handling for missing dependencies
-- Better user feedback when no tokens or matches are found
-
-### v1.0.8
-
-- Code cleanup and removal of unused variables
-- Added missing localization strings
-- Removed verbose debug logging
-- Updated documentation
-
-### v1.0.7
-
-- Fixed TVA API path extraction (paths no longer show as numeric indices)
-- Fixed dialog auto-sizing issues
-- Added result validation to filter invalid paths
-- Added extensive debug logging for TVA responses
-- Added missing localization strings
-
-### v1.0.6
-
-- Made fallback full search optional (default: off)
-- Added "Fallback to Full Search" setting
-
-### v1.0.5
-
-- Added category-based search optimization
-- Creature type now filters search to relevant folders first
-- Improved performance for large token libraries
-
-### v1.0.4
-
-- Added parallel search for multiple creature types
-- Identical creatures now share search results
-- Real-time progress display during processing
-
-### v1.0.3
-
-- Fixed browser freezing during directory scan
-- Added yielding to prevent UI blocking
-- Throttled UI updates for better performance
-
-### v1.0.2
-
-- Fixed multiple dialog windows appearing
-- Added safe dialog closing mechanism
-
-### v1.0.1
-
-- Fixed settings localization
-- Fixed Foundry v12/v13 compatibility for scene controls
-- Added XSS protection
-
-### v1.0.0
-
-- Initial release
+- **v2.12.4** — Security hardening: protocol validation, CSP-compatible event handlers, credential protection
+- **v2.12.0** — Quality refactor: 509 automated tests, CI pipeline, constructor DI, structured error handling, Worker lifecycle management
+- **v2.11.0** — ApplicationV2 dialog migration for Foundry v13 compatibility, service decomposition
+- **v2.10.0** — Handlebars templates, Web Worker index building, IndexedDB storage, skeleton loaders, O(1) search index
 
 ## License
 
@@ -366,6 +213,10 @@ MIT License
 - [Forgotten Adventures](https://www.forgotten-adventures.net/) for the amazing token art
 - [Aedif](https://github.com/Aedif/TokenVariants) for Token Variant Art module
 - [Fuse.js](https://fusejs.io/) for fuzzy search library
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, conventions, and testing guidelines.
 
 ## Support
 
