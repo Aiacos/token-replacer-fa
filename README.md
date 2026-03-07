@@ -198,6 +198,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ### Recent Highlights
 
+- **Unreleased** — Bug fixes (Promise.allSettled, race condition, score fallback), performance (pre-lowercase search, LRU eviction, Worker timeout), security (hasOwnProperty, credentials, stack traces)
 - **v2.12.4** — Security hardening: protocol validation, CSP-compatible event handlers, credential protection
 - **v2.12.0** — Quality refactor: comprehensive test suite, CI pipeline, constructor DI, structured error handling, Worker lifecycle management
 - **v2.11.0** — ApplicationV2 dialog migration for Foundry v13 compatibility, service decomposition

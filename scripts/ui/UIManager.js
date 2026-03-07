@@ -228,6 +228,36 @@ export class UIManager {
   }
 
   /**
+   * Attach image load/error event delegation to a container element
+   * Handles skeleton loader reveal on load and fallback image on error
+   * @param {HTMLElement} container - Container to attach listeners to
+   * @param {AbortSignal} signal - AbortController signal for cleanup
+   * @private
+   */
+  _attachImageDelegation(container, signal) {
+    container.addEventListener(
+      'load',
+      (e) => {
+        if (e.target.tagName === 'IMG') {
+          e.target.parentElement?.classList.add('loaded');
+        }
+      },
+      { signal, capture: true }
+    );
+
+    container.addEventListener(
+      'error',
+      (e) => {
+        if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
+          e.target.dataset.fallback = '1';
+          e.target.src = FALLBACK_IMAGE;
+        }
+      },
+      { signal, capture: true }
+    );
+  }
+
+  /**
    * Create scan progress HTML
    * @param {string} currentDir - Current directory being scanned
    * @param {number} dirsScanned - Number of directories scanned
@@ -485,6 +515,8 @@ export class UIManager {
    * @param {Function} updateSelectionCount - Callback to update selection count display
    */
   _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
+    // Note: innerHTML rebuild is mitigated by 150ms debounce and MAX_DISPLAY_RESULTS cap.
+    // CSS visibility toggling would avoid image re-downloads but adds complexity for limited gain.
     gridEl.innerHTML = matches
       .map((match, idx) => {
         const safeMatchName = escapeHtml(match.name);
@@ -512,27 +544,7 @@ export class UIManager {
     const ac = new AbortController();
     gridEl._delegateAbort = ac;
 
-    // Image load/error delegation (replaces inline onerror/onload handlers)
-    gridEl.addEventListener(
-      'load',
-      (e) => {
-        if (e.target.tagName === 'IMG') {
-          e.target.parentElement?.classList.add('loaded');
-        }
-      },
-      { signal: ac.signal, capture: true }
-    );
-
-    gridEl.addEventListener(
-      'error',
-      (e) => {
-        if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
-          e.target.dataset.fallback = '1';
-          e.target.src = FALLBACK_IMAGE;
-        }
-      },
-      { signal: ac.signal, capture: true }
-    );
+    this._attachImageDelegation(gridEl, ac.signal);
 
     gridEl.addEventListener(
       'click',
@@ -593,27 +605,7 @@ export class UIManager {
       const ac = new AbortController();
       container._dialogAbort = ac;
 
-      // Image load/error delegation for template-rendered preview images
-      container.addEventListener(
-        'load',
-        (e) => {
-          if (e.target.tagName === 'IMG') {
-            e.target.parentElement?.classList.add('loaded');
-          }
-        },
-        { signal: ac.signal, capture: true }
-      );
-
-      container.addEventListener(
-        'error',
-        (e) => {
-          if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
-            e.target.dataset.fallback = '1';
-            e.target.src = FALLBACK_IMAGE;
-          }
-        },
-        { signal: ac.signal, capture: true }
-      );
+      this._attachImageDelegation(container, ac.signal);
 
       let assignmentMode = 'sequential';
       const matchGrid = container.querySelector('.token-replacer-fa-match-select');
@@ -775,27 +767,7 @@ export class UIManager {
       const ac = new AbortController();
       container._dialogAbort = ac;
 
-      // Image load/error delegation for template-rendered preview images
-      container.addEventListener(
-        'load',
-        (e) => {
-          if (e.target.tagName === 'IMG') {
-            e.target.parentElement?.classList.add('loaded');
-          }
-        },
-        { signal: ac.signal, capture: true }
-      );
-
-      container.addEventListener(
-        'error',
-        (e) => {
-          if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
-            e.target.dataset.fallback = '1';
-            e.target.src = FALLBACK_IMAGE;
-          }
-        },
-        { signal: ac.signal, capture: true }
-      );
+      this._attachImageDelegation(container, ac.signal);
 
       let assignmentMode = 'sequential';
       const multiSelectEnabled = tokenCount > 1;

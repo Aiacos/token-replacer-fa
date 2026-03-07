@@ -279,9 +279,8 @@ export function extractPathFromObject(obj, depth = 0) {
   const isValidPath = (val) =>
     val.startsWith('http') || val.startsWith('forge://') || val.includes('/') || val.includes('.');
 
-  // TODO [MEDIUM]: Use Object.prototype.hasOwnProperty.call(obj, prop) to prevent prototype chain traversal (review C2)
   for (const prop of pathProps) {
-    if (obj[prop] && typeof obj[prop] === 'string') {
+    if (Object.prototype.hasOwnProperty.call(obj, prop) && typeof obj[prop] === 'string') {
       const val = obj[prop];
       if (isValidPath(val)) {
         return val;
@@ -292,7 +291,7 @@ export function extractPathFromObject(obj, depth = 0) {
   // Check nested .data property (TVA format)
   if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
     for (const prop of pathProps) {
-      if (obj.data[prop] && typeof obj.data[prop] === 'string') {
+      if (Object.prototype.hasOwnProperty.call(obj.data, prop) && typeof obj.data[prop] === 'string') {
         const val = obj.data[prop];
         if (isValidPath(val)) {
           return val;
@@ -378,6 +377,17 @@ export function clearExcludedPathCache() {
   excludedPathCache.clear();
 }
 
+/** Evict oldest 25% of cache entries when full */
+function _evictCacheIfFull() {
+  if (excludedPathCache.size < MAX_CACHE_SIZE) return;
+  const toDelete = Math.floor(MAX_CACHE_SIZE * 0.25);
+  let count = 0;
+  for (const k of excludedPathCache.keys()) {
+    if (count++ >= toDelete) break;
+    excludedPathCache.delete(k);
+  }
+}
+
 /**
  * Check if a path should be excluded from token search
  * Checks both folder names and filename for environmental/prop terms
@@ -399,7 +409,7 @@ export function isExcludedPath(path) {
 
   // Check folder names against exclusion Set (O(1) per segment instead of O(N) array scan)
   if (folderSegments.some((segment) => EXCLUDED_FOLDERS_SET.has(segment))) {
-    if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
+    _evictCacheIfFull();
     excludedPathCache.set(path, true);
     return true;
   }
@@ -416,7 +426,7 @@ export function isExcludedPath(path) {
   // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
   const result = EXCLUDED_FILENAME_PATTERNS.some((pattern) => pattern.test(filenameClean));
 
-  if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
+  _evictCacheIfFull();
   excludedPathCache.set(path, result);
   return result;
 }

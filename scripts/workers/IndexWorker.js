@@ -288,15 +288,9 @@ async function handleFuzzySearch(data) {
     throw new Error('options must be an object');
   }
 
-  // Load Fuse.js
+  // Load Fuse.js — if loadFuse() fails, it already posts an 'error' message
   const Fuse = await loadFuse();
-  if (!Fuse) {
-    self.postMessage({
-      type: 'complete',
-      result: [],
-    });
-    return;
-  }
+  if (!Fuse) return;
 
   // Check for cancellation after async operation
   if (cancelled) {

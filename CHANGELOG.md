@@ -5,6 +5,32 @@ All notable changes to Token Replacer - Forgotten Adventures are documented here
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Promise.allSettled for parallel batches**: `SearchOrchestrator` parallel category search now uses `Promise.allSettled` instead of `Promise.all`, preventing one failed category from aborting the entire batch
+- **isProcessing race condition**: `finally` block is now the sole owner of `isProcessing` reset in `processTokenReplacement()`, preventing TOCTOU race with `onClose` callback
+- **Score fallback**: unscored fuzzy matches now default to score `0` instead of `0.8`, ensuring the selection dialog always appears for ambiguous results
+- **Worker double-post on Fuse.js failure**: removed redundant `complete` message in `IndexWorker.js` when `loadFuse()` already posted an `error` message
+- **Creature-type post-filter**: Worker search results now filtered by creature type after completion, preventing cross-category contamination
+
+### Security
+
+- Replaced `obj[prop]` with `Object.prototype.hasOwnProperty.call(obj, prop)` in Utils.js to prevent prototype pollution
+- Added `credentials: 'omit'` to HEAD fetch in `TVACacheService` cache freshness check
+- Replaced `error.stack` with `error.message` in user-facing error display to prevent information disclosure
+
+### Changed
+
+- **LRU cache eviction**: `SearchOrchestrator` search cache now has a 200-entry cap with 25% batch eviction on overflow (was unbounded)
+- **LRU eviction in Utils.js**: `excludedPathCache` now evicts oldest 25% on overflow instead of full clear
+- **Worker timeout**: `searchLocalIndexWithWorker()` now has a 60-second timeout with proper cleanup to prevent indefinite hangs
+- **Pre-lowercase optimization**: `TVACacheService` now computes `_nameLower`/`_pathLower` once at parse time, eliminating O(n) string allocations per search on 50K+ entries
+- **QuotaExceeded notification**: `IndexService` now shows `ui.notifications.warn()` when IndexedDB storage quota is exceeded
+- Extracted `_buildSearchableCache()` helper in `TVACacheService` (DRY: eliminated duplicate filter+map chains)
+- Extracted `_attachImageDelegation()` helper in `UIManager` (DRY: replaced 3 duplicate 20-line event delegation blocks)
+
 ## [2.12.4] - 2026-03-07
 
 ### Security

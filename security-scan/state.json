@@ -18,16 +18,10 @@
     "low": 2
   },
   "todoTracking": {
-    "securityTodosInCode": 8,
+    "securityTodosInCode": 2,
     "locations": [
-      "scripts/core/Constants.js:8 (HIGH-001: Bundle Fuse.js)",
-      "scripts/core/Utils.js:282 (prototype chain traversal)",
-      "scripts/main.js:726 (error.stack disclosure)",
-      "scripts/services/TVACacheService.js:345 (HEAD credentials)",
-      "scripts/services/StorageService.js:250 (schema validation)",
-      "scripts/services/SearchOrchestrator.js:43 (LRU eviction)",
-      "scripts/services/SearchOrchestrator.js:368 (Worker timeout)",
-      "scripts/services/IndexService.js:317 (QuotaExceeded notification)"
+      "scripts/core/Constants.js:8 (HIGH-001: Bundle Fuse.js — deferred, needs architecture decision)",
+      "scripts/services/StorageService.js:250 (schema validation — deferred, needs larger refactor)"
     ]
   },
   "findings": [

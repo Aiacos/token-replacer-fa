@@ -314,7 +314,9 @@ export class IndexService {
       // Check if it's a QuotaExceededError (localStorage full)
       if (error.name === 'QuotaExceededError' || error.code === 22) {
         console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
-        // TODO [MEDIUM]: Surface QuotaExceededError to user via ui.notifications.warn (predict P5)
+        if (typeof ui !== 'undefined' && ui.notifications) {
+          ui.notifications.warn('Token Replacer FA: Cache storage is full. Index will be rebuilt each session.');
+        }
       } else {
         console.warn(`${MODULE_ID} | Failed to save cache:`, error);
       }

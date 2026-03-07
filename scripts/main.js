@@ -342,7 +342,8 @@ export class TokenReplacerApp {
         await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
         () => {
           this._debugLog('Dialog closed by user');
-          this.isProcessing = false;
+          // Note: isProcessing is reset exclusively by the finally block to avoid race conditions.
+          // Closing the dialog does not cancel processing — it will complete in the background.
         }
       );
       await dialog.render({ force: true });
@@ -584,7 +585,7 @@ export class TokenReplacerApp {
 
         // Has matches
         const bestMatch = matches[0];
-        const matchScore = bestMatch.score !== undefined ? 1 - bestMatch.score : 0.8;
+        const matchScore = bestMatch.score !== undefined ? 1 - bestMatch.score : 0;
         this._debugLog(
           `Found ${matches.length} match(es) for "${creatureInfo.actorName}", best score: ${matchScore.toFixed(2)}`
         );
@@ -723,10 +724,9 @@ export class TokenReplacerApp {
           recoverySuggestions = ['reload_module', 'check_network'];
         }
 
-        // TODO [MEDIUM]: Use error.message only (not error.stack) to avoid leaking file paths to GMs (review C3)
         errorDisplay = this._createError(
           errorType,
-          error.stack || error.message || String(error),
+          error.message || String(error),
           recoverySuggestions
         );
       }

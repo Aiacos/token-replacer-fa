@@ -40,7 +40,7 @@ export class SearchOrchestrator {
       workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
     } = deps;
 
-    // TODO [HIGH]: Add LRU eviction to searchCache (unbounded growth in long sessions) (predict P1)
+    /** @type {Map<string, Array>} Search result cache with max 200 entries */
     this.searchCache = new Map();
     this._tvaCacheService = injectedTVACache ?? null;
     this._forgeBazaarService = injectedForgeBazaar ?? null;
@@ -82,8 +82,30 @@ export class SearchOrchestrator {
    * Clear the search cache
    * @returns {void}
    */
+  /** @private Maximum search cache entries before eviction */
+  static MAX_SEARCH_CACHE = 200;
+
   clearCache() {
     this.searchCache.clear();
+  }
+
+  /**
+   * Set a cache entry, evicting oldest entries if cache exceeds max size
+   * @private
+   */
+  _cacheSet(key, value) {
+    // Delete first so re-insertion moves key to end (most recent)
+    this.searchCache.delete(key);
+    this.searchCache.set(key, value);
+    if (this.searchCache.size > SearchOrchestrator.MAX_SEARCH_CACHE) {
+      // Map iterates in insertion order — delete oldest 25%
+      const toDelete = Math.floor(SearchOrchestrator.MAX_SEARCH_CACHE * 0.25);
+      let count = 0;
+      for (const k of this.searchCache.keys()) {
+        if (count++ >= toDelete) break;
+        this.searchCache.delete(k);
+      }
+    }
   }
 
   /**
@@ -354,7 +376,7 @@ export class SearchOrchestrator {
    * @param {Function} onProgress - Optional progress callback
    * @returns {Promise<Array>} Search results
    */
-  async searchLocalIndexWithWorker(searchTerms, index, _creatureType = null, onProgress = null) {
+  async searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
     if (!this.worker) {
       throw createModuleError(
         'worker_failed',
@@ -365,9 +387,10 @@ export class SearchOrchestrator {
 
     if (!index || index.length === 0) return [];
 
-    // TODO [MEDIUM]: Add 60s timeout to prevent Promise hanging if Worker stalls (predict P4)
     return new Promise((resolve, reject) => {
+      let timeoutId;
       const cleanup = () => {
+        clearTimeout(timeoutId);
         this.worker.removeEventListener('message', messageHandler);
         this.worker.removeEventListener('error', errorHandler);
       };
@@ -385,7 +408,17 @@ export class SearchOrchestrator {
 
           case 'complete': {
             cleanup();
-            const results = result || [];
+            let results = result || [];
+            // Post-filter by creature type on main thread (Worker doesn't have category logic)
+            if (creatureType && results.length > 0) {
+              const before = results.length;
+              results = results.filter(
+                (item) => !item.category || this.folderMatchesCreatureType(item.category, creatureType)
+              );
+              if (results.length < before) {
+                console.log(`${MODULE_ID} | Worker results filtered by "${creatureType}": ${before} → ${results.length}`);
+              }
+            }
             console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
             resolve(results);
             break;
@@ -428,6 +461,16 @@ export class SearchOrchestrator {
 
       // Get fuzzy threshold setting
       const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
+
+      // 60s timeout to prevent Promise hanging if Worker stalls
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(createModuleError(
+          'worker_failed',
+          'Worker search timed out after 60 seconds',
+          ['reload_module', 'check_console']
+        ));
+      }, 60000);
 
       // Post the search task to the worker
       this.worker.postMessage({
@@ -813,7 +856,11 @@ export class SearchOrchestrator {
 
     const cacheKey = getCreatureCacheKey(creatureInfo);
     if (useCache && this.searchCache.has(cacheKey)) {
-      return this.searchCache.get(cacheKey);
+      const cached = this.searchCache.get(cacheKey);
+      // Promote to most-recent position for LRU ordering
+      this.searchCache.delete(cacheKey);
+      this.searchCache.set(cacheKey, cached);
+      return cached;
     }
 
     const priority = this._getSetting(MODULE_ID, 'searchPriority');
@@ -1020,7 +1067,7 @@ export class SearchOrchestrator {
         `${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`
       );
 
-      this.searchCache.set(cacheKey, results);
+      this._cacheSet(cacheKey, results);
       return results;
     }
 
@@ -1119,7 +1166,7 @@ export class SearchOrchestrator {
       return (a.score || 0.5) - (b.score || 0.5);
     });
 
-    this.searchCache.set(cacheKey, validResults);
+    this._cacheSet(cacheKey, validResults);
     return validResults;
   }
 
@@ -1153,14 +1200,19 @@ export class SearchOrchestrator {
         return { key, searchResults, group };
       });
 
-      const batchResults = await Promise.all(batchPromises);
+      const settledResults = await Promise.allSettled(batchPromises);
 
-      for (const { key, searchResults, group } of batchResults) {
-        results.set(key, {
-          matches: searchResults,
-          tokens: group.tokens,
-          creatureInfo: group.creatureInfo,
-        });
+      for (const result of settledResults) {
+        if (result.status === 'fulfilled') {
+          const { key, searchResults, group } = result.value;
+          results.set(key, {
+            matches: searchResults,
+            tokens: group.tokens,
+            creatureInfo: group.creatureInfo,
+          });
+        } else {
+          console.warn(`${MODULE_ID} | Batch search failed for one group:`, result.reason?.message || result.reason);
+        }
       }
     }
 
