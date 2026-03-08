@@ -8,8 +8,8 @@
 
 ## Executive Summary
 
-| Severity | Count | Status |
-|----------|-------|--------|
+| Severity | Count | Status  |
+| -------- | ----- | ------- |
 | Critical | 1     | PENDING |
 | High     | 3     | PENDING |
 | Medium   | 9     | PENDING |
@@ -22,6 +22,7 @@
 ## CRITICAL
 
 ### CRIT-001: GitHub OAuth Token in Plaintext .env File
+
 - **File:** `.auto-claude/.env:21`
 - **Code:** `GITHUB_TOKEN=gho_[REDACTED]`
 - **Risk:** CRITICAL
@@ -37,6 +38,7 @@
 ## HIGH
 
 ### HIGH-001: CDN Dependency Without Subresource Integrity (SRI)
+
 - **File:** `scripts/core/Constants.js:8`, `scripts/workers/IndexWorker.js:15`
 - **Code:** `export const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';`
 - **Risk:** HIGH
@@ -45,6 +47,7 @@
 - **Status:** PENDING
 
 ### HIGH-002: Inline Event Handlers in Dynamic HTML (CSP Bypass)
+
 - **File:** `scripts/ui/UIManager.js:498`, `templates/match-selection.hbs:4,46`, `templates/no-match.hbs:4,12`
 - **Code:** `onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')"`
 - **Risk:** HIGH
@@ -53,6 +56,7 @@
 - **Status:** PENDING
 
 ### HIGH-003: .env Files Not Generically Excluded in .gitignore
+
 - **File:** `.gitignore`
 - **Risk:** HIGH
 - **Description:** `.gitignore` excludes `.auto-claude/` as a directory but has no generic `.env` or `.env*` pattern. Any `.env` file created at the repo root would be tracked and potentially committed.
@@ -64,6 +68,7 @@
 ## MEDIUM
 
 ### MED-001: No URL Validation on TVA Cache File Path
+
 - **File:** `scripts/services/TVACacheService.js:186`
 - **Code:** `const response = await fetch(staticCacheFile);`
 - **Risk:** MEDIUM
@@ -72,6 +77,7 @@
 - **Status:** PENDING
 
 ### MED-002: Worker Message Handler Without Command Validation
+
 - **File:** `scripts/workers/IndexWorker.js:32-73`
 - **Risk:** MEDIUM
 - **Description:** Worker message handler processes incoming messages without validating `event.data.command` type or `event.data.data` structure. Malformed data could cause unexpected behavior.
@@ -79,6 +85,7 @@
 - **Status:** PENDING
 
 ### MED-003: Error Stack Traces Exposed
+
 - **File:** `scripts/workers/IndexWorker.js:46,71`, `scripts/main.js:732`
 - **Risk:** MEDIUM
 - **Description:** Full stack traces are sent via Worker `postMessage` and shown in the error dialog UI. This leaks internal file paths, function names, and module structure.
@@ -86,6 +93,7 @@
 - **Status:** PENDING
 
 ### MED-004: Dependency Vulnerability — tinymce XSS (Transitive)
+
 - **File:** `package.json` (via `@league-of-foundry-developers/foundry-vtt-types`)
 - **Risk:** MEDIUM (mitigated: dev dependency only, not shipped)
 - **Advisory:** GHSA-5359-pvf2-pw78
@@ -93,6 +101,7 @@
 - **Status:** PENDING (low priority)
 
 ### MED-005: No Protocol Validation on Image Paths
+
 - **File:** `scripts/ui/UIManager.js:498`, `templates/match-selection.hbs:46`, `templates/no-match.hbs:4`
 - **Risk:** MEDIUM
 - **Description:** Image paths from TVA cache are used as `<img src>` without protocol validation. If cache data is corrupted via IndexedDB manipulation, `javascript:` or `data:` URIs could be injected. Modern browsers block script execution from `<img src>`, but defense-in-depth is lacking.
@@ -100,6 +109,7 @@
 - **Status:** PENDING
 
 ### MED-006: Prototype Key Traversal in extractPathFromObject
+
 - **File:** `scripts/core/Utils.js:298`
 - **Risk:** MEDIUM
 - **Description:** `Object.keys(obj)` iteration doesn't filter `__proto__`, `constructor`, or `prototype` keys. Crafted TVA cache data could cause traversal of prototype chains.
@@ -107,6 +117,7 @@
 - **Status:** PENDING
 
 ### MED-007: IndexedDB/localStorage Data Without Schema Validation
+
 - **File:** `scripts/services/StorageService.js:255-316`, `scripts/services/TVACacheService.js:308-356`
 - **Risk:** MEDIUM
 - **Description:** Data from IndexedDB and localStorage is deserialized and used without schema validation. Individual image objects in the TVA cache are not validated, potentially producing entries with `undefined` paths. Another extension or devtools user could inject malicious data structures.
@@ -114,6 +125,7 @@
 - **Status:** PENDING
 
 ### MED-008: Build Script Variable Injection Risk
+
 - **File:** `build.sh:38-41,153-155`, `sync-version.sh:58,73,76`, `build.bat:21-23,133-137`
 - **Risk:** MEDIUM
 - **Description:** Build scripts extract values from `module.json` via grep/sed and use them in shell/PowerShell commands. Malicious version strings with metacharacters could cause command injection. `build.bat` passes values directly into PowerShell commands via string interpolation.
@@ -121,6 +133,7 @@
 - **Status:** PENDING
 
 ### MED-009: Silent Error Handling Patterns (Multiple Locations)
+
 - **Files:** `ScanService.js:53-54,265-266`, `UIManager.js:1016-1018,1085-1087`, `IndexService.js:284-286,596-598`, `TVACacheService.js:404`, `SearchOrchestrator.js:303-305`
 - **Risk:** MEDIUM
 - **Description:** Multiple empty catch blocks silently discard errors across the codebase. Key patterns include: (a) `ScanService` swallowing FilePicker and TVA API errors, making "no results" indistinguishable from "API failure"; (b) `UIManager` swallowing dialog update errors; (c) `IndexService` swallowing cache cleanup failures creating infinite failure loops; (d) `TVACacheService` `.catch(() => {})` on cache removal; (e) Fuse.js load failure returning empty results without warning. Some of these have existing TODO comments from Phase 10.
@@ -132,6 +145,7 @@
 ## LOW
 
 ### LOW-001: Hardcoded Fallback Image Path
+
 - **File:** `scripts/ui/UIManager.js:498`
 - **Risk:** LOW
 - **Description:** Fallback image path `icons/svg/mystery-man.svg` is hardcoded. Part of the inline handler pattern from HIGH-002.
@@ -139,6 +153,7 @@
 - **Status:** PENDING
 
 ### LOW-002: Console Logging of Potentially Sensitive Paths
+
 - **File:** `scripts/core/Utils.js:81,88,93`
 - **Risk:** LOW
 - **Description:** `sanitizePath()` logs rejected paths via `console.warn()`, exposing file path information.
@@ -146,6 +161,7 @@
 - **Status:** PENDING
 
 ### LOW-003: Window Global Exposure
+
 - **File:** `scripts/main.js:765`
 - **Risk:** LOW
 - **Description:** `window.TokenReplacerFA` exposes the full module instance. Standard Foundry practice but expands attack surface.
@@ -153,6 +169,7 @@
 - **Status:** PENDING
 
 ### LOW-004: package.json Version Mismatch
+
 - **File:** `package.json:3`
 - **Risk:** LOW (operational)
 - **Description:** `package.json` declares `2.12.3` while `module.json` declares `2.12.4`. The sync script doesn't update `package.json`.
@@ -160,6 +177,7 @@
 - **Status:** PENDING
 
 ### LOW-005: Filter Term localStorage Without Length Limit
+
 - **File:** `scripts/ui/UIManager.js:72-95`
 - **Risk:** LOW
 - **Description:** User filter terms persisted to localStorage without length validation. An extremely long string could slow filter operations.
@@ -173,7 +191,7 @@
 1. **XSS Protection:** `escapeHtml()` consistently used for all user-controlled data in `innerHTML` contexts
 2. **Path Traversal Protection:** `sanitizePath()` with null byte, traversal, and absolute path checks
 3. **No eval/Function:** Zero instances of `eval()`, `new Function()`, or string-based `setTimeout`
-4. **Template Safety:** All Handlebars templates use `{{}}` (auto-escaped), zero `{{{}}}`  usage
+4. **Template Safety:** All Handlebars templates use `{{}}` (auto-escaped), zero `{{{}}}` usage
 5. **GM-Only Access:** Scene control button restricted to `game.user.isGM`
 6. **Proper JSON Parsing:** All `JSON.parse`/`response.json()` wrapped in try-catch
 7. **Worker Isolation:** Web Worker in isolated context with error handling and cancellation
@@ -202,7 +220,7 @@
 ## Scan Metadata
 
 - **Agents Used:** 3 parallel security agents (XSS/injection, dependency/config, silent failures)
-- **Files Scanned:** 14 JS source files, 8 HBS templates, 2 build scripts, package.json, module.json, .env, .gitignore, lang/*.json
+- **Files Scanned:** 14 JS source files, 8 HBS templates, 2 build scripts, package.json, module.json, .env, .gitignore, lang/\*.json
 - **npm audit:** 2 moderate vulnerabilities (tinymce XSS, dev dependency only)
 - **Patterns Checked:** XSS, injection, prototype pollution, path traversal, ReDoS, hardcoded secrets, unsafe parsing, CSP compliance, dependency vulnerabilities, worker security, silent failures, build pipeline injection
 - **Clean Patterns:** eval/Function injection, prototype pollution (write), ReDoS, triple-brace templates, committed secrets

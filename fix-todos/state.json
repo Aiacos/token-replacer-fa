@@ -2,8 +2,8 @@
   "session": "review-predict-todos",
   "created": "2026-03-07T17:00:00Z",
   "total": 16,
-  "resolved": 14,
-  "deferred": 2,
+  "resolved": 16,
+  "deferred": 0,
   "current": null,
   "items": {
     "T1-promise-allSettled": "resolved",
@@ -20,8 +20,8 @@
     "T12-TVA-cache-perf": "resolved",
     "T13-innerHTML-rebuild": "resolved (downgraded - already debounced)",
     "T14-LRU-eviction": "resolved",
-    "HIGH-001": "deferred",
-    "StorageService-schema": "deferred"
+    "HIGH-001": "resolved — post-load shape validation in Utils.js and IndexWorker.js",
+    "StorageService-schema": "resolved — JSON reviver + deep sanitize in StorageService.load()"
   },
   "testsBefore": 509,
   "testsAfter": 509

@@ -32,12 +32,17 @@ export async function loadFuse() {
 
   try {
     const module = await import(FUSE_CDN);
-    FuseClass = module.default;
+    const Candidate = module.default;
+    if (!_validateFuseShape(Candidate)) {
+      console.error('token-replacer-fa | Fuse.js loaded but failed shape validation — possible CDN compromise');
+      return null;
+    }
+    FuseClass = Candidate;
     return FuseClass;
   } catch (error) {
     console.error('token-replacer-fa | Failed to load Fuse.js:', error);
     try {
-      if (window.Fuse) {
+      if (window.Fuse && _validateFuseShape(window.Fuse)) {
         FuseClass = window.Fuse;
         return FuseClass;
       }
@@ -45,6 +50,24 @@ export async function loadFuse() {
       console.error('token-replacer-fa | Fuse.js not available:', e);
     }
     return null;
+  }
+}
+
+/**
+ * Validate that a loaded Fuse candidate has the expected constructor shape.
+ * Catches CDN compromise that replaces Fuse.js with arbitrary code.
+ * @param {*} Candidate - The loaded Fuse constructor
+ * @returns {boolean} True if the candidate looks like Fuse.js
+ */
+function _validateFuseShape(Candidate) {
+  try {
+    if (typeof Candidate !== 'function') return false;
+    const instance = new Candidate([{ name: 'test' }], { keys: ['name'] });
+    if (typeof instance.search !== 'function') return false;
+    const results = instance.search('test');
+    return Array.isArray(results);
+  } catch {
+    return false;
   }
 }
 

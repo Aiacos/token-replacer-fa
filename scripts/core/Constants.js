@@ -5,9 +5,6 @@
 
 export const MODULE_ID = 'token-replacer-fa';
 export const MODULE_TITLE = 'Token Replacer - Forgotten Adventures';
-// TODO [HIGH]: Bundle Fuse.js locally or add integrity verification (security-scan HIGH-001).
-// CDN import without SRI means a compromised CDN could inject code in both main thread and Worker.
-// Options: (1) bundle in module ZIP (~25KB), (2) post-load shape verification, (3) SRI hash.
 export const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
 export const FALLBACK_IMAGE = 'icons/svg/mystery-man.svg';
 

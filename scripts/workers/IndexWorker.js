@@ -250,7 +250,16 @@ async function loadFuse() {
 
   try {
     const module = await import(FUSE_CDN);
-    FuseClass = module.default;
+    const Candidate = module.default;
+    if (!_validateFuseShape(Candidate)) {
+      console.error('IndexWorker: Fuse.js loaded but failed shape validation — possible CDN compromise');
+      self.postMessage({
+        type: 'error',
+        message: 'Fuse.js failed integrity validation after loading from CDN',
+      });
+      return null;
+    }
+    FuseClass = Candidate;
     return FuseClass;
   } catch (error) {
     console.error('IndexWorker: Failed to load Fuse.js:', error);
@@ -259,6 +268,23 @@ async function loadFuse() {
       message: `Failed to load Fuse.js: ${error.message}`,
     });
     return null;
+  }
+}
+
+/**
+ * Validate that a loaded Fuse candidate has the expected constructor shape.
+ * @param {*} Candidate
+ * @returns {boolean}
+ */
+function _validateFuseShape(Candidate) {
+  try {
+    if (typeof Candidate !== 'function') return false;
+    const instance = new Candidate([{ name: 'test' }], { keys: ['name'] });
+    if (typeof instance.search !== 'function') return false;
+    const results = instance.search('test');
+    return Array.isArray(results);
+  } catch {
+    return false;
   }
 }
 

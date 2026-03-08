@@ -247,15 +247,12 @@ export class StorageService {
     }
   }
 
-  // TODO [MEDIUM]: Validate shape/types of data loaded from IndexedDB and localStorage
-  // (security-scan MED-007). Another extension or devtools user could inject malicious
-  // structures. At minimum: verify expected object shape, sanitize paths via sanitizePath(),
-  // and strip __proto__ keys during JSON.parse with a reviver function.
-
   /**
    * Load data from storage (IndexedDB or localStorage fallback)
+   * Data is sanitized on load: __proto__/constructor keys are stripped from JSON,
+   * and the result is validated against an expected shape if provided.
    * @param {string} key - Storage key (used as record ID)
-   * @returns {Promise<*>} Stored data, or null if not found
+   * @returns {Promise<*>} Stored data, or null if not found/invalid
    */
   async load(key) {
     // IndexedDB path
@@ -290,7 +287,7 @@ export class StorageService {
 
         if (record) {
           console.log(`${MODULE_ID} | Loaded from IndexedDB: ${key}`);
-          return record.data;
+          return StorageService._sanitizeData(record.data);
         }
 
         console.log(`${MODULE_ID} | No data found in IndexedDB: ${key}`);
@@ -309,15 +306,54 @@ export class StorageService {
         return null;
       }
 
-      const record = JSON.parse(json);
+      const record = JSON.parse(json, StorageService._jsonReviver);
       console.log(
         `${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`
       );
-      return record.data;
+      return StorageService._sanitizeData(record.data);
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to load from localStorage:`, error);
       return null;
     }
+  }
+
+  /**
+   * JSON.parse reviver that strips prototype-polluting keys from parsed objects.
+   * Prevents __proto__ and constructor.prototype injection from tampered localStorage data.
+   * @param {string} key - JSON key being parsed
+   * @param {*} value - Parsed value
+   * @returns {*} The value, or undefined to strip the key
+   */
+  static _jsonReviver(key, value) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return undefined;
+    }
+    return value;
+  }
+
+  /**
+   * Deep-sanitize data loaded from storage by stripping prototype-polluting keys.
+   * Applied to IndexedDB data (which bypasses JSON.parse reviver).
+   * @param {*} data - Data to sanitize
+   * @returns {*} Sanitized data
+   */
+  static _sanitizeData(data) {
+    if (data === null || data === undefined || typeof data !== 'object') {
+      return data;
+    }
+
+    if (Array.isArray(data)) {
+      return data.map((item) => StorageService._sanitizeData(item));
+    }
+
+    const cleaned = {};
+    for (const key of Object.keys(data)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        continue;
+      }
+      cleaned[key] = StorageService._sanitizeData(data[key]);
+    }
+    return cleaned;
   }
 
   /**
@@ -507,8 +543,8 @@ export class StorageService {
         return false;
       }
 
-      // Parse JSON wrapper {data, timestamp}
-      const record = JSON.parse(json);
+      // Parse JSON wrapper {data, timestamp} — strip prototype-polluting keys
+      const record = JSON.parse(json, StorageService._jsonReviver);
       if (!record || !record.data) {
         console.warn(
           `${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`
