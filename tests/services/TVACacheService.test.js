@@ -524,11 +524,27 @@ describe('TVACacheService', () => {
       // Manually populate searchable cache
       service.tvaCacheLoaded = true;
       service.tvaCacheSearchable = [
-        { path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp', name: 'Bandit', category: 'Humanoids' },
-        { path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_Captain_01.webp', name: 'Bandit Captain', category: 'Humanoids' },
+        {
+          path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp',
+          name: 'Bandit',
+          category: 'Humanoids',
+        },
+        {
+          path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_Captain_01.webp',
+          name: 'Bandit Captain',
+          category: 'Humanoids',
+        },
         { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', category: 'Beasts' },
-        { path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp', name: 'Skeleton', category: 'Undead' },
-        { path: 'FA_Pack/Tokens/Dragons/Dragon_Red/Dragon_Red_Adult_01.webp', name: 'Dragon Red Adult', category: 'Dragons' },
+        {
+          path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp',
+          name: 'Skeleton',
+          category: 'Undead',
+        },
+        {
+          path: 'FA_Pack/Tokens/Dragons/Dragon_Red/Dragon_Red_Adult_01.webp',
+          name: 'Dragon Red Adult',
+          category: 'Dragons',
+        },
       ];
 
       return service;
@@ -604,12 +620,24 @@ describe('TVACacheService', () => {
 
       service.tvaCacheLoaded = true;
       service.tvaCacheSearchable = [
-        { path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp', name: 'Skeleton', category: 'Undead' },
+        {
+          path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp',
+          name: 'Skeleton',
+          category: 'Undead',
+        },
         { path: 'FA_Pack/Tokens/Undead/Zombie/Zombie_01.webp', name: 'Zombie', category: 'Undead' },
-        { path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp', name: 'Bandit', category: 'Humanoids' },
+        {
+          path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp',
+          name: 'Bandit',
+          category: 'Humanoids',
+        },
         { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', category: 'Beasts' },
         // duplicate path to test deduplication
-        { path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp', name: 'Skeleton Duplicate', category: 'Dupes' },
+        {
+          path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp',
+          name: 'Skeleton Duplicate',
+          category: 'Dupes',
+        },
       ];
 
       return service;
@@ -685,9 +713,17 @@ describe('TVACacheService', () => {
 
       service.tvaCacheLoaded = true;
       service.tvaCacheSearchable = [
-        { path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp', name: 'Bandit', category: 'Humanoids' },
+        {
+          path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp',
+          name: 'Bandit',
+          category: 'Humanoids',
+        },
         { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', category: 'Beasts' },
-        { path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp', name: 'Skeleton', category: 'Undead' },
+        {
+          path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp',
+          name: 'Skeleton',
+          category: 'Undead',
+        },
       ];
 
       return service;

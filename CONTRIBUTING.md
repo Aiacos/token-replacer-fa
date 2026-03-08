@@ -18,16 +18,16 @@ npm install
 
 ## Development Commands
 
-| Command | Description |
-|---|---|
-| `npm test` | Run all tests (Vitest) |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run lint` | Lint source files (ESLint) |
-| `npm run format` | Format all files (Prettier) |
-| `npm run format:check` | Check formatting without writing |
-| `npm run typecheck` | Type-check JSDoc annotations (tsc --noEmit) |
-| `bash build.sh` | Build release ZIP (Linux/macOS) |
-| `build.bat` | Build release ZIP (Windows) |
+| Command                | Description                                 |
+| ---------------------- | ------------------------------------------- |
+| `npm test`             | Run all tests (Vitest)                      |
+| `npm run test:watch`   | Run tests in watch mode                     |
+| `npm run lint`         | Lint source files (ESLint)                  |
+| `npm run format`       | Format all files (Prettier)                 |
+| `npm run format:check` | Check formatting without writing            |
+| `npm run typecheck`    | Type-check JSDoc annotations (tsc --noEmit) |
+| `bash build.sh`        | Build release ZIP (Linux/macOS)             |
+| `build.bat`            | Build release ZIP (Windows)                 |
 
 ## Project Structure
 

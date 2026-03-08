@@ -118,12 +118,7 @@ describe('SearchService', () => {
 
       const result = await svc.searchByCategory('beast', [], null);
 
-      expect(searchOrchestrator.searchByCategory).toHaveBeenCalledWith(
-        'beast',
-        [],
-        null,
-        null
-      );
+      expect(searchOrchestrator.searchByCategory).toHaveBeenCalledWith('beast', [], null, null);
       expect(result).toBe(expected);
     });
 
@@ -150,7 +145,12 @@ describe('SearchService', () => {
     });
 
     it('passes through already-structured errors unchanged', async () => {
-      const structured = { errorType: 'custom', message: 'custom msg', details: 'detail', recoverySuggestions: [] };
+      const structured = {
+        errorType: 'custom',
+        message: 'custom msg',
+        details: 'detail',
+        recoverySuggestions: [],
+      };
       searchOrchestrator.searchByCategory.mockRejectedValueOnce(structured);
 
       await expect(svc.searchByCategory('beast', [])).rejects.toBe(structured);
@@ -168,11 +168,7 @@ describe('SearchService', () => {
 
       const result = await svc.parallelSearchCreatures(groups, []);
 
-      expect(searchOrchestrator.parallelSearchCreatures).toHaveBeenCalledWith(
-        groups,
-        [],
-        null
-      );
+      expect(searchOrchestrator.parallelSearchCreatures).toHaveBeenCalledWith(groups, [], null);
       expect(result).toBe(expected);
     });
 

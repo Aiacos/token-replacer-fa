@@ -214,17 +214,14 @@ describe('PRIMARY_CATEGORY_TERMS', () => {
     expect(primaryKeys).toEqual(mappingKeys);
   });
 
-  it.each(EXPECTED_CATEGORIES)(
-    '"%s" is a non-empty array of strings',
-    (category) => {
-      const terms = PRIMARY_CATEGORY_TERMS[category];
-      expect(Array.isArray(terms)).toBe(true);
-      expect(terms.length).toBeGreaterThan(0);
-      terms.forEach((term) => {
-        expect(typeof term).toBe('string');
-      });
-    }
-  );
+  it.each(EXPECTED_CATEGORIES)('"%s" is a non-empty array of strings', (category) => {
+    const terms = PRIMARY_CATEGORY_TERMS[category];
+    expect(Array.isArray(terms)).toBe(true);
+    expect(terms.length).toBeGreaterThan(0);
+    terms.forEach((term) => {
+      expect(typeof term).toBe('string');
+    });
+  });
 });
 
 describe('GENERIC_SUBTYPE_INDICATORS', () => {

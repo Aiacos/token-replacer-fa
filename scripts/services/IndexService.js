@@ -315,7 +315,9 @@ export class IndexService {
       if (error.name === 'QuotaExceededError' || error.code === 22) {
         console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
         if (typeof ui !== 'undefined' && ui.notifications) {
-          ui.notifications.warn('Token Replacer FA: Cache storage is full. Index will be rebuilt each session.');
+          ui.notifications.warn(
+            'Token Replacer FA: Cache storage is full. Index will be rebuilt each session.'
+          );
         }
       } else {
         console.warn(`${MODULE_ID} | Failed to save cache:`, error);
@@ -740,10 +742,12 @@ export class IndexService {
             try {
               ui.notifications.warn(
                 game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
-                'Token Replacer FA: Background worker failed, using slower method.',
+                  'Token Replacer FA: Background worker failed, using slower method.',
                 { permanent: false }
               );
-            } catch { /* ui.notifications may not be ready during early init */ }
+            } catch {
+              /* ui.notifications may not be ready during early init */
+            }
             return await this.indexPathsDirectly(allPaths, onProgress);
           }
         } else {

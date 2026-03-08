@@ -291,7 +291,10 @@ export function extractPathFromObject(obj, depth = 0) {
   // Check nested .data property (TVA format)
   if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
     for (const prop of pathProps) {
-      if (Object.prototype.hasOwnProperty.call(obj.data, prop) && typeof obj.data[prop] === 'string') {
+      if (
+        Object.prototype.hasOwnProperty.call(obj.data, prop) &&
+        typeof obj.data[prop] === 'string'
+      ) {
         const val = obj.data[prop];
         if (isValidPath(val)) {
           return val;
@@ -302,7 +305,8 @@ export function extractPathFromObject(obj, depth = 0) {
 
   // Check nested objects (general case, depth-limited)
   for (const key of Object.keys(obj)) {
-    if (key === 'data' || key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    if (key === 'data' || key === '__proto__' || key === 'constructor' || key === 'prototype')
+      continue;
     const val = obj[key];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
       const nestedPath = extractPathFromObject(val, depth + 1);
@@ -503,5 +507,6 @@ export function createDebugLogger(servicePrefix) {
  * @returns {function(string, string): *} A function that calls game.settings.get(moduleId, key)
  */
 export function createDefaultGetSetting() {
-  return (moduleId, key) => game.settings.get(/** @type {any} */ (moduleId), /** @type {any} */ (key));
+  return (moduleId, key) =>
+    game.settings.get(/** @type {any} */ (moduleId), /** @type {any} */ (key));
 }

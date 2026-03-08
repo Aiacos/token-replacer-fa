@@ -6,3 +6,5 @@ module.json
 templates/match-selection.hbs
 templates/no-match.hbs
 .planning/
+security-scan/
+fix-todos/

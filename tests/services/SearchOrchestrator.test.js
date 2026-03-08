@@ -24,18 +24,78 @@ import { loadFuse } from '../../scripts/core/Utils.js';
 /** Build a small test index for fuzzy search tests */
 function createTestIndex() {
   return [
-    { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', fileName: 'Wolf_01', category: 'Beasts' },
-    { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_Dire_01.webp', name: 'Dire Wolf', fileName: 'Wolf_Dire_01', category: 'Beasts' },
-    { path: 'FA_Pack/Tokens/Beasts/Bear/Bear_Brown_01.webp', name: 'Brown Bear', fileName: 'Bear_Brown_01', category: 'Beasts' },
-    { path: 'FA_Pack/Tokens/Beasts/Bear/Bear_Polar_01.webp', name: 'Polar Bear', fileName: 'Bear_Polar_01', category: 'Beasts' },
-    { path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp', name: 'Bandit', fileName: 'Bandit_01', category: 'Humanoids' },
-    { path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_01.webp', name: 'City Guard', fileName: 'Guard_City_01', category: 'Humanoids' },
-    { path: 'FA_Pack/Tokens/Humanoids/Cultist/Cultist_01.webp', name: 'Cultist', fileName: 'Cultist_01', category: 'Humanoids' },
-    { path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp', name: 'Skeleton', fileName: 'Skeleton_01', category: 'Undead' },
-    { path: 'FA_Pack/Tokens/Undead/Zombie/Zombie_01.webp', name: 'Zombie', fileName: 'Zombie_01', category: 'Undead' },
-    { path: 'FA_Pack/Tokens/Dragons/Dragon_Red/Dragon_Red_Adult_01.webp', name: 'Red Dragon Adult', fileName: 'Dragon_Red_Adult_01', category: 'Dragons' },
-    { path: 'FA_Pack/Tokens/Humanoids/Noble/Noble_01.webp', name: 'Noble', fileName: 'Noble_01', category: 'Humanoids' },
-    { path: 'FA_Pack/Tokens/Aberrations/Beholder/Beholder_01.webp', name: 'Beholder', fileName: 'Beholder_01', category: 'Aberrations' },
+    {
+      path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
+      name: 'Wolf',
+      fileName: 'Wolf_01',
+      category: 'Beasts',
+    },
+    {
+      path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_Dire_01.webp',
+      name: 'Dire Wolf',
+      fileName: 'Wolf_Dire_01',
+      category: 'Beasts',
+    },
+    {
+      path: 'FA_Pack/Tokens/Beasts/Bear/Bear_Brown_01.webp',
+      name: 'Brown Bear',
+      fileName: 'Bear_Brown_01',
+      category: 'Beasts',
+    },
+    {
+      path: 'FA_Pack/Tokens/Beasts/Bear/Bear_Polar_01.webp',
+      name: 'Polar Bear',
+      fileName: 'Bear_Polar_01',
+      category: 'Beasts',
+    },
+    {
+      path: 'FA_Pack/Tokens/Humanoids/Bandit/Bandit_01.webp',
+      name: 'Bandit',
+      fileName: 'Bandit_01',
+      category: 'Humanoids',
+    },
+    {
+      path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_01.webp',
+      name: 'City Guard',
+      fileName: 'Guard_City_01',
+      category: 'Humanoids',
+    },
+    {
+      path: 'FA_Pack/Tokens/Humanoids/Cultist/Cultist_01.webp',
+      name: 'Cultist',
+      fileName: 'Cultist_01',
+      category: 'Humanoids',
+    },
+    {
+      path: 'FA_Pack/Tokens/Undead/Skeleton/Skeleton_01.webp',
+      name: 'Skeleton',
+      fileName: 'Skeleton_01',
+      category: 'Undead',
+    },
+    {
+      path: 'FA_Pack/Tokens/Undead/Zombie/Zombie_01.webp',
+      name: 'Zombie',
+      fileName: 'Zombie_01',
+      category: 'Undead',
+    },
+    {
+      path: 'FA_Pack/Tokens/Dragons/Dragon_Red/Dragon_Red_Adult_01.webp',
+      name: 'Red Dragon Adult',
+      fileName: 'Dragon_Red_Adult_01',
+      category: 'Dragons',
+    },
+    {
+      path: 'FA_Pack/Tokens/Humanoids/Noble/Noble_01.webp',
+      name: 'Noble',
+      fileName: 'Noble_01',
+      category: 'Humanoids',
+    },
+    {
+      path: 'FA_Pack/Tokens/Aberrations/Beholder/Beholder_01.webp',
+      name: 'Beholder',
+      fileName: 'Beholder_01',
+      category: 'Aberrations',
+    },
   ];
 }
 
@@ -68,7 +128,9 @@ function createMockDeps(overrides = {}) {
     isServiceAvailable: () => false,
     ...overrides.forgeBazaarService,
   };
-  const mockWorkerFactory = vi.fn(() => { throw new Error('Worker not available in tests'); });
+  const mockWorkerFactory = vi.fn(() => {
+    throw new Error('Worker not available in tests');
+  });
 
   return {
     indexService: mockIndexService,
@@ -382,11 +444,14 @@ describe('SearchOrchestrator', () => {
     });
 
     it('uses TVA cache when index not built and cache loaded', async () => {
-      const cacheResults = [
-        { path: 'FA_Pack/Tokens/Beasts/Bear/Bear_01.webp', name: 'Bear' },
-      ];
+      const cacheResults = [{ path: 'FA_Pack/Tokens/Beasts/Bear/Bear_01.webp', name: 'Bear' }];
       const { orchestrator, deps } = createOrchestrator({
-        indexService: { isBuilt: false, searchByCategory: vi.fn(() => []), search: vi.fn(() => []), searchMultiple: vi.fn(() => []) },
+        indexService: {
+          isBuilt: false,
+          searchByCategory: vi.fn(() => []),
+          search: vi.fn(() => []),
+          searchMultiple: vi.fn(() => []),
+        },
         tvaCacheService: {
           hasTVA: true,
           tvaCacheLoaded: true,
@@ -406,7 +471,12 @@ describe('SearchOrchestrator', () => {
 
     it('searches direct term in TVA when directSearchTerm provided', async () => {
       const tvaResults = [
-        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', source: 'tva', score: 0.1 },
+        {
+          path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
+          name: 'Wolf',
+          source: 'tva',
+          score: 0.1,
+        },
       ];
       const { orchestrator, deps } = createOrchestrator({
         tvaCacheService: {
@@ -427,12 +497,8 @@ describe('SearchOrchestrator', () => {
 
     it('deduplicates results by path', async () => {
       const duplicatePath = 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp';
-      const indexResults = [
-        { path: duplicatePath, name: 'Wolf', source: 'index' },
-      ];
-      const localIndex = [
-        { path: duplicatePath, name: 'Wolf', category: 'Beasts' },
-      ];
+      const indexResults = [{ path: duplicatePath, name: 'Wolf', source: 'index' }];
+      const localIndex = [{ path: duplicatePath, name: 'Wolf', category: 'Beasts' }];
 
       const { orchestrator } = createOrchestrator({
         indexService: {
@@ -453,7 +519,12 @@ describe('SearchOrchestrator', () => {
 
     it('returns empty when no search source available', async () => {
       const { orchestrator } = createOrchestrator({
-        indexService: { isBuilt: false, searchByCategory: vi.fn(() => []), search: vi.fn(() => []), searchMultiple: vi.fn(() => []) },
+        indexService: {
+          isBuilt: false,
+          searchByCategory: vi.fn(() => []),
+          search: vi.fn(() => []),
+          searchMultiple: vi.fn(() => []),
+        },
         tvaCacheService: {
           hasTVA: false,
           tvaCacheLoaded: false,
@@ -477,7 +548,12 @@ describe('SearchOrchestrator', () => {
   describe('searchTokenArt() -- orchestrated flow', () => {
     it('caches results and returns cached on second call', async () => {
       const tvaResults = [
-        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf', source: 'tva', score: 0.1 },
+        {
+          path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
+          name: 'Wolf',
+          source: 'tva',
+          score: 0.1,
+        },
       ];
       const { orchestrator, deps } = createOrchestrator({
         tvaCacheService: {
@@ -514,9 +590,7 @@ describe('SearchOrchestrator', () => {
     });
 
     it('triggers category search fallback for generic subtype', async () => {
-      const categoryResults = [
-        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf' },
-      ];
+      const categoryResults = [{ path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf' }];
       const { orchestrator, deps } = createOrchestrator({
         indexService: {
           isBuilt: true,
@@ -555,12 +629,8 @@ describe('SearchOrchestrator', () => {
       const { orchestrator, deps } = createOrchestrator({
         indexService: {
           isBuilt: true,
-          searchByCategory: vi.fn(() => [
-            { path: 'cat.webp', name: 'Cat', source: 'index' },
-          ]),
-          search: vi.fn(() => [
-            { path: 'goblin-name.webp', name: 'Goblin', score: 0.1 },
-          ]),
+          searchByCategory: vi.fn(() => [{ path: 'cat.webp', name: 'Cat', source: 'index' }]),
+          search: vi.fn(() => [{ path: 'goblin-name.webp', name: 'Goblin', score: 0.1 }]),
           searchMultiple: vi.fn(() => [
             { path: 'goblin-sub.webp', name: 'Goblin Shaman', score: 0.3 },
           ]),
@@ -676,9 +746,7 @@ describe('SearchOrchestrator', () => {
     });
 
     it('SLOW PATH: falls back to doImageSearch when cache not loaded', async () => {
-      const apiResults = [
-        { path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf' },
-      ];
+      const apiResults = [{ path: 'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', name: 'Wolf' }];
       const { orchestrator, deps } = createOrchestrator({
         tvaCacheService: {
           hasTVA: true,
@@ -759,9 +827,7 @@ describe('SearchOrchestrator', () => {
         },
       });
 
-      const groups = new Map([
-        ['wolf', makeGroup('Wolf', 'beast')],
-      ]);
+      const groups = new Map([['wolf', makeGroup('Wolf', 'beast')]]);
 
       const results = await orchestrator.parallelSearchCreatures(groups, null);
       const entry = results.get('wolf');
@@ -866,10 +932,18 @@ describe('SearchOrchestrator', () => {
   describe('Integration: full pipeline (INTG-01)', () => {
     it('searches via index and populates cache', async () => {
       const indexNameResults = [
-        { path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_01.webp', name: 'City Guard', score: 0.1 },
+        {
+          path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_01.webp',
+          name: 'City Guard',
+          score: 0.1,
+        },
       ];
       const indexSubtypeResults = [
-        { path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_02.webp', name: 'City Guard Variant', score: 0.3 },
+        {
+          path: 'FA_Pack/Tokens/Humanoids/Guard/Guard_City_02.webp',
+          name: 'City Guard Variant',
+          score: 0.3,
+        },
       ];
 
       const { orchestrator, deps } = createOrchestrator({
@@ -915,7 +989,11 @@ describe('SearchOrchestrator', () => {
     it('falls back to category search when fuzzy returns nothing', async () => {
       // Override loadFuse to return a Fuse stub that always returns empty
       vi.mocked(loadFuse).mockResolvedValue(
-        class StubFuse { search() { return []; } }
+        class StubFuse {
+          search() {
+            return [];
+          }
+        }
       );
 
       const categoryResults = [
@@ -945,7 +1023,7 @@ describe('SearchOrchestrator', () => {
       const creatureInfo = {
         actorName: 'Wild Beast',
         type: 'beast',
-        subtype: 'any',  // Generic
+        subtype: 'any', // Generic
         searchTerms: ['wild beast'],
       };
 

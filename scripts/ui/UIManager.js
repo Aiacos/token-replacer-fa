@@ -6,7 +6,12 @@
  * @module ui/UIManager
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, MAX_DISPLAY_RESULTS, FALLBACK_IMAGE } from '../core/Constants.js';
+import {
+  MODULE_ID,
+  CREATURE_TYPE_MAPPINGS,
+  MAX_DISPLAY_RESULTS,
+  FALLBACK_IMAGE,
+} from '../core/Constants.js';
 import {
   escapeHtml,
   parseFilterTerms,

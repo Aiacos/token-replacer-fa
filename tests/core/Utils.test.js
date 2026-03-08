@@ -380,9 +380,9 @@ describe('hasGenericSubtype', () => {
 
 describe('getCreatureCacheKey', () => {
   it('generates lowercase key from actorName, type, subtype', () => {
-    expect(
-      getCreatureCacheKey({ actorName: 'Goblin', type: 'humanoid', subtype: 'Goblin' })
-    ).toBe('goblin_humanoid_goblin');
+    expect(getCreatureCacheKey({ actorName: 'Goblin', type: 'humanoid', subtype: 'Goblin' })).toBe(
+      'goblin_humanoid_goblin'
+    );
   });
 
   it('handles missing properties gracefully', () => {
@@ -425,9 +425,9 @@ describe('extractPathFromTVAResult', () => {
   });
 
   it('returns first element from [path, name, tags] tuple', () => {
-    expect(
-      extractPathFromTVAResult(['modules/fa-pack/goblin.png', 'Goblin', ['humanoid']])
-    ).toBe('modules/fa-pack/goblin.png');
+    expect(extractPathFromTVAResult(['modules/fa-pack/goblin.png', 'Goblin', ['humanoid']])).toBe(
+      'modules/fa-pack/goblin.png'
+    );
   });
 
   // Object formats
@@ -438,9 +438,7 @@ describe('extractPathFromTVAResult', () => {
   });
 
   it('extracts path from object with img property', () => {
-    expect(extractPathFromTVAResult({ img: 'tokens/goblin.png' })).toBe(
-      'tokens/goblin.png'
-    );
+    expect(extractPathFromTVAResult({ img: 'tokens/goblin.png' })).toBe('tokens/goblin.png');
   });
 
   // Null/undefined
@@ -466,7 +464,17 @@ describe('extractPathFromTVAResult', () => {
 // =========================================================================
 
 describe('extractPathFromObject', () => {
-  const pathProperties = ['path', 'route', 'img', 'src', 'image', 'url', 'thumb', 'thumbnail', 'uri'];
+  const pathProperties = [
+    'path',
+    'route',
+    'img',
+    'src',
+    'image',
+    'url',
+    'thumb',
+    'thumbnail',
+    'uri',
+  ];
 
   it.each(pathProperties)('extracts path from "%s" property', (prop) => {
     const obj = { [prop]: 'tokens/goblin.png' };
@@ -524,9 +532,7 @@ describe('extractPathFromObject', () => {
 
 describe('extractNameFromTVAResult', () => {
   it('extracts name from object name property', () => {
-    expect(extractNameFromTVAResult({ name: 'Goblin Warrior' }, null)).toBe(
-      'Goblin Warrior'
-    );
+    expect(extractNameFromTVAResult({ name: 'Goblin Warrior' }, null)).toBe('Goblin Warrior');
   });
 
   it('extracts name from object label property', () => {
@@ -552,9 +558,7 @@ describe('extractNameFromTVAResult', () => {
   });
 
   it('extracts name from path for string item', () => {
-    expect(extractNameFromTVAResult('just-a-string', 'tokens/orc_shaman.png')).toBe(
-      'orc shaman'
-    );
+    expect(extractNameFromTVAResult('just-a-string', 'tokens/orc_shaman.png')).toBe('orc shaman');
   });
 });
 
@@ -572,16 +576,11 @@ describe('createModuleError', () => {
 
   it('calls game.i18n.localize with correct key pattern', () => {
     createModuleError('tva_unavailable', 'No TVA');
-    expect(game.i18n.localize).toHaveBeenCalledWith(
-      'TOKEN_REPLACER_FA.errors.tva_unavailable'
-    );
+    expect(game.i18n.localize).toHaveBeenCalledWith('TOKEN_REPLACER_FA.errors.tva_unavailable');
   });
 
   it('maps recoveryKeys to localized recovery suggestions', () => {
-    const err = createModuleError('search_failed', 'Error', [
-      'check_tva',
-      'refresh_cache',
-    ]);
+    const err = createModuleError('search_failed', 'Error', ['check_tva', 'refresh_cache']);
     expect(err.recoverySuggestions).toEqual([
       'TOKEN_REPLACER_FA.recovery.check_tva',
       'TOKEN_REPLACER_FA.recovery.refresh_cache',
@@ -617,10 +616,9 @@ describe('createDebugLogger', () => {
     setSetting('debugMode', true);
     const logger = createDebugLogger('TestService');
     logger('test message', { data: 1 });
-    expect(logSpy).toHaveBeenCalledWith(
-      'token-replacer-fa | [TestService] test message',
-      { data: 1 }
-    );
+    expect(logSpy).toHaveBeenCalledWith('token-replacer-fa | [TestService] test message', {
+      data: 1,
+    });
   });
 
   it('does not log when debugMode is false', () => {
@@ -654,17 +652,13 @@ describe('isExcludedPath', () => {
   // CDN URL handling
   it('does NOT exclude CDN URL with non-excluded folder (Tokens)', () => {
     expect(
-      isExcludedPath(
-        'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/Tokens/Goblin/goblin.png'
-      )
+      isExcludedPath('https://assets.forge-vtt.com/bazaar/assets/FA_Pack/Tokens/Goblin/goblin.png')
     ).toBe(false);
   });
 
   it('excludes CDN URL with excluded folder in real path (props)', () => {
     expect(
-      isExcludedPath(
-        'https://assets.forge-vtt.com/bazaar/assets/FA_Pack/props/barrel.png'
-      )
+      isExcludedPath('https://assets.forge-vtt.com/bazaar/assets/FA_Pack/props/barrel.png')
     ).toBe(true);
   });
 
@@ -689,15 +683,11 @@ describe('isExcludedPath', () => {
 
   // Filename exclusion with word boundary matching
   it('excludes path with excluded term in filename (cliff_entrance)', () => {
-    expect(
-      isExcludedPath('modules/fa-pack/Tokens/cliff_entrance_01.png')
-    ).toBe(true);
+    expect(isExcludedPath('modules/fa-pack/Tokens/cliff_entrance_01.png')).toBe(true);
   });
 
   it('does NOT exclude partial word match in filename (Clifford)', () => {
-    expect(
-      isExcludedPath('modules/fa-pack/Tokens/Clifford_The_Dog.png')
-    ).toBe(false);
+    expect(isExcludedPath('modules/fa-pack/Tokens/Clifford_The_Dog.png')).toBe(false);
   });
 
   // Excluded folder groups - representative samples

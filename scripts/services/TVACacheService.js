@@ -536,8 +536,8 @@ export class TVACacheService {
 
       // Check if matches any category term
       // Note: We intentionally DON'T check img.category (TVA folder name) as it's unreliable
-      const matches = categoryTermsLower.some((termLower) =>
-        nameLower.includes(termLower) || meaningfulPath.includes(termLower)
+      const matches = categoryTermsLower.some(
+        (termLower) => nameLower.includes(termLower) || meaningfulPath.includes(termLower)
       );
 
       if (matches) {

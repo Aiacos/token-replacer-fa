@@ -112,7 +112,12 @@ describe('TokenService', () => {
     // -- Object type format --
     it('handles object type format with value/subtype/custom', () => {
       const token = createMockToken({
-        actor: createMockActor({ name: 'Goblin', type: 'humanoid', subtype: 'Goblinoid', custom: 'Goblin Raider' }),
+        actor: createMockActor({
+          name: 'Goblin',
+          type: 'humanoid',
+          subtype: 'Goblinoid',
+          custom: 'Goblin Raider',
+        }),
       });
       const info = service.extractCreatureInfo(token);
 
@@ -228,7 +233,9 @@ describe('TokenService', () => {
         id: 'a8',
         name: 'Scout',
         type: 'npc',
-        system: { details: { type: { value: 'humanoid', subtype: '' }, race: { name: 'Halfling' } } },
+        system: {
+          details: { type: { value: 'humanoid', subtype: '' }, race: { name: 'Halfling' } },
+        },
       });
       const info = service.extractCreatureInfo(token);
 
@@ -316,7 +323,11 @@ describe('TokenService', () => {
 
     it('custom type field is included in info and searchTerms', () => {
       const token = createMockToken({
-        actor: createMockActor({ name: 'Shapechanger', type: 'monstrosity', custom: 'Lycanthrope' }),
+        actor: createMockActor({
+          name: 'Shapechanger',
+          type: 'monstrosity',
+          custom: 'Lycanthrope',
+        }),
       });
       const info = service.extractCreatureInfo(token);
 
@@ -439,8 +450,12 @@ describe('TokenService', () => {
     });
 
     it('different creature types get different keys', () => {
-      const goblin = createMockToken({ actor: createMockActor({ name: 'Goblin', type: 'humanoid' }) });
-      const dragon = createMockToken({ actor: createMockActor({ name: 'Dragon', type: 'dragon' }) });
+      const goblin = createMockToken({
+        actor: createMockActor({ name: 'Goblin', type: 'humanoid' }),
+      });
+      const dragon = createMockToken({
+        actor: createMockActor({ name: 'Dragon', type: 'dragon' }),
+      });
 
       const groups = service.groupTokensByCreature([goblin, dragon]);
 
@@ -465,7 +480,9 @@ describe('TokenService', () => {
     });
 
     it('skips tokens where extractCreatureInfo returns null', () => {
-      const good = createMockToken({ actor: createMockActor({ name: 'Goblin', type: 'humanoid' }) });
+      const good = createMockToken({
+        actor: createMockActor({ name: 'Goblin', type: 'humanoid' }),
+      });
       const noActor = { id: 'tok-bad', name: 'Bad', actor: null };
 
       const groups = service.groupTokensByCreature([good, noActor]);

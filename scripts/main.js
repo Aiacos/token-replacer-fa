@@ -738,7 +738,9 @@ export class TokenReplacerApp {
         this._debugLog('Error displayed in dialog');
       } else {
         // Fallback to notification if dialog isn't available
-        let notificationMsg = this.i18n('notifications.processingError', { error: errorDisplay.message });
+        let notificationMsg = this.i18n('notifications.processingError', {
+          error: errorDisplay.message,
+        });
         if (errorDisplay.recoverySuggestions?.length > 0) {
           notificationMsg += ` Try: ${errorDisplay.recoverySuggestions.join('. ')}`;
           ui.notifications.error(notificationMsg, { permanent: true });
@@ -789,10 +791,14 @@ Hooks.once('init', async () => {
   } catch (error) {
     console.error(`${MODULE_ID} | Initialization failed:`, error);
     const msg = game.i18n
-      ? game.i18n.localize('TOKEN_REPLACER_FA.notifications.initFailed').replace('{error}', error.message || String(error))
+      ? game.i18n
+          .localize('TOKEN_REPLACER_FA.notifications.initFailed')
+          .replace('{error}', error.message || String(error))
       : `Token Replacer FA: Initialization failed. ${error.message || String(error)}`;
     if (error.recoverySuggestions?.length > 0) {
-      ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, { permanent: true });
+      ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, {
+        permanent: true,
+      });
     } else {
       ui.notifications.error(msg);
     }
@@ -915,9 +921,13 @@ Hooks.once('ready', async () => {
         }
       } catch (error) {
         console.error(`${MODULE_ID} | Background initialization failed:`, error);
-        const msg = tokenReplacerApp.i18n('notifications.backgroundFailed', { error: error.message || String(error) });
+        const msg = tokenReplacerApp.i18n('notifications.backgroundFailed', {
+          error: error.message || String(error),
+        });
         if (error.recoverySuggestions?.length > 0) {
-          ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, { permanent: true });
+          ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, {
+            permanent: true,
+          });
         } else {
           ui.notifications.error(msg);
         }
@@ -999,8 +1009,12 @@ Hooks.on('getSceneControlButtons', (controls) => {
 window.addEventListener('beforeunload', () => {
   try {
     indexService.terminate();
-  } catch (e) { console.debug(`${MODULE_ID} | Cleanup error:`, e); }
+  } catch (e) {
+    console.debug(`${MODULE_ID} | Cleanup error:`, e);
+  }
   try {
     searchOrchestrator?.terminate();
-  } catch (e) { console.debug(`${MODULE_ID} | Cleanup error:`, e); }
+  } catch (e) {
+    console.debug(`${MODULE_ID} | Cleanup error:`, e);
+  }
 });
