@@ -344,6 +344,10 @@ export class StorageService {
    * @param {WeakSet} [seen] - Cycle detection set (internal, do not pass)
    * @returns {*} Sanitized data
    */
+  // TODO [PERF]: Deep-clones entire IDB payload recursively. At 50K+ images with
+  // termIndex (200K+ keys), this costs 2-5s on main thread. IndexedDB structured clone
+  // doesn't preserve prototypes, so deep recursion is unnecessary for known-safe
+  // structures. Consider shallow sanitization or skipping termIndex (array of strings).
   static _sanitizeData(data, seen = new WeakSet()) {
     if (data === null || data === undefined || typeof data !== 'object') {
       return data;

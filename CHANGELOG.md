@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Creature-type post-filter**: Worker search results now filtered by creature type after completion, preventing cross-category contamination
 - **StorageService cycle guard**: `_sanitizeData()` now uses `WeakSet` to detect circular references from IndexedDB structured clone, preventing stack overflow
 - **Silent failure logging**: added `console.warn` to 4 `IndexService` search catch blocks and `console.debug` to `StorageService.has()` and `UIManager.updateDialogContent()` — errors were previously invisible in production (only `_debugLog` which requires debug mode)
+- **Duplicate creature mapping**: removed duplicate `'sea hag'` entry in fey category that inflated match weight
+- **Worker stale exclusion patterns**: `compiledExcludedPatterns` and `compiledExcludedFolders` now reset on each `indexPaths` call, fixing silent pattern reuse across re-index operations
+- **Worker zombie on timeout**: `searchLocalIndexWithWorker()` timeout now calls `worker.terminate()` to prevent zombie workers receiving subsequent messages
+- **Worker null guard**: added `this.index` null check in Worker `complete` handler to prevent crash if build failed before message arrived
+- **HEAD request timeout**: TVA cache freshness check now uses `AbortSignal.timeout(3000)` to prevent 30-300s hang on misconfigured proxies
 
 ### Security
 
@@ -35,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extracted `_buildSearchableCache()` helper in `TVACacheService` (DRY: eliminated duplicate filter+map chains)
 - Extracted `_attachImageDelegation()` helper in `UIManager` (DRY: replaced 3 duplicate 20-line event delegation blocks)
 - Added `SYNC:` markers to 4 duplicated functions in `IndexWorker.js` (`loadFuse`, `_validateFuseShape`, `CDN_SEGMENTS`, `isExcludedPath`) linking to their `Utils.js` counterparts
+- **saveToCache size logging**: replaced blocking `JSON.stringify` (100-500ms at 30K+ images) with O(1) entry count estimation
 
 ## [2.12.4] - 2026-03-07
 

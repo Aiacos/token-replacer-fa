@@ -357,7 +357,11 @@ export class TVACacheService {
 
       // Check freshness: HEAD request to compare Content-Length
       try {
-        const headResponse = await fetch(cacheFilePath, { method: 'HEAD', credentials: 'omit' });
+        const headResponse = await fetch(cacheFilePath, {
+          method: 'HEAD',
+          credentials: 'omit',
+          signal: AbortSignal.timeout(3000),
+        });
         if (headResponse.ok) {
           const serverLength = parseInt(headResponse.headers.get('Content-Length') || '0');
           const serverModified = headResponse.headers.get('Last-Modified') || '';

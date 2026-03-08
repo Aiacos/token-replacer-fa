@@ -301,12 +301,16 @@ export class IndexService {
 
       this._debugLog('Attempting to save index to localStorage');
 
-      const json = JSON.stringify(this.index);
-      const sizeKB = (json.length / 1024).toFixed(0);
+      // Estimate size from entry counts to avoid blocking JSON.stringify on large indexes
+      const pathCount = this.index.allPaths ? Object.keys(this.index.allPaths).length : 0;
+      const catCount = this.index.categories ? Object.keys(this.index.categories).length : 0;
+      const approxKB = Math.round(pathCount * 0.2 + catCount * 0.5);
 
       await this._storageService.save(CACHE_KEY, this.index);
-      this._debugLog(`Saved index to cache: ${sizeKB}KB`);
-      console.log(`${MODULE_ID} | Saved index to cache (${sizeKB}KB)`);
+      this._debugLog(
+        `Saved index to cache: ~${approxKB}KB (${pathCount} paths, ${catCount} categories)`
+      );
+      console.log(`${MODULE_ID} | Saved index to cache (~${approxKB}KB, ${pathCount} paths)`);
       return true;
     } catch (error) {
       this._debugLog('Failed to save cache:', error);
@@ -908,6 +912,9 @@ export class IndexService {
    * @returns {Promise<number>} Number of images indexed
    * @throws {Object} Structured error if worker fails
    */
+  // TODO [RELIABILITY]: No timeout on indexPathsWithWorker(). If Worker stalls
+  // (OOM, infinite loop), build() hangs forever and buildPromise blocks all future builds.
+  // Add a 120s timeout with worker.terminate() + fallback to indexPathsDirectly().
   async indexPathsWithWorker(paths, onProgress = null) {
     if (!this.worker) {
       this._debugLog('Worker not available for indexPathsWithWorker');
@@ -943,6 +950,12 @@ export class IndexService {
             break;
 
           case 'complete':
+            // Guard against stale complete from a previous build after index was reset
+            if (!this.index) {
+              cleanup();
+              resolve(0);
+              break;
+            }
             // Merge worker results into the index (termIndex now built by Worker)
             this.index.categories = result.categories;
             this.index.allPaths = result.allPaths;

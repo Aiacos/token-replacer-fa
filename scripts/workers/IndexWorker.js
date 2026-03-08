@@ -89,6 +89,10 @@ function handleIndexPaths(data) {
   // Reset cancellation flag at start of operation
   cancelled = false;
 
+  // Reset compiled exclusion caches so re-index with different settings works correctly
+  compiledExcludedPatterns = null;
+  compiledExcludedFolders = null;
+
   // Validate input
   if (!Array.isArray(paths)) {
     throw new Error('paths must be an array');

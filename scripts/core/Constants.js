@@ -713,7 +713,6 @@ export const CREATURE_TYPE_MAPPINGS = {
     'darkling',
     'korred',
     'nereid',
-    'sea hag',
   ],
   celestial: [
     'angel',

@@ -472,6 +472,11 @@ export class SearchOrchestrator {
       // 60s timeout to prevent Promise hanging if Worker stalls
       timeoutId = setTimeout(() => {
         cleanup();
+        // Terminate zombie worker to prevent out-of-order results on subsequent calls
+        if (this.worker) {
+          this.worker.terminate();
+          this.worker = null;
+        }
         reject(
           createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
             'reload_module',
