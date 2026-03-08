@@ -1422,6 +1422,7 @@ export class IndexService {
       this._debugLog(`Found ${results.length} results for category: ${categoryLower}`);
       return results;
     } catch (error) {
+      console.warn(`${MODULE_ID} | Error searching by category (${category}):`, error);
       this._debugLog(`Error searching by category (${category}):`, error);
       return [];
     }
@@ -1503,6 +1504,10 @@ export class IndexService {
       );
       return results;
     } catch (error) {
+      console.warn(
+        `${MODULE_ID} | Error searching by subcategory (${category}/${subcategory}):`,
+        error
+      );
       this._debugLog(`Error searching by subcategory (${category}/${subcategory}):`, error);
       return [];
     }
@@ -1558,6 +1563,7 @@ export class IndexService {
       this._debugLog(`Found ${results.length} results for term: "${term}"`);
       return results;
     } catch (error) {
+      console.warn(`${MODULE_ID} | Error searching for term (${term}):`, error);
       this._debugLog(`Error searching for term (${term}):`, error);
       return [];
     }
@@ -1624,6 +1630,7 @@ export class IndexService {
       this._debugLog(`Found ${results.length} results for multiple terms`);
       return results;
     } catch (error) {
+      console.warn(`${MODULE_ID} | Error searching multiple terms:`, error);
       this._debugLog('Error searching multiple terms:', error);
       return [];
     }

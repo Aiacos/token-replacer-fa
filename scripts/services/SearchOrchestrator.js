@@ -480,7 +480,9 @@ export class SearchOrchestrator {
         );
       }, 60000);
 
-      // Post the search task to the worker
+      // TODO [PERF]: Full localIndex serialized via structured clone per search call.
+      // With 4 parallel batches × 10K entries = 4 concurrent large serializations.
+      // Consider transferring index to Worker once and reusing across searches.
       this.worker.postMessage({
         command: 'fuzzySearch',
         data: {

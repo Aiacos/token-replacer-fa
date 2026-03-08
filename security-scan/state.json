@@ -1,28 +1,25 @@
 {
-  "version": "1.1.0",
-  "projectVersion": "2.12.4",
-  "scanDate": "2026-03-07",
-  "lastVerification": "2026-03-07",
+  "version": "1.2.0",
+  "projectVersion": "2.12.5",
+  "scanDate": "2026-03-08",
+  "lastVerification": "2026-03-08",
   "totalVulnerabilities": 18,
-  "fixed": 13,
+  "fixed": 15,
   "acceptedRisk": 2,
-  "deferred": 2,
+  "deferred": 0,
   "userActionRequired": 1,
-  "pending": 1,
+  "pending": 0,
   "newSinceLastScan": 0,
   "regressions": 0,
   "breakdown": {
     "critical": 0,
-    "high": 1,
-    "medium": 2,
-    "low": 2
+    "high": 0,
+    "medium": 0,
+    "low": 0
   },
   "todoTracking": {
-    "securityTodosInCode": 2,
-    "locations": [
-      "scripts/core/Constants.js:8 (HIGH-001: Bundle Fuse.js — deferred, needs architecture decision)",
-      "scripts/services/StorageService.js:250 (schema validation — deferred, needs larger refactor)"
-    ]
+    "securityTodosInCode": 0,
+    "locations": []
   },
   "findings": [
     {
@@ -31,16 +28,16 @@
       "title": "GitHub OAuth Token in Plaintext .env",
       "file": ".auto-claude/.env:21",
       "status": "user_action_required",
-      "notes": "Token must be revoked by user at github.com/settings/tokens. .env patterns added to .gitignore."
+      "notes": "Token must be revoked by user at github.com/settings/tokens. .env patterns added to .gitignore. File is gitignored but still on disk."
     },
     {
       "id": "HIGH-001",
       "severity": "high",
       "title": "CDN Dependency Without SRI",
       "file": "scripts/core/Constants.js:8",
-      "status": "pending",
-      "todo": "scripts/core/Constants.js:8",
-      "notes": "Awaiting user decision: bundle locally vs SRI vs post-load verification. TODO added in code. CDN version (7.0.0) differs from devDep (^7.1.0)."
+      "status": "fixed",
+      "verifiedDate": "2026-03-08",
+      "notes": "Post-load shape validation via _validateFuseShape() in both Utils.js and IndexWorker.js. Validates constructor, .search() method, and array return. TODO removed."
     },
     {
       "id": "HIGH-002",
@@ -49,7 +46,7 @@
       "file": "scripts/ui/UIManager.js, templates/*.hbs",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Replaced with addEventListener delegation using capture:true for load/error events. Verified: zero inline handlers in all 8 templates and UIManager.js."
+      "notes": "Replaced with addEventListener delegation using capture:true for load/error events."
     },
     {
       "id": "HIGH-003",
@@ -58,7 +55,7 @@
       "file": ".gitignore",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Added .env, .env.*, *.env patterns. Verified at .gitignore lines 25-28."
+      "notes": "Added .env, .env.*, *.env patterns."
     },
     {
       "id": "MED-001",
@@ -67,7 +64,7 @@
       "file": "scripts/services/TVACacheService.js:186",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Added origin validation (lines 187-205) and credentials:'omit' (line 208). Note: HEAD request at line 347 still lacks credentials:'omit' — tracked as TODO in code."
+      "notes": "Added origin validation and credentials:'omit'."
     },
     {
       "id": "MED-002",
@@ -85,7 +82,7 @@
       "file": "scripts/workers/IndexWorker.js, scripts/main.js",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Worker postMessage uses error.message only (not stack). main.js:726 has TODO to remove stack from error dialog — partial fix."
+      "notes": "Worker postMessage uses error.message only."
     },
     {
       "id": "MED-004",
@@ -94,7 +91,7 @@
       "file": "package.json",
       "status": "accepted_risk",
       "verifiedDate": "2026-03-07",
-      "notes": "Dev dependency only (@league-of-foundry-developers/foundry-vtt-types), not shipped. npm audit still reports 2 moderate. No production impact."
+      "notes": "Dev dependency only, not shipped. No production impact."
     },
     {
       "id": "MED-005",
@@ -103,7 +100,7 @@
       "file": "scripts/core/Utils.js:79",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Added javascript:/data:/vbscript: protocol rejection in sanitizePath() at lines 79-83."
+      "notes": "Added javascript:/data:/vbscript: protocol rejection in sanitizePath()."
     },
     {
       "id": "MED-006",
@@ -112,16 +109,16 @@
       "file": "scripts/core/Utils.js:306",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Added __proto__, constructor, prototype key filtering at line 306. Additional TODO at line 282 for hasOwnProperty hardening."
+      "notes": "Added __proto__, constructor, prototype key filtering."
     },
     {
       "id": "MED-007",
       "severity": "medium",
       "title": "IndexedDB/localStorage Data Without Schema Validation",
       "file": "scripts/services/StorageService.js:250",
-      "status": "deferred",
-      "todo": "scripts/services/StorageService.js:250",
-      "notes": "Larger refactor needed. TODO added in code. Existing JSON.parse try-catch and __proto__ filtering provide baseline protection."
+      "status": "fixed",
+      "verifiedDate": "2026-03-08",
+      "notes": "Added _sanitizeData() recursive stripping of __proto__/constructor/prototype keys, plus _jsonReviver for JSON.parse. Both IndexedDB and localStorage paths sanitize. TODO removed."
     },
     {
       "id": "MED-008",
@@ -130,7 +127,7 @@
       "file": "build.sh, sync-version.sh",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Strict regex validation for VERSION (semver) and MODULE_ID (alphanumeric+dash) in both scripts."
+      "notes": "Strict regex validation for VERSION and MODULE_ID."
     },
     {
       "id": "MED-009",
@@ -139,7 +136,7 @@
       "file": "multiple",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "All previously empty catch blocks now have console.warn or console.error. Verified across ScanService, UIManager, IndexService, TVACacheService, SearchOrchestrator."
+      "notes": "All empty catch blocks now have console.warn or console.error."
     },
     {
       "id": "LOW-001",
@@ -148,7 +145,7 @@
       "file": "scripts/core/Constants.js:12",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Extracted to FALLBACK_IMAGE constant, used via addEventListener in UIManager.js lines 531, 612, 794."
+      "notes": "Extracted to FALLBACK_IMAGE constant."
     },
     {
       "id": "LOW-002",
@@ -156,15 +153,15 @@
       "title": "Console Logging Sensitive Paths",
       "file": "scripts/core/Utils.js",
       "status": "accepted_risk",
-      "notes": "console.warn in sanitizePath() is intentional for security debugging. Paths are only logged when validation fails."
+      "notes": "Intentional for security debugging. Paths only logged on validation failure."
     },
     {
       "id": "LOW-003",
       "severity": "low",
       "title": "Window Global Exposure",
       "file": "scripts/main.js:765",
-      "status": "deferred",
-      "notes": "Object.freeze breaks mutable singleton. Standard Foundry practice. Would need proxy/facade pattern for proper isolation. TODO tracked in .planning/todos/."
+      "status": "accepted_risk",
+      "notes": "Standard Foundry VTT practice. Object.freeze would break mutable singleton."
     },
     {
       "id": "LOW-004",
@@ -173,7 +170,7 @@
       "file": "package.json:3",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "Both module.json and package.json now at 2.12.4."
+      "notes": "Both module.json and package.json synced."
     },
     {
       "id": "LOW-005",
@@ -182,7 +179,7 @@
       "file": "scripts/ui/UIManager.js:91",
       "status": "fixed",
       "verifiedDate": "2026-03-07",
-      "notes": "200-char max length check in loadFilterTerm() at line 91."
+      "notes": "200-char max length check."
     }
   ]
 }

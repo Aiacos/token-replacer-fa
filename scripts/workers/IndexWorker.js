@@ -243,6 +243,7 @@ function reportProgress(processed, total, imagesFound) {
 
 /**
  * Load Fuse.js library from CDN
+ * SYNC: Keep in sync with Utils.js loadFuse()
  * @returns {Promise<Function|null>} Fuse constructor or null
  */
 async function loadFuse() {
@@ -252,7 +253,9 @@ async function loadFuse() {
     const module = await import(FUSE_CDN);
     const Candidate = module.default;
     if (!_validateFuseShape(Candidate)) {
-      console.error('IndexWorker: Fuse.js loaded but failed shape validation — possible CDN compromise');
+      console.error(
+        'IndexWorker: Fuse.js loaded but failed shape validation — possible CDN compromise'
+      );
       self.postMessage({
         type: 'error',
         message: 'Fuse.js failed integrity validation after loading from CDN',
@@ -273,6 +276,7 @@ async function loadFuse() {
 
 /**
  * Validate that a loaded Fuse candidate has the expected constructor shape.
+ * SYNC: Keep in sync with Utils.js _validateFuseShape()
  * @param {*} Candidate
  * @returns {boolean}
  */
@@ -417,6 +421,7 @@ function categorizeImage(path, name, creatureTypeMappings) {
 /**
  * CDN URL segments to skip when checking folder exclusions
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+ * SYNC: Keep in sync with Utils.js CDN_SEGMENTS
  */
 const CDN_SEGMENTS = new Set([
   'https:',
@@ -453,6 +458,7 @@ let compiledExcludedFolders = null;
  * Check if a path should be excluded from indexing
  * Checks both folder names and filename for environmental/prop terms
  *
+ * SYNC: Keep in sync with Utils.js isExcludedPath()
  * @param {string} path - Path to check
  * @param {Array} excludedFolders - Folder names to exclude
  * @param {Array} excludedFilenameTerms - Filename terms to exclude

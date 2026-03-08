@@ -14,12 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Score fallback**: unscored fuzzy matches now default to score `0` instead of `0.8`, ensuring the selection dialog always appears for ambiguous results
 - **Worker double-post on Fuse.js failure**: removed redundant `complete` message in `IndexWorker.js` when `loadFuse()` already posted an `error` message
 - **Creature-type post-filter**: Worker search results now filtered by creature type after completion, preventing cross-category contamination
+- **StorageService cycle guard**: `_sanitizeData()` now uses `WeakSet` to detect circular references from IndexedDB structured clone, preventing stack overflow
+- **Silent failure logging**: added `console.warn` to 4 `IndexService` search catch blocks and `console.debug` to `StorageService.has()` and `UIManager.updateDialogContent()` — errors were previously invisible in production (only `_debugLog` which requires debug mode)
 
 ### Security
 
 - Replaced `obj[prop]` with `Object.prototype.hasOwnProperty.call(obj, prop)` in Utils.js to prevent prototype pollution
 - Added `credentials: 'omit'` to HEAD fetch in `TVACacheService` cache freshness check
 - Replaced `error.stack` with `error.message` in user-facing error display to prevent information disclosure
+- Added post-load shape validation (`_validateFuseShape`) for Fuse.js CDN import in both `Utils.js` and `IndexWorker.js` — verifies constructor, `.search()` method, and array return type
+- Added `_sanitizeData()` recursive prototype key stripping and `_jsonReviver` for all IndexedDB/localStorage loads in `StorageService`
 
 ### Changed
 
@@ -30,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **QuotaExceeded notification**: `IndexService` now shows `ui.notifications.warn()` when IndexedDB storage quota is exceeded
 - Extracted `_buildSearchableCache()` helper in `TVACacheService` (DRY: eliminated duplicate filter+map chains)
 - Extracted `_attachImageDelegation()` helper in `UIManager` (DRY: replaced 3 duplicate 20-line event delegation blocks)
+- Added `SYNC:` markers to 4 duplicated functions in `IndexWorker.js` (`loadFuse`, `_validateFuseShape`, `CDN_SEGMENTS`, `isExcludedPath`) linking to their `Utils.js` counterparts
 
 ## [2.12.4] - 2026-03-07
 

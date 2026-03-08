@@ -1068,7 +1068,7 @@ export class UIManager {
       this.mainDialog.updateContent(content);
       this._wireCancelButton();
     } catch (_e) {
-      // Dialog might be in transition
+      console.debug(`${MODULE_ID} | Dialog content update failed (may be in transition):`, _e);
     }
   }
 

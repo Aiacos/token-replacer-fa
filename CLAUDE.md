@@ -168,6 +168,15 @@ const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules
 
 **Note:** This CDN filtering logic exists in BOTH IndexService.js (main thread fallback) and IndexWorker.js (worker thread)
 
+### Worker Code Duplication
+
+Web Workers can't share ES module imports with the main thread, so several functions are duplicated between `Utils.js` and `IndexWorker.js`:
+
+- `loadFuse()` / `_validateFuseShape()` — CDN loading + shape validation
+- `CDN_SEGMENTS` / `isExcludedPath()` — path filtering
+
+Each duplicated function has a `SYNC: Keep in sync with ...` JSDoc marker. When modifying one copy, search for the marker and update both.
+
 ## Version Management
 
 **Single Source of Truth:** The version is defined in `module.json` only. All other files are updated automatically.
@@ -196,3 +205,6 @@ Files in `lang/en.json` and `lang/it.json`. All UI strings use `TOKEN_REPLACER_F
 - Index caching uses IndexedDB (primary) with localStorage fallback (~4.5MB limit)
 - D&D 5e system only (creature type extraction is system-specific)
 - ForgeBazaarService is a non-functional stub (no public Forge API exists)
+- Fuse.js loaded from jsdelivr CDN (post-load shape validation guards against compromise, but not SRI)
+- StorageService sanitizes all loaded data (`_sanitizeData` + `_jsonReviver`) but has no schema validation
+- IndexedDB `DB_VERSION = 1` with no migration handler — schema changes will wipe user cache

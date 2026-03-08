@@ -745,7 +745,9 @@ describe('loadFuse', () => {
 
   it('returns Fuse constructor from CDN on success', async () => {
     const mockFuse = class MockFuse {
-      search() { return []; }
+      search() {
+        return [];
+      }
     };
     vi.doMock('https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs', () => ({
       default: mockFuse,
@@ -760,7 +762,9 @@ describe('loadFuse', () => {
       throw new Error('Network error');
     });
     const mockFuse = class WindowFuse {
-      search() { return []; }
+      search() {
+        return [];
+      }
     };
     window.Fuse = mockFuse;
     const { loadFuse } = await import('../../scripts/core/Utils.js');
@@ -780,7 +784,9 @@ describe('loadFuse', () => {
 
   it('caches result and returns same reference on subsequent calls', async () => {
     const mockFuse = class MockFuse {
-      search() { return []; }
+      search() {
+        return [];
+      }
     };
     vi.doMock('https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs', () => ({
       default: mockFuse,

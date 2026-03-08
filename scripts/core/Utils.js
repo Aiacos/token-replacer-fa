@@ -25,6 +25,8 @@ const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(
 
 /**
  * Load Fuse.js library from CDN
+ * On failure, FuseClass stays null so subsequent calls retry the import.
+ * Note: browsers may cache failed dynamic import() — this is not controllable in userland.
  * @returns {Promise<Function|null>} Fuse constructor or null
  */
 export async function loadFuse() {
@@ -34,7 +36,9 @@ export async function loadFuse() {
     const module = await import(FUSE_CDN);
     const Candidate = module.default;
     if (!_validateFuseShape(Candidate)) {
-      console.error('token-replacer-fa | Fuse.js loaded but failed shape validation — possible CDN compromise');
+      console.error(
+        'token-replacer-fa | Fuse.js loaded but failed shape validation — possible CDN compromise'
+      );
       return null;
     }
     FuseClass = Candidate;
@@ -56,6 +60,7 @@ export async function loadFuse() {
 /**
  * Validate that a loaded Fuse candidate has the expected constructor shape.
  * Catches CDN compromise that replaces Fuse.js with arbitrary code.
+ * SYNC: Keep in sync with IndexWorker.js _validateFuseShape()
  * @param {*} Candidate - The loaded Fuse constructor
  * @returns {boolean} True if the candidate looks like Fuse.js
  */

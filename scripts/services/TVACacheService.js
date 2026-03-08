@@ -42,6 +42,8 @@ export class TVACacheService {
     this.tvaAPI = null;
     this.hasTVA = false;
     this.tvaCacheLoaded = false;
+    // TODO [PERF]: Three full copies of TVA data (~80MB for 30K images). Consider a single
+    // normalized store with indexed views instead of separate Images/Searchable/ByCategory.
     this.tvaCacheImages = [];
     this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
@@ -66,6 +68,8 @@ export class TVACacheService {
    * Build searchable cache from raw images: filter excluded paths, pre-lowercase fields
    * @private
    */
+  // TODO [PERF]: No yield — blocks main thread 50-200ms at 20K+ images.
+  // Add yieldToMain() after filter/map or move to Worker.
   _buildSearchableCache() {
     this.tvaCacheSearchable = this.tvaCacheImages
       .filter((img) => !isExcludedPath(img.path))
@@ -527,6 +531,8 @@ export class TVACacheService {
 
     const categoryTermsLower = categoryTerms.map((t) => t.toLowerCase());
 
+    // TODO [PERF]: O(images × terms) on main thread — 2.4M String.includes() calls at
+    // 30K images × 80 humanoid terms. Consider pre-indexing by term or moving to Worker.
     for (const img of this.tvaCacheSearchable) {
       if (seenPaths.has(img.path)) continue;
 

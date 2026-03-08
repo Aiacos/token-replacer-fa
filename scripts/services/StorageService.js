@@ -8,6 +8,8 @@
 import { MODULE_ID } from '../core/Constants.js';
 
 const DB_NAME = 'token-replacer-fa';
+// TODO [COMPAT]: No IndexedDB migration path — changing DB_VERSION will wipe user data.
+// Add onupgradeneeded handler that migrates data when schema changes.
 const DB_VERSION = 1;
 const STORE_NAME = 'index';
 
@@ -166,7 +168,10 @@ export class StorageService {
 
         return count > 0;
       } catch (_error) {
-        // Fall through to localStorage
+        console.debug(
+          `${MODULE_ID} | IndexedDB has() failed, falling back to localStorage:`,
+          _error
+        );
       }
     }
 
@@ -334,16 +339,21 @@ export class StorageService {
   /**
    * Deep-sanitize data loaded from storage by stripping prototype-polluting keys.
    * Applied to IndexedDB data (which bypasses JSON.parse reviver).
+   * Uses a WeakSet to guard against circular references from structured clone.
    * @param {*} data - Data to sanitize
+   * @param {WeakSet} [seen] - Cycle detection set (internal, do not pass)
    * @returns {*} Sanitized data
    */
-  static _sanitizeData(data) {
+  static _sanitizeData(data, seen = new WeakSet()) {
     if (data === null || data === undefined || typeof data !== 'object') {
       return data;
     }
 
+    if (seen.has(data)) return data;
+    seen.add(data);
+
     if (Array.isArray(data)) {
-      return data.map((item) => StorageService._sanitizeData(item));
+      return data.map((item) => StorageService._sanitizeData(item, seen));
     }
 
     const cleaned = {};
@@ -351,7 +361,7 @@ export class StorageService {
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
         continue;
       }
-      cleaned[key] = StorageService._sanitizeData(data[key]);
+      cleaned[key] = StorageService._sanitizeData(data[key], seen);
     }
     return cleaned;
   }
