@@ -26,6 +26,12 @@ let FuseClass = null;
 let cancelled = false;
 
 /**
+ * Persisted search index — set once via 'setSearchIndex', reused across fuzzySearch calls.
+ * Avoids re-serializing the full index via structured clone on every search.
+ */
+let persistedSearchIndex = null;
+
+/**
  * Main message handler for the worker
  * Receives commands from the main thread and processes them
  */
@@ -36,6 +42,14 @@ self.addEventListener('message', (event) => {
     switch (command) {
       case 'indexPaths':
         handleIndexPaths(data);
+        break;
+
+      case 'setSearchIndex':
+        persistedSearchIndex = data.index;
+        self.postMessage({
+          type: 'indexSet',
+          count: Array.isArray(data.index) ? data.index.length : 0,
+        });
         break;
 
       case 'fuzzySearch':
@@ -306,17 +320,20 @@ function _validateFuseShape(Candidate) {
  * @param {Object} data.options - Fuse.js options (keys, threshold, etc.)
  */
 async function handleFuzzySearch(data) {
-  const { searchTerms, index, options } = data;
+  const { searchTerms, index: inlineIndex, options } = data;
 
   // Reset cancellation flag at start of operation
   cancelled = false;
+
+  // Use persisted index if available, otherwise fall back to inline index
+  const index = persistedSearchIndex || inlineIndex;
 
   // Validate input
   if (!Array.isArray(searchTerms)) {
     throw new Error('searchTerms must be an array');
   }
   if (!Array.isArray(index)) {
-    throw new Error('index must be an array');
+    throw new Error('index must be an array — send setSearchIndex or include index in data');
   }
   if (!options || typeof options !== 'object') {
     throw new Error('options must be an object');

@@ -42,11 +42,10 @@ export class TVACacheService {
     this.tvaAPI = null;
     this.hasTVA = false;
     this.tvaCacheLoaded = false;
-    // TODO [PERF]: Three full copies of TVA data (~80MB for 30K images). Consider a single
-    // normalized store with indexed views instead of separate Images/Searchable/ByCategory.
     this.tvaCacheImages = [];
     this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
+    this._categoryCache = {};
     this._loadPromise = null; // Promise deduplication for concurrent loads
     // Shared utilities
     this._createError = createModuleError;
@@ -65,7 +64,8 @@ export class TVACacheService {
   }
 
   /**
-   * Build searchable cache from raw images: filter excluded paths, pre-lowercase fields.
+   * Build searchable cache from raw images: filter excluded paths, add lowercase fields
+   * in-place (no object duplication), and pre-build category search cache.
    * Yields to main thread every CHUNK_SIZE items to avoid blocking UI on large datasets.
    * @private
    * @returns {Promise<void>}
@@ -73,36 +73,46 @@ export class TVACacheService {
   async _buildSearchableCache() {
     const CHUNK_SIZE = 5000;
     const images = this.tvaCacheImages;
-
-    // Small datasets: process synchronously (no yield overhead)
-    if (images.length <= CHUNK_SIZE) {
-      this.tvaCacheSearchable = images
-        .filter((img) => !isExcludedPath(img.path))
-        .map((img) => ({
-          ...img,
-          _nameLower: (img.name || '').toLowerCase(),
-          _pathLower: (img.path || '').toLowerCase(),
-        }));
-      return;
-    }
-
-    // Large datasets: process in chunks with yields
     const result = [];
-    for (let i = 0; i < images.length; i += CHUNK_SIZE) {
-      const chunk = images.slice(i, i + CHUNK_SIZE);
-      for (const img of chunk) {
-        if (!isExcludedPath(img.path)) {
-          result.push({
-            ...img,
-            _nameLower: (img.name || '').toLowerCase(),
-            _pathLower: (img.path || '').toLowerCase(),
-          });
-        }
+
+    // Add lowercase fields in-place and filter excluded paths
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      img._nameLower = (img.name || '').toLowerCase();
+      img._pathLower = (img.path || '').toLowerCase();
+      if (!isExcludedPath(img.path)) {
+        result.push(img);
       }
-      // Yield to main thread between chunks
-      await new Promise((r) => setTimeout(r, 0));
+      // Yield to main thread between chunks for large datasets
+      if (i > 0 && i % CHUNK_SIZE === 0) {
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
     this.tvaCacheSearchable = result;
+
+    // Pre-build category search cache: categoryType → results[]
+    // This converts O(images × terms) per search to O(1) lookup
+    this._categoryCache = {};
+    for (const [categoryType, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
+      const termsLower = terms.map((t) => t.toLowerCase());
+      const categoryResults = [];
+      const seenPaths = new Set();
+
+      for (const img of result) {
+        if (seenPaths.has(img.path)) continue;
+        const meaningfulPath = img._pathLower.split('/').slice(-4).join('/');
+        const matches = termsLower.some(
+          (termLower) => img._nameLower.includes(termLower) || meaningfulPath.includes(termLower)
+        );
+        if (matches) {
+          seenPaths.add(img.path);
+          categoryResults.push(img);
+        }
+      }
+      if (categoryResults.length > 0) {
+        this._categoryCache[categoryType.toLowerCase()] = categoryResults;
+      }
+    }
   }
 
   /**
@@ -464,6 +474,7 @@ export class TVACacheService {
     this.tvaCacheImages = [];
     this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
+    this._categoryCache = {};
     clearExcludedPathCache();
     // Clear IndexedDB cache to force fresh fetch
     await this._storageService.remove(TVA_CACHE_KEY).catch((e) => {
@@ -555,13 +566,32 @@ export class TVACacheService {
     );
     const startTime = Date.now();
 
+    const categoryKey = categoryType.toLowerCase();
+
+    // Use pre-built category cache when available (O(1) lookup)
+    if (this._categoryCache && Object.keys(this._categoryCache).length > 0) {
+      const cached = this._categoryCache[categoryKey] || [];
+      const results = cached.map((img) => ({
+        path: img.path,
+        name: img.name,
+        category: img.category,
+        tags: img.tags,
+        source: 'tva-direct',
+        score: 0.3,
+      }));
+
+      const elapsed = Date.now() - startTime;
+      this._debugLog(
+        `Category search completed in ${elapsed}ms: ${results.length} matches (cached)`
+      );
+      return results;
+    }
+
+    // Fallback: scan searchable cache directly (when _categoryCache not built)
+    const categoryTermsLower = categoryTerms.map((t) => t.toLowerCase());
     const results = [];
     const seenPaths = new Set();
 
-    const categoryTermsLower = categoryTerms.map((t) => t.toLowerCase());
-
-    // TODO [PERF]: O(images × terms) on main thread — 2.4M String.includes() calls at
-    // 30K images × 80 humanoid terms. Consider pre-indexing by term or moving to Worker.
     for (const img of this.tvaCacheSearchable) {
       if (seenPaths.has(img.path)) continue;
 
@@ -569,8 +599,6 @@ export class TVACacheService {
       const pathLower = img._pathLower ?? (img.path || '').toLowerCase();
       const meaningfulPath = pathLower.split('/').slice(-4).join('/');
 
-      // Check if matches any category term
-      // Note: We intentionally DON'T check img.category (TVA folder name) as it's unreliable
       const matches = categoryTermsLower.some(
         (termLower) => nameLower.includes(termLower) || meaningfulPath.includes(termLower)
       );
@@ -589,8 +617,9 @@ export class TVACacheService {
     }
 
     const elapsed = Date.now() - startTime;
-    this._debugLog(`Category search completed in ${elapsed}ms: ${results.length} matches found`);
-
+    this._debugLog(
+      `Category search completed in ${elapsed}ms: ${results.length} matches (scanned)`
+    );
     return results;
   }
 

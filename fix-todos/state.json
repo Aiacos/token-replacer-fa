@@ -1,9 +1,9 @@
 {
-  "session": "review-predict-fix-v4",
-  "created": "2026-03-08T14:30:00Z",
+  "session": "review-predict-fix-v5-complete",
+  "created": "2026-03-08T14:41:00Z",
   "total": 13,
-  "resolved": 10,
-  "deferred": 3,
+  "resolved": 13,
+  "deferred": 0,
   "current": null,
   "items": {
     "BUG-duplicate-sea-hag": "resolved — removed duplicate 'sea hag' from fey array in Constants.js",
@@ -12,13 +12,13 @@
     "BUG-zombie-worker": "resolved — worker.terminate() + null on search timeout in SearchOrchestrator",
     "BUG-index-null-guard": "resolved — null guard on this.index in Worker complete handler in IndexService",
     "PERF-stringify-logging": "resolved — replaced JSON.stringify with entry count estimation in IndexService.saveToCache()",
-    "RELIABILITY-worker-build-timeout": "resolved — 120s timeout with terminate+cleanup, settled guard prevents double-resolve, caller falls back to indexPathsDirectly()",
-    "PERF-sanitize-deep-clone": "resolved — skip recursion into arrays of primitives (no prototype pollution risk), keeps deep-sanitize for objects",
-    "PERF-buildSearchableCache-yield": "resolved — async chunked processing (5K items/chunk) with setTimeout yield for datasets > 5K images",
-    "COMPAT-db-migration": "resolved — versioned onupgradeneeded handler using event.oldVersion switch/fallthrough pattern",
-    "PERF-tva-3copies": "deferred — architecture refactor: needs single normalized store with indexed views",
-    "PERF-category-search-nm": "deferred — needs pre-indexing by term or Worker offload for O(N×M) search",
-    "PERF-structured-clone-search": "deferred — needs Worker-side index persistence to avoid per-search serialization"
+    "RELIABILITY-worker-build-timeout": "resolved — 120s timeout with terminate+cleanup, settled guard prevents double-resolve",
+    "PERF-sanitize-deep-clone": "resolved — skip recursion into arrays of primitives (no prototype pollution risk)",
+    "PERF-buildSearchableCache-yield": "resolved — async chunked processing with yield, merged into in-place lowercase optimization",
+    "COMPAT-db-migration": "resolved — versioned onupgradeneeded handler using event.oldVersion switch pattern",
+    "PERF-tva-3copies": "resolved — in-place lowercase fields (no object spread/duplication), tvaCacheSearchable is now filtered reference array",
+    "PERF-category-search-nm": "resolved — pre-built _categoryCache map during _buildSearchableCache(), O(1) lookup with scan fallback",
+    "PERF-structured-clone-search": "resolved — setSearchIndex command persists index in Worker, fuzzySearch skips re-serialization"
   },
   "testsBefore": 509,
   "testsAfter": 509
