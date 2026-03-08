@@ -8,8 +8,6 @@
 import { MODULE_ID } from '../core/Constants.js';
 
 const DB_NAME = 'token-replacer-fa';
-// TODO [COMPAT]: No IndexedDB migration path — changing DB_VERSION will wipe user data.
-// Add onupgradeneeded handler that migrates data when schema changes.
 const DB_VERSION = 1;
 const STORE_NAME = 'index';
 
@@ -100,11 +98,24 @@ export class StorageService {
       request.onupgradeneeded = (event) => {
         /** @type {IDBDatabase} */
         const db = /** @type {IDBRequest} */ (event.target).result;
+        const oldVersion = event.oldVersion || 0;
 
-        // Create object store if it doesn't exist
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
+        console.log(`${MODULE_ID} | IndexedDB upgrade: v${oldVersion} → v${DB_VERSION}`);
+
+        // Incremental migrations — each case falls through to apply all needed upgrades
+        // eslint-disable-next-line default-case
+        switch (oldVersion) {
+          case 0:
+            // Fresh install: create the object store
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+              console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
+            }
+            break;
+          // Future migrations: add cases here with fallthrough
+          // case 1:
+          //   // v1 → v2: add indexes, transform data, etc.
+          //   // falls through to case 2 if needed
         }
       };
 
@@ -337,17 +348,14 @@ export class StorageService {
   }
 
   /**
-   * Deep-sanitize data loaded from storage by stripping prototype-polluting keys.
+   * Sanitize data loaded from storage by stripping prototype-polluting keys.
    * Applied to IndexedDB data (which bypasses JSON.parse reviver).
-   * Uses a WeakSet to guard against circular references from structured clone.
+   * Optimized: skips arrays of primitives (strings, numbers) since they can't
+   * carry __proto__ pollution. Only recurses into objects and arrays-of-objects.
    * @param {*} data - Data to sanitize
    * @param {WeakSet} [seen] - Cycle detection set (internal, do not pass)
    * @returns {*} Sanitized data
    */
-  // TODO [PERF]: Deep-clones entire IDB payload recursively. At 50K+ images with
-  // termIndex (200K+ keys), this costs 2-5s on main thread. IndexedDB structured clone
-  // doesn't preserve prototypes, so deep recursion is unnecessary for known-safe
-  // structures. Consider shallow sanitization or skipping termIndex (array of strings).
   static _sanitizeData(data, seen = new WeakSet()) {
     if (data === null || data === undefined || typeof data !== 'object') {
       return data;
@@ -357,6 +365,10 @@ export class StorageService {
     seen.add(data);
 
     if (Array.isArray(data)) {
+      // Skip arrays of primitives — no prototype pollution risk
+      if (data.length === 0 || typeof data[0] !== 'object' || data[0] === null) {
+        return data;
+      }
       return data.map((item) => StorageService._sanitizeData(item, seen));
     }
 

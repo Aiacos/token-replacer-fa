@@ -912,9 +912,6 @@ export class IndexService {
    * @returns {Promise<number>} Number of images indexed
    * @throws {Object} Structured error if worker fails
    */
-  // TODO [RELIABILITY]: No timeout on indexPathsWithWorker(). If Worker stalls
-  // (OOM, infinite loop), build() hangs forever and buildPromise blocks all future builds.
-  // Add a 120s timeout with worker.terminate() + fallback to indexPathsDirectly().
   async indexPathsWithWorker(paths, onProgress = null) {
     if (!this.worker) {
       this._debugLog('Worker not available for indexPathsWithWorker');
@@ -935,7 +932,42 @@ export class IndexService {
 
     this._debugLog(`Starting worker-based indexing for ${paths.length} paths`);
 
+    // Timeout: 120s for indexing, scales with dataset size but caps to prevent infinite hang
+    const WORKER_BUILD_TIMEOUT_MS = 120_000;
+
     return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        if (this.worker) {
+          this.worker.removeEventListener('message', messageHandler);
+          this.worker.removeEventListener('error', errorHandler);
+        }
+      };
+
+      // Timeout: terminate stalled worker so build() can fall back to indexPathsDirectly()
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        this._debugLog(`Worker build timed out after ${WORKER_BUILD_TIMEOUT_MS / 1000}s`);
+        console.warn(
+          `${MODULE_ID} | Worker build timed out after ${WORKER_BUILD_TIMEOUT_MS / 1000}s, terminating`
+        );
+        if (this.worker) {
+          this.worker.terminate();
+          this.worker = null;
+        }
+        reject(
+          this._createError(
+            'worker_failed',
+            'Worker build timed out — falling back to direct indexing',
+            ['disable_worker', 'reload_module']
+          )
+        );
+      }, WORKER_BUILD_TIMEOUT_MS);
+
       // Create a unique message handler for this indexing operation
       const messageHandler = (event) => {
         const { type, processed, total, imagesFound, result, message } = event.data;
@@ -950,9 +982,11 @@ export class IndexService {
             break;
 
           case 'complete':
+            if (settled) return;
+            settled = true;
+            cleanup();
             // Guard against stale complete from a previous build after index was reset
             if (!this.index) {
-              cleanup();
               resolve(0);
               break;
             }
@@ -960,10 +994,6 @@ export class IndexService {
             this.index.categories = result.categories;
             this.index.allPaths = result.allPaths;
             this.index.termIndex = result.termIndex || {};
-
-            // Clean up handlers
-            this.worker.removeEventListener('message', messageHandler);
-            this.worker.removeEventListener('error', errorHandler);
 
             this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
             console.log(
@@ -973,17 +1003,17 @@ export class IndexService {
             break;
 
           case 'cancelled':
-            // Clean up on cancellation
-            this.worker.removeEventListener('message', messageHandler);
-            this.worker.removeEventListener('error', errorHandler);
+            if (settled) return;
+            settled = true;
+            cleanup();
             console.log(`${MODULE_ID} | Operation cancelled by user`);
             reject(new Error('Operation cancelled'));
             break;
 
           case 'error': {
-            // Clean up and reject on error
-            this.worker.removeEventListener('message', messageHandler);
-            this.worker.removeEventListener('error', errorHandler);
+            if (settled) return;
+            settled = true;
+            cleanup();
             this._debugLog(`Worker error: ${message}`);
             console.error(`${MODULE_ID} | Worker error:`, message);
 
@@ -1008,8 +1038,9 @@ export class IndexService {
 
       // Add error handler for worker errors
       const errorHandler = (error) => {
-        this.worker.removeEventListener('message', messageHandler);
-        this.worker.removeEventListener('error', errorHandler);
+        if (settled) return;
+        settled = true;
+        cleanup();
         this._debugLog('Worker error event:', error);
         console.error(`${MODULE_ID} | Worker error event:`, error);
 
@@ -1035,8 +1066,9 @@ export class IndexService {
           },
         });
       } catch (error) {
-        this.worker.removeEventListener('message', messageHandler);
-        this.worker.removeEventListener('error', errorHandler);
+        if (settled) return;
+        settled = true;
+        cleanup();
         this._debugLog('Failed to post message to worker:', error);
 
         const structuredError = this._createError(

@@ -65,19 +65,44 @@ export class TVACacheService {
   }
 
   /**
-   * Build searchable cache from raw images: filter excluded paths, pre-lowercase fields
+   * Build searchable cache from raw images: filter excluded paths, pre-lowercase fields.
+   * Yields to main thread every CHUNK_SIZE items to avoid blocking UI on large datasets.
    * @private
+   * @returns {Promise<void>}
    */
-  // TODO [PERF]: No yield — blocks main thread 50-200ms at 20K+ images.
-  // Add yieldToMain() after filter/map or move to Worker.
-  _buildSearchableCache() {
-    this.tvaCacheSearchable = this.tvaCacheImages
-      .filter((img) => !isExcludedPath(img.path))
-      .map((img) => ({
-        ...img,
-        _nameLower: (img.name || '').toLowerCase(),
-        _pathLower: (img.path || '').toLowerCase(),
-      }));
+  async _buildSearchableCache() {
+    const CHUNK_SIZE = 5000;
+    const images = this.tvaCacheImages;
+
+    // Small datasets: process synchronously (no yield overhead)
+    if (images.length <= CHUNK_SIZE) {
+      this.tvaCacheSearchable = images
+        .filter((img) => !isExcludedPath(img.path))
+        .map((img) => ({
+          ...img,
+          _nameLower: (img.name || '').toLowerCase(),
+          _pathLower: (img.path || '').toLowerCase(),
+        }));
+      return;
+    }
+
+    // Large datasets: process in chunks with yields
+    const result = [];
+    for (let i = 0; i < images.length; i += CHUNK_SIZE) {
+      const chunk = images.slice(i, i + CHUNK_SIZE);
+      for (const img of chunk) {
+        if (!isExcludedPath(img.path)) {
+          result.push({
+            ...img,
+            _nameLower: (img.name || '').toLowerCase(),
+            _pathLower: (img.path || '').toLowerCase(),
+          });
+        }
+      }
+      // Yield to main thread between chunks
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    this.tvaCacheSearchable = result;
   }
 
   /**
@@ -184,7 +209,7 @@ export class TVACacheService {
       if (cached) {
         this.tvaCacheByCategory = cached.tvaCacheByCategory;
         this.tvaCacheImages = cached.tvaCacheImages;
-        this._buildSearchableCache();
+        await this._buildSearchableCache();
         this.tvaCacheLoaded = true;
         const categories = Object.keys(this.tvaCacheByCategory).length;
         this._debugLog(
@@ -304,7 +329,7 @@ export class TVACacheService {
         );
       }
 
-      this._buildSearchableCache();
+      await this._buildSearchableCache();
       this.tvaCacheLoaded = true;
       const categories = Object.keys(this.tvaCacheByCategory).length;
       this._debugLog(

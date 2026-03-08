@@ -207,4 +207,4 @@ Files in `lang/en.json` and `lang/it.json`. All UI strings use `TOKEN_REPLACER_F
 - ForgeBazaarService is a non-functional stub (no public Forge API exists)
 - Fuse.js loaded from jsdelivr CDN (post-load shape validation guards against compromise, but not SRI)
 - StorageService sanitizes all loaded data (`_sanitizeData` + `_jsonReviver`) but has no schema validation
-- IndexedDB `DB_VERSION = 1` with no migration handler — schema changes will wipe user cache
+- IndexedDB `DB_VERSION = 1` with versioned migration handler — add new `case` blocks in `openDatabase()` for future schema changes

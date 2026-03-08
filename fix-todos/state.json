@@ -1,9 +1,9 @@
 {
-  "session": "review-predict-fix-v3",
-  "created": "2026-03-08T14:00:00Z",
+  "session": "review-predict-fix-v4",
+  "created": "2026-03-08T14:30:00Z",
   "total": 13,
-  "resolved": 6,
-  "deferred": 7,
+  "resolved": 10,
+  "deferred": 3,
   "current": null,
   "items": {
     "BUG-duplicate-sea-hag": "resolved — removed duplicate 'sea hag' from fey array in Constants.js",
@@ -12,13 +12,13 @@
     "BUG-zombie-worker": "resolved — worker.terminate() + null on search timeout in SearchOrchestrator",
     "BUG-index-null-guard": "resolved — null guard on this.index in Worker complete handler in IndexService",
     "PERF-stringify-logging": "resolved — replaced JSON.stringify with entry count estimation in IndexService.saveToCache()",
-    "RELIABILITY-worker-build-timeout": "deferred — needs fallback design (indexPathsDirectly vs terminate+retry)",
-    "PERF-sanitize-deep-clone": "deferred — needs benchmarking to determine threshold for shallow vs deep",
-    "PERF-tva-3copies": "deferred — architecture refactor, kept as TODO",
-    "PERF-buildSearchableCache-yield": "deferred — needs benchmarking, kept as TODO",
-    "PERF-category-search-nm": "deferred — needs pre-indexing design, kept as TODO",
-    "PERF-structured-clone-search": "deferred — needs Worker-side index persistence design",
-    "COMPAT-db-migration": "deferred — design decision, kept as TODO"
+    "RELIABILITY-worker-build-timeout": "resolved — 120s timeout with terminate+cleanup, settled guard prevents double-resolve, caller falls back to indexPathsDirectly()",
+    "PERF-sanitize-deep-clone": "resolved — skip recursion into arrays of primitives (no prototype pollution risk), keeps deep-sanitize for objects",
+    "PERF-buildSearchableCache-yield": "resolved — async chunked processing (5K items/chunk) with setTimeout yield for datasets > 5K images",
+    "COMPAT-db-migration": "resolved — versioned onupgradeneeded handler using event.oldVersion switch/fallthrough pattern",
+    "PERF-tva-3copies": "deferred — architecture refactor: needs single normalized store with indexed views",
+    "PERF-category-search-nm": "deferred — needs pre-indexing by term or Worker offload for O(N×M) search",
+    "PERF-structured-clone-search": "deferred — needs Worker-side index persistence to avoid per-search serialization"
   },
   "testsBefore": 509,
   "testsAfter": 509
