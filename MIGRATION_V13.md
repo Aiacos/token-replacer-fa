@@ -9,6 +9,7 @@ Scanned on: 2025-08 | Module version: 2.12.5 | Baseline: v13+ (dropping v12)
 The codebase is in **excellent shape** for v13+. Most modernization was done proactively during the v2.12 refactor. Only minor cleanup items remain, all low-risk.
 
 **Legend:**
+
 - ✅ DONE — Already modernized
 - ⚠️ LOW — Minor / defensive code left over from v12 compat; safe to keep
 - 🔶 MEDIUM — Should be cleaned up before v3.0
@@ -18,9 +19,9 @@ The codebase is in **excellent shape** for v13+. Most modernization was done pro
 
 ## ApplicationV2 / Dialog
 
-| Status | File | Line(s) | Detail |
-|--------|------|---------|--------|
-| ✅ DONE | `scripts/ui/UIManager.js` | 113 | `TokenReplacerDialog extends foundry.applications.api.ApplicationV2` — already fully ported to ApplicationV2. No `Dialog`, `FormApplication`, or `Application` base class usage anywhere. |
+| Status  | File                      | Line(s) | Detail                                                                                                                                                                                    |
+| ------- | ------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ DONE | `scripts/ui/UIManager.js` | 113     | `TokenReplacerDialog extends foundry.applications.api.ApplicationV2` — already fully ported to ApplicationV2. No `Dialog`, `FormApplication`, or `Application` base class usage anywhere. |
 
 **No action required.**
 
@@ -28,13 +29,14 @@ The codebase is in **excellent shape** for v13+. Most modernization was done pro
 
 ## Template Loading (`loadTemplates` / `renderTemplate`)
 
-| Status | File | Line(s) | Detail |
-|--------|------|---------|--------|
-| ✅ DONE | `scripts/core/Utils.js` | 424–428 | `renderModuleTemplate()` checks `foundry.applications.handlebars.renderTemplate` first (v13 path). |
-| ✅ DONE | `scripts/core/Utils.js` | 436–443 | `loadModuleTemplates()` checks `foundry.applications.handlebars.loadTemplates` first (v13 path). |
-| ⚠️ LOW | `scripts/core/Utils.js` | 428, 442 | v12 global-fallback branches (`renderTemplate(...)`, `loadTemplates(...)`) are now dead code since minimum is v13. Safe to remove in a future cleanup. Not a runtime problem — the v13 branch always runs first. |
+| Status  | File                    | Line(s)  | Detail                                                                                                                                                                                                           |
+| ------- | ----------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅ DONE | `scripts/core/Utils.js` | 424–428  | `renderModuleTemplate()` checks `foundry.applications.handlebars.renderTemplate` first (v13 path).                                                                                                               |
+| ✅ DONE | `scripts/core/Utils.js` | 436–443  | `loadModuleTemplates()` checks `foundry.applications.handlebars.loadTemplates` first (v13 path).                                                                                                                 |
+| ⚠️ LOW  | `scripts/core/Utils.js` | 428, 442 | v12 global-fallback branches (`renderTemplate(...)`, `loadTemplates(...)`) are now dead code since minimum is v13. Safe to remove in a future cleanup. Not a runtime problem — the v13 branch always runs first. |
 
 **Recommended cleanup (non-breaking, future PR):**
+
 ```js
 // Remove fallback branches; simplify to:
 export async function renderModuleTemplate(path, data) {
@@ -49,31 +51,31 @@ export async function loadModuleTemplates(paths) {
 
 ## Global Utility Functions
 
-| Status | API | Detail |
-|--------|-----|--------|
-| ✅ DONE | `getProperty` / `setProperty` / `hasProperty` | Not used anywhere in `scripts/`. |
-| ✅ DONE | `mergeObject` | Not used. |
-| ✅ DONE | `duplicate()` | Not used (only the word "duplicate" appears in comments/Set usage). |
-| ✅ DONE | `isObjectEmpty` / `flattenObject` / `expandObject` | Not used. |
-| ✅ DONE | `foundry.utils.*` | Codebase does not rely on these globals; no migration needed. |
+| Status  | API                                                | Detail                                                              |
+| ------- | -------------------------------------------------- | ------------------------------------------------------------------- |
+| ✅ DONE | `getProperty` / `setProperty` / `hasProperty`      | Not used anywhere in `scripts/`.                                    |
+| ✅ DONE | `mergeObject`                                      | Not used.                                                           |
+| ✅ DONE | `duplicate()`                                      | Not used (only the word "duplicate" appears in comments/Set usage). |
+| ✅ DONE | `isObjectEmpty` / `flattenObject` / `expandObject` | Not used.                                                           |
+| ✅ DONE | `foundry.utils.*`                                  | Codebase does not rely on these globals; no migration needed.       |
 
 ---
 
 ## Dice / Roll Modes
 
-| Status | API | Detail |
-|--------|-----|--------|
+| Status  | API                     | Detail                                         |
+| ------- | ----------------------- | ---------------------------------------------- |
 | ✅ DONE | `CONFIG.Dice.rollModes` | Not used. No dice-related code in this module. |
 
 ---
 
 ## Remaining Structural Concerns
 
-| Status | Area | File | Detail |
-|--------|------|------|--------|
-| ⚠️ LOW | v12 compat stubs | `scripts/core/Utils.js` | Dual-path `renderModuleTemplate` / `loadModuleTemplates` (see above). Dead fallback, cosmetically noisy. |
-| 🔶 MEDIUM | Worker API | `scripts/workers/IndexWorker.js` | Web Worker usage is standard browser API — no Foundry deprecation risk. Monitor if Foundry changes worker sandboxing in v14/v15. |
-| 🔶 MEDIUM | `game.i18n.localize` | `scripts/main.js`, `scripts/ui/UIManager.js` | API stable in v13/v14; no changes required now. Watch for v15 i18n refactor if announced. |
+| Status    | Area                 | File                                         | Detail                                                                                                                           |
+| --------- | -------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| ⚠️ LOW    | v12 compat stubs     | `scripts/core/Utils.js`                      | Dual-path `renderModuleTemplate` / `loadModuleTemplates` (see above). Dead fallback, cosmetically noisy.                         |
+| 🔶 MEDIUM | Worker API           | `scripts/workers/IndexWorker.js`             | Web Worker usage is standard browser API — no Foundry deprecation risk. Monitor if Foundry changes worker sandboxing in v14/v15. |
+| 🔶 MEDIUM | `game.i18n.localize` | `scripts/main.js`, `scripts/ui/UIManager.js` | API stable in v13/v14; no changes required now. Watch for v15 i18n refactor if announced.                                        |
 
 ---
 

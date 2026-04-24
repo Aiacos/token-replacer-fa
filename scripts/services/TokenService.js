@@ -206,17 +206,21 @@ export class TokenService {
     try {
       // Update both the token document and the prototype token on the actor
       // Foundry VTT dot-notation update path syntax ('texture.src')
-      await token.document.update(/** @type {any} */ ({
-        'texture.src': imagePath,
-      }));
+      await token.document.update(
+        /** @type {any} */ ({
+          'texture.src': imagePath,
+        })
+      );
 
       // Also update the actor's prototype token if it exists
       const actor = token.actor;
       if (actor) {
         // Foundry VTT dot-notation update path syntax ('prototypeToken.texture.src')
-        await actor.update(/** @type {any} */ ({
-          'prototypeToken.texture.src': imagePath,
-        }));
+        await actor.update(
+          /** @type {any} */ ({
+            'prototypeToken.texture.src': imagePath,
+          })
+        );
       }
 
       console.log(`${MODULE_ID} | Replaced token image for ${token.name}`);

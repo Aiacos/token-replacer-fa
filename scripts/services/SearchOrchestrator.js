@@ -277,10 +277,12 @@ export class SearchOrchestrator {
         try {
           ui.notifications.warn(
             game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
-            'Token Replacer FA: Background worker failed, using slower method.',
+              'Token Replacer FA: Background worker failed, using slower method.',
             { permanent: false }
           );
-        } catch { /* ui.notifications may not be ready */ }
+        } catch {
+          /* ui.notifications may not be ready */
+        }
         return this.searchLocalIndexDirectly(searchTerms, index, creatureType);
       }
     } else {
@@ -352,11 +354,9 @@ export class SearchOrchestrator {
    */
   async searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
     if (!this.worker) {
-      throw createModuleError(
-        'worker_failed',
-        'Web Worker not available for background search',
-        ['reload_module']
-      );
+      throw createModuleError('worker_failed', 'Web Worker not available for background search', [
+        'reload_module',
+      ]);
     }
 
     if (!index || index.length === 0) return [];
@@ -394,11 +394,13 @@ export class SearchOrchestrator {
           case 'error':
             cleanup();
             console.error(`${MODULE_ID} | Worker search error:`, message);
-            reject(createModuleError(
-              'worker_failed',
-              `Worker search error: ${message || 'Unknown error'}`,
-              ['reload_module', 'check_console']
-            ));
+            reject(
+              createModuleError(
+                'worker_failed',
+                `Worker search error: ${message || 'Unknown error'}`,
+                ['reload_module', 'check_console']
+              )
+            );
             break;
 
           default:
@@ -410,11 +412,13 @@ export class SearchOrchestrator {
       const errorHandler = (error) => {
         cleanup();
         console.error(`${MODULE_ID} | Worker crashed during search:`, error);
-        reject(createModuleError(
-          'worker_failed',
-          `Worker crashed: ${error.message || 'Unknown error'}`,
-          ['reload_module', 'check_console']
-        ));
+        reject(
+          createModuleError(
+            'worker_failed',
+            `Worker crashed: ${error.message || 'Unknown error'}`,
+            ['reload_module', 'check_console']
+          )
+        );
       };
 
       this.worker.addEventListener('message', messageHandler);

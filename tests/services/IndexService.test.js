@@ -195,10 +195,7 @@ describe('IndexService', () => {
   describe('categorizeImage()', () => {
     it('categorizes beast path correctly', () => {
       const service = createService();
-      const result = service.categorizeImage(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
-        'Wolf'
-      );
+      const result = service.categorizeImage('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
       expect(result.category).toBe('beast');
       expect(result.subcategories).toContain('wolf');
@@ -312,10 +309,7 @@ describe('IndexService', () => {
     });
 
     it('adds image to allPaths with name, category, subcategories', () => {
-      const result = service.addImageToIndex(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
-        'Wolf'
-      );
+      const result = service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
       expect(result).toBe(true);
       const entry = service.index.allPaths['FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp'];
@@ -326,21 +320,13 @@ describe('IndexService', () => {
     });
 
     it('adds search terms to termIndex', () => {
-      service.addImageToIndex(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
-        'Wolf'
-      );
+      service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
-      expect(service.index.termIndex['wolf']).toContain(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp'
-      );
+      expect(service.index.termIndex['wolf']).toContain('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
     });
 
     it('adds to categories structure when categorizable', () => {
-      service.addImageToIndex(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
-        'Wolf'
-      );
+      service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
       expect(service.index.categories.beast.wolf).toBeDefined();
       expect(service.index.categories.beast.wolf.length).toBe(1);
@@ -350,10 +336,7 @@ describe('IndexService', () => {
     });
 
     it('adds to _all subcategory', () => {
-      service.addImageToIndex(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp',
-        'Wolf'
-      );
+      service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
       expect(service.index.categories.beast._all).toBeDefined();
       expect(service.index.categories.beast._all.length).toBe(1);
@@ -369,9 +352,9 @@ describe('IndexService', () => {
 
     it('returns false when index not initialized', () => {
       service.index = null;
-      expect(
-        service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf')
-      ).toBe(false);
+      expect(service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf')).toBe(
+        false
+      );
     });
 
     it('skips already-indexed paths (returns false)', () => {
@@ -465,9 +448,7 @@ describe('IndexService', () => {
       expect(result).toBe(true);
       // termIndex should now have entries
       expect(Object.keys(service.index.termIndex).length).toBeGreaterThan(0);
-      expect(service.index.termIndex['wolf']).toContain(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp'
-      );
+      expect(service.index.termIndex['wolf']).toContain('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
       // Should also save the updated index back
       expect(mockStorage.save).toHaveBeenCalled();
     });

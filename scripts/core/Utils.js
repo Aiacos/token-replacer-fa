@@ -486,5 +486,6 @@ export function createDebugLogger(servicePrefix) {
  * @returns {function(string, string): *} A function that calls game.settings.get(moduleId, key)
  */
 export function createDefaultGetSetting() {
-  return (moduleId, key) => game.settings.get(/** @type {any} */ (moduleId), /** @type {any} */ (key));
+  return (moduleId, key) =>
+    game.settings.get(/** @type {any} */ (moduleId), /** @type {any} */ (key));
 }

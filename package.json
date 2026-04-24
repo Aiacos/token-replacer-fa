@@ -1,6 +1,6 @@
 {
   "name": "token-replacer-fa",
-  "version": "2.12.5",
+  "version": "2.12.6",
   "private": true,
   "type": "module",
   "description": "Foundry VTT module — Token artwork replacement with Forgotten Adventures tokens",

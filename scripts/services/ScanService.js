@@ -24,7 +24,8 @@ export class ScanService {
 
     // Get additional paths from settings
     /** @type {string} */
-    const additionalPathsSetting = /** @type {any} */ (game.settings.get(MODULE_ID, 'additionalPaths')) || '';
+    const additionalPathsSetting =
+      /** @type {any} */ (game.settings.get(MODULE_ID, 'additionalPaths')) || '';
     if (additionalPathsSetting) {
       const additionalPaths = additionalPathsSetting
         .split(',')
@@ -238,7 +239,12 @@ export class ScanService {
                 /** @type {any} - TVA result item with dynamic properties */
                 const tvaItem = item;
                 imagePath =
-                  tvaItem.path || tvaItem.route || tvaItem.img || tvaItem.src || tvaItem.image || tvaItem.uri;
+                  tvaItem.path ||
+                  tvaItem.route ||
+                  tvaItem.img ||
+                  tvaItem.src ||
+                  tvaItem.image ||
+                  tvaItem.uri;
                 name = tvaItem.name || tvaItem.label || tvaItem.title || 'Unknown';
               }
 

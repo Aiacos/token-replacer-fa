@@ -140,7 +140,10 @@ export function createParsedImages(cacheJson) {
       if (typeof entry === 'string') {
         // Format 1: plain path
         const fileName = entry.split('/').pop() || 'Unknown';
-        const nameClean = fileName.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ').trim();
+        const nameClean = fileName
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[-_]/g, ' ')
+          .trim();
         images.push({ path: entry, name: nameClean, category });
       } else if (Array.isArray(entry)) {
         const [path, name, tags] = entry;

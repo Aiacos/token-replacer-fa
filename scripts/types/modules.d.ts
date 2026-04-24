@@ -2,7 +2,7 @@
 // Declaration merging for TVA module API
 
 interface ModuleConfig {
-  "token-variants": {
+  'token-variants': {
     api: {
       cacheBypass: string[];
       doImageSearch: (name: string, options?: Record<string, unknown>) => Promise<unknown[]>;
