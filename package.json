@@ -1,9 +1,13 @@
 {
   "name": "token-replacer-fa",
-  "version": "2.12.3",
+  "version": "2.12.5",
   "private": true,
   "type": "module",
   "description": "Foundry VTT module — Token artwork replacement with Forgotten Adventures tokens",
+  "foundry": {
+    "minimum": "13",
+    "verified": "14"
+  },
   "scripts": {
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

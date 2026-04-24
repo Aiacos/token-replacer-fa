@@ -1,0 +1,169 @@
+name: Build & Release
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+# Prevent concurrent releases for the same ref
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Test Gate ────────────────────────────────────────────────────────────────
+  test:
+    name: Test Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Lint
+        if: always() && steps.install.outcome == 'success'
+        run: npm run lint
+
+      - name: Format check
+        if: always() && steps.install.outcome == 'success'
+        run: npm run format:check
+
+      - name: Test
+        if: always() && steps.install.outcome == 'success'
+        run: npm test
+
+      - name: Typecheck
+        if: always() && steps.install.outcome == 'success'
+        run: npm run typecheck
+
+  # ── Build & Release ──────────────────────────────────────────────────────────
+  release:
+    name: Build & Release
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Determine version and tag ────────────────────────────────────────────
+      - name: Extract version and determine tag
+        id: tag
+        run: |
+          BASE_VERSION=$(jq -r '.version' module.json)
+          MODULE_ID=$(jq -r '.id' module.json)
+          BRANCH="${{ github.ref_name }}"
+
+          if [ "$BRANCH" = "main" ]; then
+            # Stable release: auto-bump patch if tag already exists
+            VERSION="$BASE_VERSION"
+            while gh release view "v${VERSION}" >/dev/null 2>&1; do
+              MAJOR=$(echo "$VERSION" | cut -d. -f1)
+              MINOR=$(echo "$VERSION" | cut -d. -f2)
+              PATCH=$(echo "$VERSION" | cut -d. -f3)
+              PATCH=$((PATCH + 1))
+              VERSION="${MAJOR}.${MINOR}.${PATCH}"
+              echo "Tag v${BASE_VERSION} exists, bumped to v${VERSION}"
+            done
+            TAG="v${VERSION}"
+            PRERELEASE="false"
+          else
+            # develop branch: publish as release candidate
+            VERSION="$BASE_VERSION"
+            RC_NUM=1
+            EXISTING=$(gh release list --limit 100 --json tagName \
+              -q '.[].tagName' 2>/dev/null \
+              | grep "^v${VERSION}-rc\." | sort -V | tail -1 || true)
+            if [ -n "$EXISTING" ]; then
+              LAST_RC=$(echo "$EXISTING" | grep -o '[0-9]*$')
+              RC_NUM=$((LAST_RC + 1))
+            fi
+            TAG="v${VERSION}-rc.${RC_NUM}"
+            PRERELEASE="true"
+          fi
+
+          echo "version=$VERSION"   >> $GITHUB_OUTPUT
+          echo "module_id=$MODULE_ID" >> $GITHUB_OUTPUT
+          echo "tag=$TAG"           >> $GITHUB_OUTPUT
+          echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+          echo "Release: $TAG (base=$BASE_VERSION, final=$VERSION, prerelease=$PRERELEASE)"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Rewrite module.json with final version + download URL ────────────────
+      - name: Update module.json for this release
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${{ steps.tag.outputs.version }}"
+          MODULE_ID="${{ steps.tag.outputs.module_id }}"
+
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${MODULE_ID}-${TAG}.zip"
+          MANIFEST_URL="https://github.com/${{ github.repository }}/releases/latest/download/module.json"
+
+          jq --arg ver "$VERSION" \
+             --arg dl  "$DOWNLOAD_URL" \
+             --arg mf  "$MANIFEST_URL" \
+            '.version = $ver | .download = $dl | .manifest = $mf' \
+            module.json > module.json.tmp
+          mv module.json.tmp module.json
+
+          echo "Version:  $VERSION"
+          echo "Download: $DOWNLOAD_URL"
+          echo "Manifest: $MANIFEST_URL"
+
+      # ── Build ZIP ────────────────────────────────────────────────────────────
+      - name: Build ZIP package
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          MODULE_ID="${{ steps.tag.outputs.module_id }}"
+          OUTPUT="${MODULE_ID}-${TAG}.zip"
+
+          mkdir -p releases
+          STAGING=$(mktemp -d)
+          trap "rm -rf '$STAGING'" EXIT
+
+          # Root files (include if present)
+          for file in module.json README.md LICENSE CHANGELOG.md; do
+            [ -f "$file" ] && cp "$file" "$STAGING/"
+          done
+
+          # Directories (include if present)
+          for dir in scripts lang styles templates assets packs icons images fonts; do
+            [ -d "$dir" ] && cp -r "$dir" "$STAGING/"
+          done
+
+          (cd "$STAGING" && zip -r -q "$GITHUB_WORKSPACE/releases/$OUTPUT" .)
+
+          SIZE=$(du -h "releases/$OUTPUT" | cut -f1)
+          echo "Built: releases/$OUTPUT ($SIZE)"
+          echo "zip_file=releases/$OUTPUT" >> $GITHUB_ENV
+          echo "zip_name=$OUTPUT"           >> $GITHUB_ENV
+
+      # ── Publish GitHub Release ───────────────────────────────────────────────
+      - name: Create GitHub Release
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PRERELEASE="${{ steps.tag.outputs.prerelease }}"
+
+          ARGS=(
+            "$TAG"
+            "${{ env.zip_file }}"
+            "module.json"
+            --title "$TAG"
+            --generate-notes
+          )
+          [ "$PRERELEASE" = "true" ] && ARGS+=(--prerelease) || ARGS+=(--latest)
+
+          gh release create "${ARGS[@]}"
+          echo "Released: $TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

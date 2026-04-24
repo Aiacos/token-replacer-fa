@@ -17,8 +17,8 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 
 ## Requirements
 
-- Foundry VTT v12+ (verified on v13)
-- D&D 5e System v3.0+
+- **Foundry VTT v13+** (verified on v14) — v12 is no longer supported as of v2.12.5
+- **D&D 5e System v4.0+**
 - **[Token Variant Art (TVA)](https://foundryvtt.com/packages/token-variants)**: Required for searching token artwork
 
 ### Recommended Modules
@@ -32,6 +32,8 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 ```
 https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 ```
+
+> **Installing via The Forge**: The Forge mirrors GitHub releases automatically. Use the manifest URL above directly in The Forge's module installer — it always points to the latest stable release.
 
 ### Manual Installation
 
