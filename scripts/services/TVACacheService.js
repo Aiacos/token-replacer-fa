@@ -141,31 +141,35 @@ export class TVACacheService {
       );
     }
 
-    // Wait for TVA to finish caching if it's in progress
-    const isCaching = this.tvaAPI.isCaching;
-    if (typeof isCaching === 'function') {
-      const startWait = Date.now();
-      while (isCaching() && Date.now() - startWait < maxWaitMs) {
-        this._debugLog(
-          `Waiting for TVA to finish caching... (${Date.now() - startWait}ms elapsed)`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 500));
+    // Assign _loadPromise BEFORE the first await (the caching poll) so concurrent callers
+    // join this same promise instead of each running their own polling loop.
+    this._loadPromise = (async () => {
+      // Wait for TVA to finish caching if it's in progress
+      const isCaching = this.tvaAPI.isCaching;
+      if (typeof isCaching === 'function') {
+        const startWait = Date.now();
+        while (isCaching() && Date.now() - startWait < maxWaitMs) {
+          this._debugLog(
+            `Waiting for TVA to finish caching... (${Date.now() - startWait}ms elapsed)`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+
+        if (isCaching()) {
+          this._debugLog(`TVA still caching after ${maxWaitMs}ms, proceeding anyway`);
+          // Throw error instead of proceeding - cache likely not ready
+          throw this._createError(
+            'tva_still_caching',
+            `Token Variant Art still caching after ${maxWaitMs}ms timeout`,
+            ['wait_for_cache', 'reload_module']
+          );
+        } else {
+          this._debugLog('TVA caching complete, loading cache directly');
+        }
       }
 
-      if (isCaching()) {
-        this._debugLog(`TVA still caching after ${maxWaitMs}ms, proceeding anyway`);
-        // Throw error instead of proceeding - cache likely not ready
-        throw this._createError(
-          'tva_still_caching',
-          `Token Variant Art still caching after ${maxWaitMs}ms timeout`,
-          ['wait_for_cache', 'reload_module']
-        );
-      } else {
-        this._debugLog('TVA caching complete, loading cache directly');
-      }
-    }
-
-    this._loadPromise = this._loadTVACacheFromFile().finally(() => {
+      return this._loadTVACacheFromFile();
+    })().finally(() => {
       this._loadPromise = null;
     });
     return this._loadPromise;

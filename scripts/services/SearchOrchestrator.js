@@ -59,9 +59,10 @@ export class SearchOrchestrator {
    */
   _ensureWorker() {
     if (this._workerInitialized) return;
-    this._workerInitialized = true;
     try {
       this.worker = this._workerFactory();
+      // Only mark initialized on success so a transient factory failure can retry
+      this._workerInitialized = true;
       this._debugLog('Web Worker initialized for background search operations');
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
@@ -646,6 +647,40 @@ export class SearchOrchestrator {
       }
 
       console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
+
+      // A built index can be stale (e.g. a pack was added after the last build), returning 0
+      // results for a category that the raw cache still covers. Fall through to the TVA direct
+      // cache — one cheap read — rather than letting the index's emptiness be authoritative.
+      // (Intentionally not cascading to SLOW per-term API search; the cache read is enough.)
+      if (results.length === 0 && this._tvaCacheService?.tvaCacheLoaded) {
+        console.log(
+          `${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`
+        );
+        if (progressCallback) {
+          progressCallback({ current: 0, total: 1, term: 'TVA cache fallback', resultsFound: 0 });
+        }
+
+        const fallbackResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
+        for (const result of fallbackResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push(result);
+          }
+        }
+
+        if (progressCallback) {
+          progressCallback({
+            current: 1,
+            total: 1,
+            term: 'TVA cache fallback',
+            resultsFound: results.length,
+          });
+        }
+
+        console.log(
+          `${MODULE_ID} | TVA cache fallback found ${results.length} results`
+        );
+      }
     }
     // Priority: forgeBazaar - Try ForgeBazaarService first
     else if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {

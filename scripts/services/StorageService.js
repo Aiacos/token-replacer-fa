@@ -66,7 +66,12 @@ export class StorageService {
     this.dbPromise = new Promise((resolve, reject) => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
+      // Grace period before giving up on a blocked open (another tab holds an older version)
+      const BLOCKED_TIMEOUT_MS = 10_000;
+      let blockedTimeoutId = null;
+
       request.onerror = () => {
+        clearTimeout(blockedTimeoutId);
         const error = request.error;
         console.error(`${MODULE_ID} | Failed to open IndexedDB:`, error);
         this.dbPromise = null;
@@ -74,6 +79,7 @@ export class StorageService {
       };
 
       request.onsuccess = () => {
+        clearTimeout(blockedTimeoutId);
         this.db = request.result;
         console.log(`${MODULE_ID} | IndexedDB connection opened successfully`);
 
@@ -121,6 +127,17 @@ export class StorageService {
 
       request.onblocked = () => {
         console.warn(`${MODULE_ID} | IndexedDB open request blocked - close other tabs or wait`);
+        // The block may clear if the other tab closes (onsuccess then fires). Reject only if
+        // it persists past the grace period so callers don't hang forever in multi-tab setups.
+        if (blockedTimeoutId) return;
+        blockedTimeoutId = setTimeout(() => {
+          this.dbPromise = null;
+          reject(
+            new Error(
+              `${MODULE_ID} | IndexedDB open blocked for ${BLOCKED_TIMEOUT_MS / 1000}s — close other Foundry tabs and reload`
+            )
+          );
+        }, BLOCKED_TIMEOUT_MS);
       };
     });
 
@@ -365,10 +382,10 @@ export class StorageService {
     seen.add(data);
 
     if (Array.isArray(data)) {
-      // Skip arrays of primitives — no prototype pollution risk
-      if (data.length === 0 || typeof data[0] !== 'object' || data[0] === null) {
-        return data;
-      }
+      if (data.length === 0) return data;
+      // Check if ANY element is an object (not just data[0]) to avoid bypassing mixed arrays
+      const hasObjects = data.some((item) => item !== null && typeof item === 'object');
+      if (!hasObjects) return data;
       return data.map((item) => StorageService._sanitizeData(item, seen));
     }
 

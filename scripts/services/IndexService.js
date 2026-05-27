@@ -79,9 +79,10 @@ export class IndexService {
    */
   _ensureWorker() {
     if (this._workerInitialized) return;
-    this._workerInitialized = true;
     try {
       this.worker = this._workerFactory();
+      // Only mark initialized on success so a transient factory failure can retry
+      this._workerInitialized = true;
       console.log(`${MODULE_ID} | Web Worker initialized for background index building`);
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
@@ -956,8 +957,12 @@ export class IndexService {
           `${MODULE_ID} | Worker build timed out after ${WORKER_BUILD_TIMEOUT_MS / 1000}s, terminating`
         );
         if (this.worker) {
-          this.worker.terminate();
-          this.worker = null;
+          // Atomic teardown: null the reference even if terminate() throws
+          try {
+            this.worker.terminate();
+          } finally {
+            this.worker = null;
+          }
         }
         reject(
           this._createError(

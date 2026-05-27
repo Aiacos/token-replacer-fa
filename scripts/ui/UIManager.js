@@ -882,6 +882,7 @@ export class UIManager {
             categorySearchInput.dispatchEvent(new Event('input'));
           }
 
+          // Tie to the dialog's AbortController so re-renders don't stack duplicate listeners
           categorySearchInput.addEventListener('input', () => {
             toggleClearButton();
             saveFilterTerm(categorySearchInput.value);
@@ -912,7 +913,7 @@ export class UIManager {
               if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
               if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
             }, 150);
-          });
+          }, { signal: ac.signal });
 
           if (categoryClearBtn) {
             categoryClearBtn.addEventListener('click', () => {
