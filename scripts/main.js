@@ -865,8 +865,12 @@ Hooks.once('ready', async () => {
             `Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`
           );
 
+          // Throttle to ~10% steps so large caches (50K+ images) don't flood the notification log
+          let lastNotifiedPercent = -1;
           const onProgress = (current, total, images) => {
             const percent = Math.round((current / total) * 100);
+            if (percent < 100 && percent - lastNotifiedPercent < 10) return;
+            lastNotifiedPercent = percent;
             ui.notifications.info(
               tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
                 `Token Replacer FA: Building index... ${percent}% (${images} images)`,
