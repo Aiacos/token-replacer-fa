@@ -1,417 +1,311 @@
 # Testing Patterns
 
-**Analysis Date:** 2025-02-28
+**Analysis Date:** 2026-05-27
 
 ## Test Framework
 
-**Status:** No automated test framework configured
+**Runner:**
+- Vitest 3.x
+- Config: `vitest.config.js`
 
-The codebase uses manual testing via Foundry VTT browser console. No unit test, integration test, or E2E test runners are configured.
+**Assertion Library:**
+- Vitest built-in (expect / matchers)
 
-**Manual Testing Approach:**
+**Run Commands:**
+```bash
+npm test              # Run all tests once (vitest run --passWithNoTests)
+npm run test:watch    # Watch mode (vitest)
+```
 
-- Foundry VTT loads module in browser environment (Chrome, Firefox, Edge)
-- Testing performed via scene control button in Foundry UI
-- Browser DevTools console used to observe behavior and check for errors
-- Network tab used to simulate slow connections (testing skeleton loaders, caching)
+No coverage script is configured in `package.json`.
 
-**Test Documentation:**
+## CRITICAL: StorageService Collection Failure
 
-- `MANUAL_TESTING_GUIDE.md` - Step-by-step manual test procedures for UI features
-- `console-test-script.js` - Historical console testing utilities
-- `TEST_SUMMARY.md` - Test results and findings documentation
-- `TESTING-REQUIRED.md` - Critical test scenarios that must be verified
-- Individual test scripts in `.auto-claude/specs/` (feature verification scripts)
+`tests/services/StorageService.test.js` **fails at collection time** and its 31 tests never run.
 
-**Available Test Utilities in Codebase:**
+**Root cause:** The file's top-level IIFE (line 13–46) reads `localStorage.getItem` before the import is hoisted. In Vitest's jsdom environment, `localStorage` is `undefined` when the IIFE executes at collection time, so `Cannot read properties of undefined (reading 'getItem')` is thrown and the entire test file is skipped.
 
-- `console-test-script.js` (850 lines) - Manual console-based testing helpers
-- `test-worker.html` - Web Worker testing utility
-- Various spec-based verification scripts: `smoke-test.js`, `test-script.js`, `verification-test.js`
+**Observable behavior:**
+```
+FAIL  tests/services/StorageService.test.js
+TypeError: Cannot read properties of undefined (reading 'getItem')
+  ❯ tests/services/StorageService.test.js:14:27
+
+Test Files  1 failed | 10 passed (11)
+Tests  478 passed (478)
+```
+
+The process exits 0 because `--passWithNoTests` absorbs the failure at the file level, **but the exit code is misleading — one file always fails.**
+
+**Impact:** 31 StorageService tests (IndexedDB path, localStorage path, migration, sanitization) are never executed. `StorageService` has zero test coverage.
+
+**CLAUDE.md states 509 tests — the actual runnable count is 478.**
 
 ## Test File Organization
 
-**Location:**
+**Location:** `tests/` directory, mirroring `scripts/` structure:
+```
+tests/
+├── core/
+│   ├── Constants.test.js      # Constants.js
+│   └── Utils.test.js          # Utils.js
+├── helpers/
+│   ├── foundry-mocks.js       # Smoke tests for mock infrastructure
+│   ├── foundry-mocks.smoke.test.js
+│   ├── mock-helpers.js        # Re-usable helper factories (NOT a test file)
+│   ├── mock-helpers.test.js   # Tests for the helpers themselves
+│   └── mock-tva-cache.js      # Shared TVA cache fixture (NOT a test file)
+├── integration/
+│   └── SearchPipeline.test.js # End-to-end wiring tests
+├── services/
+│   ├── IndexService.test.js
+│   ├── SearchOrchestrator.test.js
+│   ├── SearchService.test.js
+│   ├── StorageService.test.js  # FAILS AT COLLECTION — see above
+│   ├── TokenService.test.js
+│   └── TVACacheService.test.js
+└── setup/
+    └── foundry-mocks.js        # Global mock setup (loaded via setupFiles)
+```
 
-- Manual test scripts in root directory: `console-test-script.js`, `MANUAL_TESTING_GUIDE.md`
-- Feature-specific test guides in `.auto-claude/specs/{feature}/testing-guide.md`
-- Verification scripts in `.auto-claude/specs/{feature}/` directories
+**Naming:** `<SourceName>.test.js` — matches the source module name exactly.
 
-**File Naming Pattern:**
-
-- Test documentation: `MANUAL_TESTING_GUIDE.md`, `TEST_SUMMARY.md`, `TESTING-REQUIRED.md`
-- Test scripts: `console-test-script.js`, `smoke-test.js`, `verification-test.js`
-- Test guides: `testing-guide.md`, `test-match-selection.md`, `test-no-match-browser.md`
-
-**Spec Organization:**
-
-- Specs in `.auto-claude/specs/{sequential-number}-{feature-name}/`
-- Each spec contains: `spec.md` (requirements) + testing documentation
-- Examples: `001-migrate-to-v2-dialog-api/`, `007-indexeddb-storage-for-large-libraries/`, `008-web-worker-background-processing/`
+**Test include glob:** `tests/**/*.test.js` (vitest.config.js line 6)
 
 ## Test Structure
 
-**Manual Test Procedures (from MANUAL_TESTING_GUIDE.md):**
-
-```
-Test Format:
-- Test title and purpose
-- Prerequisites (Foundry version, modules, scene setup)
-- Step-by-step procedures
-- Expected results with checkmarks (✅)
-- Checkpoint: Verify no console errors
-```
-
-**Test Coverage Areas:**
-
-1. **Match Selection Dialog** - Skeleton loaders, image loading, selection UI
-2. **No-Match Browser** - Category search, filtering, selection
-3. **Progress Tracking** - Dialog updates during processing
-4. **Dialog Rendering** - ApplicationV2 initial render and updates
-5. **Error Handling** - Error display, recovery suggestions
-6. **Caching** - TVA cache loading, index persistence, localStorage
-
-**Skeleton Loader Test Example:**
-
-```markdown
-## Test 1: Match Selection Dialog - Skeleton Loaders
-
-**Purpose:** Verify skeleton loaders appear on both preview and match grid images
-
-**Steps:**
-
-1. Open Foundry VTT with D&D 5e world
-2. Open browser DevTools, Network tab with "Slow 3G" throttling
-3. Select NPC tokens, click Token Replacer FA button
-4. Wait for match selection dialog
-
-**Expected Results:**
-
-- ✅ Token preview image (52×52px) shows shimmer animation
-- ✅ Match grid images (72×72px) show shimmer animation
-- ✅ Smooth gradient effect visible
-- ✅ Subtle pulse effect on skeleton
-- ✅ Images fade in smoothly when loaded
-- ✅ Skeleton disappears completely when loaded
-- ✅ No layout shift or visual jump
-- ✅ Dark theme colors match (#1a1a1a, #252525-#333333)
-
-**Checkpoint:**
-
-- Open DevTools Console
-- Verify no errors or warnings
-```
-
-## Manual Testing Guide (from MANUAL_TESTING_GUIDE.md)
-
-**Prerequisites:**
-
-```
-Required:
-- Foundry VTT v12 or v13
-- D&D 5e system enabled
-- Token Variant Art (TVA) module installed and active
-- Token Replacer FA module installed and active
-- Modern browser (Chrome, Firefox, Edge)
-- Browser DevTools available
-- Test scene with NPC tokens
-```
-
-**Key Test Procedures:**
-
-1. **Match Selection Dialog** - Skeleton Loaders
-2. **No-Match Dialog** - Skeleton Loader on preview image
-3. **Category Search Results** - Dynamic HTML skeleton loaders
-4. **Dialog Interactions** - User selections and cancellations
-5. **Error Scenarios** - Missing TVA, empty cache, network failures
-6. **Caching Behavior** - TVA cache loading, index persistence, localStorage
-
-**Network Simulation:**
-
-- Enable browser DevTools Network tab
-- Set throttling to "Slow 3G" or "Fast 3G"
-- Observe skeleton loaders during slow image loading
-- Verify no UI freezing during load
-
-## Test Patterns from Code
-
-**Console Testing Pattern:**
-
+**Suite Organization:**
 ```javascript
-// From console-test-script.js
-// Access module via window global:
-window.TokenReplacerFA;
+describe('ServiceName', () => {
+  describe('constructor DI', () => {
+    it('instantiates with injected deps without accessing Foundry globals', () => { ... });
+  });
 
-// Trigger main workflow:
-window.TokenReplacerFA.processTokenReplacement();
-
-// Check internal state:
-window.TokenReplacerFA.getSetting('debugMode');
-window.TokenReplacerFA.hasTVA;
-
-// Access services:
-import { searchService } from 'modules/token-replacer-fa/scripts/services/SearchService.js';
-searchService.parallelSearchCreatures(groups, localIndex, callback);
+  describe('methodName()', () => {
+    it('describes expected behavior', async () => { ... });
+    it('handles error case', async () => { ... });
+  });
+});
 ```
 
-**Verification Script Pattern:**
-
+**Vitest imports:** Always destructured from `'vitest'`:
 ```javascript
-// From spec-based verification tests
-// Test Web Worker functionality
-const worker = new Worker('modules/token-replacer-fa/scripts/workers/IndexWorker.js');
-
-// Test IndexedDB storage
-const stored = await storageService.get('token-replacer-fa-index-v3');
-
-// Test TVA cache loading
-const cacheLoaded = await tvaCacheService.loadTVACache();
-const stats = tvaCacheService.getTVACacheStats();
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 ```
+
+**Setup/Teardown:**
+- Global `beforeEach` in `tests/setup/foundry-mocks.js` resets all Foundry globals before every test
+- Per-suite `beforeEach`/`afterEach` for local state (e.g., spy setup, mock overrides)
+- `afterEach` used for `vi.restoreAllMocks()` when spies are created inline
+
+## Environment Setup (`tests/setup/foundry-mocks.js`)
+
+Loaded via `vitest.config.js` `setupFiles: ['fake-indexeddb/auto', 'tests/setup/foundry-mocks.js']`.
+
+**Stubs established globally:**
+- `game` — settings store (in-memory Map), `i18n.localize` passthrough, `modules` Map, `system.id: 'dnd5e'`, `user.isGM: true`
+- `ui.notifications` — `info`, `warn`, `error` as `vi.fn()`
+- `canvas` — `tokens.placeables`, `tokens.controlled` as resettable arrays
+- `Hooks` — `on`, `once`, `off`, `call`, `callAll` as `vi.fn()`
+- `foundry.applications.handlebars.renderTemplate` — returns `'<div>mock template</div>'`
+- `foundry.applications.api.ApplicationV2` — minimal class stub
+- `renderTemplate`, `loadTemplates` — v12 global fallbacks as `vi.fn()`
+- `FilePicker.browse` — returns `{ files: [], dirs: [] }`
+- `Dialog` — minimal class stub
+- `Worker` — `MockWorker` class with `postMessage`, `terminate`, `addEventListener` as `vi.fn()` and `_simulateMessage`/`_simulateError` helpers
+
+**Settings pre-registered** in setup file for all module keys: `fuzzyThreshold`, `searchPriority`, `autoReplace`, `confirmReplace`, `fallbackFullSearch`, `useTVACache`, `refreshTVACache`, `additionalPaths`, `indexUpdateFrequency`, `debugMode`.
+
+**Global reset** in `beforeEach`: clears settings values store, empties `game.modules`, resets canvas arrays, clears all notification and Hooks spies.
 
 ## Mocking
 
-**No Mocking Framework:**
-The codebase does not use Jest, Vitest, or any mocking framework.
+**Framework:** Vitest `vi` — `vi.fn()`, `vi.spyOn()`, `vi.mock()`, `vi.stubGlobal()`
 
-**Integration Testing Approach:**
-Tests run directly against Foundry VTT API, TVA module API, and actual browser APIs:
+**Module-level mocking pattern** (used in SearchOrchestrator and SearchPipeline tests):
+```javascript
+// Mock loadFuse to return real Fuse.js from devDependency instead of CDN import
+vi.mock('../../scripts/core/Utils.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, loadFuse: vi.fn(async () => Fuse) };
+});
+import { loadFuse } from '../../scripts/core/Utils.js'; // re-import to get mock
+```
 
-- Real DOM manipulation (dialogs, event handlers)
-- Real storage access (localStorage, IndexedDB)
-- Real Foundry hooks and settings system
-- Real image loading with network throttling
-- Real worker instantiation and messaging
+**Console spy pattern** (used in Utils.test.js):
+```javascript
+let warnSpy;
+beforeEach(() => {
+  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+afterEach(() => {
+  warnSpy.mockRestore();
+});
+```
 
-**Testing Foundry Dependencies:**
+**What to mock:**
+- All Foundry globals via `tests/setup/foundry-mocks.js` stubs (always present)
+- External network calls: `vi.stubGlobal('fetch', vi.fn(...))` per test or suite
+- CDN imports: `vi.mock('../../scripts/core/Utils.js', ...)` to replace `loadFuse`
+- Worker behavior: `MockWorker._simulateMessage(data)` / `_simulateError(error)` in per-test setup
 
-- Tests use actual `game` object from Foundry VTT
-- Tests use actual `canvas` and scene objects
-- Tests use actual `ui.notifications` system
-- Tests use actual Foundry settings system via `game.settings.get/register`
-
-**Testing External APIs:**
-
-- Token Variant Art (TVA) module: Access via `game.modules.get('token-variants')`
-- FA Nexus module: Access via `game.modules.get('fa-nexus')`
-- Forge Bazaar: Direct HTTP requests (no mocking)
-- Fuse.js: Imported from CDN via dynamic import
+**What NOT to mock:**
+- Internal pure functions (`escapeHtml`, `sanitizePath`, `parseFilterTerms`) — test directly
+- Fuse.js logic — use real Fuse.js from devDependency (`import Fuse from 'fuse.js'`) instead of CDN mock
+- `fake-indexeddb` — used as a real in-memory IDB implementation (setupFiles)
 
 ## Fixtures and Factories
 
-**Test Data:**
-No fixtures or factories in codebase. Manual setup required:
+**Mock TVA cache fixture** (`tests/helpers/mock-tva-cache.js`):
+```javascript
+export const MOCK_TVA_CACHE_JSON = { /* all 3 TVA entry formats */ };
+export const EXPECTED_IMAGE_COUNT = 25; // consistent count across suites
+export const EXPECTED_CATEGORIES = ['Humanoids', 'Beasts', 'Undead', 'Dragons', 'Elementals'];
+export function createParsedImages() { /* returns pre-parsed images array */ }
+```
 
-- Create Foundry world with D&D 5e system
-- Create scene with NPC tokens
-- Set token creature types manually in token properties
+**Actor/token factories** (`tests/helpers/mock-helpers.js`):
+```javascript
+// Create a D&D 5e actor matching TokenService.extractCreatureInfo() shape
+const actor = createMockActor({ name: 'Dragon', type: 'dragon', subtype: 'Red' });
 
-**Sample Test Tokens:**
-From test documentation, create tokens with these creature types:
+// Create a token with nested actor
+const token = createMockToken({ actor, controlled: true });
 
-- Humanoid (common, should find matches)
-- Beast (common, should find matches)
-- Undead (common, should find matches)
-- Dragon (less common, fewer matches)
-- Obscure type (for no-match testing)
+// Populate canvas.tokens with tokens
+addMockTokens([token1, token2]);
+```
 
-**TVA Cache Setup:**
-Tests assume TVA module is installed and has scanned for token artwork:
+**Mock storage factory** (repeated pattern across service test files):
+```javascript
+function createMockStorage() {
+  return {
+    load: vi.fn(async () => null),
+    save: vi.fn(async () => true),
+    remove: vi.fn(async () => true),
+    needsMigration: vi.fn(async () => false),
+    migrateFromLocalStorage: vi.fn(async () => {}),
+  };
+}
+```
 
-- TVA static cache file must be populated
-- Forgotten Adventures module or Forge Bazaar must be accessible
-- FA Nexus module optional but recommended
+**Mock TVA API factory** (TVACacheService.test.js):
+```javascript
+function createMockTvaAPI(overrides = {}) {
+  return {
+    TVA_CONFIG: { staticCache: true, staticCacheFile: 'data/tva-cache.json', ...overrides.TVA_CONFIG },
+    isCaching: vi.fn(() => false),
+    ...overrides,
+  };
+}
+```
+
+**Mock fetch factory** (TVACacheService.test.js, SearchPipeline.test.js):
+```javascript
+function createMockFetchResponse(json, ok = true, status = 200) {
+  return {
+    ok, status, statusText: ok ? 'OK' : 'Not Found',
+    json: vi.fn(async () => json),
+    headers: { get: vi.fn((header) => { ... }) },
+  };
+}
+```
+
+**Settings helper** (from `tests/helpers/mock-helpers.js`):
+```javascript
+setSetting('debugMode', true);        // sets game.settings value for current test
+setSetting('fuzzyThreshold', 0.3);
+```
+
+**Location of helpers:**
+- `tests/helpers/mock-helpers.js` — per-test mock customization functions
+- `tests/helpers/mock-tva-cache.js` — shared TVA cache data fixture
+- `tests/setup/foundry-mocks.js` — global infrastructure (loaded once per suite run)
 
 ## Coverage
 
-**Requirements:** No coverage requirements configured
+**Requirements:** None enforced — no coverage threshold configured, no `--coverage` in any script.
 
-**What IS Tested (Manually):**
-
-1. Dialog rendering (ApplicationV2 with `force: true`)
-2. TVA cache loading (direct cache file access)
-3. Index building (both Worker and fallback paths)
-4. Search orchestration (parallel searches, fuzzy matching)
-5. Token image replacement (direct update + TVA API)
-6. Error handling (structured errors, recovery suggestions)
-7. UI updates (progress dialog, match selection)
-8. Event handling (button clicks, selection, cancellation)
-9. Settings access (all 8 configurable settings)
-10. Localization (i18n caching, placeholder replacement)
-
-**What is NOT Tested Automatically:**
-
-- Unit tests for pure functions (Utils, categorization)
-- Integration tests with mocked Foundry API
-- E2E tests from scene control button to token update
-- Performance benchmarks
-- Cross-browser compatibility (manual browser testing only)
-- Accessibility (manual testing with screen readers possible)
+**Gaps:**
+- `StorageService` — 0% (collection failure, 31 tests never run; see `tests/services/StorageService.test.js`)
+- `UIManager` — no test file exists for `scripts/ui/UIManager.js`
+- `ScanService` — no test file exists for `scripts/services/ScanService.js`
+- `ForgeBazaarService` — no test file (intentional — service is a stub with no public API)
+- `main.js` (`TokenReplacerApp`, `processTokenReplacement`) — no unit tests; requires Foundry runtime
 
 ## Test Types
 
-**Manual Testing (Browser-based):**
+**Unit Tests (10 of 11 files):**
+- Each service has one `*.test.js` file in `tests/services/`
+- Core utilities have files in `tests/core/`
+- Each test file is self-contained: creates the service under test via DI, injects all mocks
+- All Foundry globals provided by setup stubs — no real Foundry needed
 
-- **Smoke Tests** - Basic functionality works (button clickable, dialog appears)
-- **UI Tests** - Dialog renders correctly, skeleton loaders visible, transitions smooth
-- **Integration Tests** - TVA integration works, image loading completes, tokens update
-- **Error Path Tests** - Error messages displayed, recovery suggestions shown
-- **Caching Tests** - Cache persists, index loads from storage, i18n cached
-- **Performance Tests** - Dialog responsive with slow network, skeleton loaders smooth
+**Integration Tests:**
+- `tests/integration/SearchPipeline.test.js` — wires real `TVACacheService`, `IndexService`, and `SearchOrchestrator` instances together
+- Only environment boundaries are mocked: `fetch`, `Worker`, settings
+- Covers: full pipeline (cache → index → search → results), fallback path, Worker vs direct parity
 
-**Console Verification Scripts:**
+**Smoke Tests:**
+- `tests/setup/foundry-mocks.smoke.test.js` — validates global mock infrastructure is correctly wired
 
-- Worker functionality test: `test-script.js` in `008-web-worker-background-processing`
-- Forge Bazaar access: `test-forge-access.js` in `009-direct-forge-bazaar-api-integration`
-- TVA disabled fallback: `test-tva-disabled.js` in `009-direct-forge-bazaar-api-integration`
-- IndexedDB storage: `smoke-test.js` in `007-indexeddb-storage-for-large-libraries`
+**E2E Tests:** Not present — full UI flows require Foundry VTT runtime. Manual testing guide exists at `MANUAL_TESTING_GUIDE.md`.
 
-## Common Testing Patterns
+## Common Patterns
 
-**Async Testing Pattern:**
-
+**Async Testing:**
 ```javascript
-// Manual async test in console
-(async () => {
-  const result = await tokenReplacerApp.processTokenReplacement();
-  console.log('Process completed');
-})();
-
-// Or with explicit await
-const searchResults = await searchService.parallelSearchCreatures(groups, localIndex);
+it('stores data and returns true', async () => {
+  const service = new StorageService();
+  const result = await service.save('key', { value: 42 });
+  expect(result).toBe(true);
+});
 ```
 
-**Error Path Testing:**
-
+**DI instantiation (standard pattern for all service tests):**
 ```javascript
-// Disable TVA to test fallback
-game.modules.get('token-variants').active = false;
-
-// Trigger replacement - should use ScanService instead
-await tokenReplacerApp.processTokenReplacement();
-
-// Check for graceful error handling
-// Dialog should show error message with recovery suggestions
+const service = new IndexService({
+  storageService: createMockStorage(),
+  workerFactory: vi.fn(),
+  getSetting: vi.fn(),
+  getTvaAPI: vi.fn(),
+});
 ```
 
-**Debug Logging Testing:**
-
+**Error Testing:**
 ```javascript
-// Enable debug mode
-game.settings.set('token-replacer-fa', 'debugMode', true);
-
-// Trigger operation - logs appear in DevTools console
-await tokenReplacerApp.processTokenReplacement();
-
-// Disable debug mode
-game.settings.set('token-replacer-fa', 'debugMode', false);
+it('returns null for invalid path', () => {
+  expect(sanitizePath(null)).toBeNull();
+  expect(sanitizePath('../escape')).toBeNull();
+  expect(sanitizePath('javascript:void(0)')).toBeNull();
+});
 ```
 
-**Slow Network Testing:**
-
+**Worker simulation:**
 ```javascript
-// Open DevTools Network tab
-// Set throttling to "Slow 3G"
-// Click Token Replacer button
-// Observe skeleton loaders animating during image load
-// Verify no UI freezing during 10+ second waits
+it('processes results from worker message', async () => {
+  const worker = new MockWorker('...');
+  const promise = service.indexPathsWithWorker(paths);
+  await worker._simulateMessage({ type: 'complete', data: { categories: {}, allPaths: {} } });
+  const result = await promise;
+  expect(result).toBeDefined();
+});
 ```
 
-**Storage Testing:**
-
+**Fetch mock:**
 ```javascript
-// Test localStorage
-localStorage.setItem('token-replacer-fa-filter-term', 'test');
-const saved = localStorage.getItem('token-replacer-fa-filter-term');
-
-// Test IndexedDB
-const stored = await storageService.get('token-replacer-fa-index-v3');
-const stats = await storageService.getStats('token-replacer-fa-index-v3');
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true, status: 200,
+    json: async () => MOCK_TVA_CACHE_JSON,
+    headers: { get: () => null },
+  })));
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 ```
-
-## Testing Foundry VTT Specific Features
-
-**Dialog Rendering:**
-
-```javascript
-// Test ApplicationV2 render (requires force: true for initial render)
-const dialog = await uiManager.createMainDialog(html, callback);
-await dialog.render({ force: true }); // Required for first render!
-console.log(dialog.rendered); // Should be true
-
-// Test dialog content update
-dialog.updateContent(newHtml); // Uses DOM manipulation, no re-render
-```
-
-**Settings Access:**
-
-```javascript
-// Verify settings registered
-game.settings.get('token-replacer-fa', 'debugMode');
-
-// All 8 configurable settings:
-// - fuzzyThreshold (number, default 0.1)
-// - searchPriority (string: faNexus|forgeBazaar|both, default 'both')
-// - autoReplace (boolean, default false)
-// - confirmReplace (boolean, default true)
-// - fallbackFullSearch (boolean, default false)
-// - useTVACache (boolean, default true)
-// - refreshTVACache (boolean, default false)
-// - additionalPaths (string, default '')
-// - indexUpdateFrequency (string: daily|weekly|monthly|quarterly, default 'weekly')
-// - debugMode (boolean, default false)
-```
-
-**Localization Testing:**
-
-```javascript
-// Check i18n caching
-tokenReplacerApp.i18n('notifications.started'); // Cached on second call
-
-// Check cache statistics
-tokenReplacerApp.logI18nCacheStats();
-// Output: "i18n cache stats: N entries, X hits, Y misses (Z% hit rate)"
-
-// Test placeholder replacement
-tokenReplacerApp.i18n('notifications.complete', { count: 5 });
-// Replaces {count} with 5
-```
-
-## Critical Test Scenarios (from TESTING-REQUIRED.md)
-
-**Must Test Before Release:**
-
-1. **Token Replacement Workflow**
-   - Select multiple NPC tokens
-   - Click Token Replacer button
-   - Observe TVA cache loading
-   - Verify matches found and displayed
-   - Select images for replacement
-   - Confirm tokens updated
-
-2. **Error Handling**
-   - TVA module missing/disabled → error displayed with recovery suggestions
-   - TVA cache empty → error displayed with "rebuild cache" suggestion
-   - Network failure → error displayed with "check network" suggestion
-   - Fuse.js load failure → error displayed with "reload module" suggestion
-
-3. **Dialog State Management**
-   - Dialog renders on first load with `force: true`
-   - Content updates without full dialog re-render
-   - Dialog properly closes when user cancels
-   - Dialog updates during long-running searches (progress visible)
-
-4. **Caching Behavior**
-   - TVA cache loads once on first use, then cached in IndexedDB
-   - Cache refresh button (refreshTVACache) clears and rebuilds
-   - Filter term persists in localStorage during session
-   - i18n strings cached with visible cache hit statistics
-
-5. **Network Resilience**
-   - Slow network (3G throttling): skeleton loaders visible, no UI freeze
-   - Image loading timeout: graceful degradation, fallback to placeholder
-   - Offline mode: error message displayed, recovery suggestion offered
 
 ---
 
-_Testing analysis: 2025-02-28_
+*Testing analysis: 2026-05-27*

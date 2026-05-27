@@ -1,259 +1,135 @@
 # Codebase Concerns
 
-**Analysis Date:** 2025-02-28
+**Analysis Date:** 2026-05-27
 
 ## Tech Debt
 
-**D&D 5e System-Specific Implementation:**
+**Worker Code Duplication:**
+- Issue: Four functions are duplicated verbatim between `scripts/core/Utils.js` and `scripts/workers/IndexWorker.js` because Web Workers cannot share ES module imports with the main thread. The duplicated functions are: `loadFuse()` (Utils.js:32 / IndexWorker.js:267), `_validateFuseShape()` (Utils.js:67 / IndexWorker.js:301), `CDN_SEGMENTS` constant (Utils.js:379 / IndexWorker.js:447), and `isExcludedPath()` (Utils.js:430 / IndexWorker.js:488).
+- Files: `scripts/core/Utils.js:32,67,379,430`, `scripts/workers/IndexWorker.js:267,301,447,488`
+- Impact: Any change to filtering logic must be applied in two places. SYNC JSDoc markers exist (`scripts/core/Utils.js:63`, `scripts/workers/IndexWorker.js:264,297,445,482`) but only warn — they do not enforce synchronization. Silent drift will cause the worker to filter paths differently from the main-thread fallback path.
+- Fix approach: Extract shared logic into a plain `.js` file usable via `importScripts()` in classic Workers, or migrate to module Workers (requires Foundry VTT worker support verification). A lower-effort approach is an automated test that imports both copies and asserts identical behavior for the same inputs.
 
-- Issue: Creature type extraction in `TokenService.getSceneNPCTokens()` is hardcoded for D&D 5e (`token.actor.system.details.type`)
-- Files: `scripts/services/TokenService.js`
-- Impact: Module cannot be used with other game systems; will silently fail or crash on incompatible systems
-- Fix approach: Abstract creature type extraction into a system-agnostic interface; implement system-specific adapters; add system detection and fallback error handling
+**ForgeBazaarService Non-Functional Stub:**
+- Issue: `scripts/services/ForgeBazaarService.js` is entirely a stub. `isAvailable` is hardcoded to `false` at line 67. All three public methods (`browseCategory`, `search`, `getAllTokens`) immediately return empty results. The stub is wired into the live search pipeline via `scripts/services/SearchService.js:10,37,38` and `scripts/services/SearchOrchestrator.js:546,571,686`.
+- Files: `scripts/services/ForgeBazaarService.js:41,67,239,246,286,326`, `scripts/services/SearchService.js:10,37`, `scripts/services/SearchOrchestrator.js:46,546`
+- Impact: The `forgeBazaar` priority setting is exposed in the UI (`scripts/main.js:175`) and selectable by users but silently falls through to TVA search every time because `isServiceAvailable()` always returns `false`. No functionality is blocked today, but the dead-code branches in SearchOrchestrator add maintenance surface.
+- Fix approach: Either remove the stub and the priority option entirely, or leave it dormant with clear documentation. Do NOT refactor into a functional service — no public Forge Bazaar API exists.
 
-**ForgeBazaarService Is Non-Functional Stub:**
+**StorageService Missing Schema Validation:**
+- Issue: `StorageService._sanitizeData()` (line 376) strips prototype-polluting keys from loaded IndexedDB data, and `_jsonReviver` (line 360) does the same for `JSON.parse`. However, there is no structural/schema validation: a corrupted or tampered cache record with wrong field names, unexpected types, or missing required keys is returned as-is. Downstream consumers (`IndexService`, `TVACacheService`) do not validate the shape of data received from storage.
+- Files: `scripts/services/StorageService.js:360,376`, `scripts/services/IndexService.js`, `scripts/services/TVACacheService.js`
+- Impact: Structurally corrupt cache data propagates silently, potentially causing runtime errors deep in search logic that are hard to diagnose.
+- Fix approach: Add a lightweight shape-check in `StorageService.load()` that validates required top-level keys against an expected schema (passed as an optional parameter), or have each consumer validate the returned object before use.
 
-- Issue: Entire service returns empty results; lacks public API for Forge Bazaar asset discovery
-- Files: `scripts/services/ForgeBazaarService.js` (434 lines of documentation, 0% functional)
-- Impact: "forgeBazaar" and "both" search priority options provide no actual benefit; users get TVA-only results regardless
-- Fix approach: Either remove from settings/UI entirely, or wait for Forge Bazaar to release public API (see detailed feasibility notes in ForgeBazaarService comments)
-
-**localStorage Size Limit Hard Ceiling:**
-
-- Issue: Index caching explicitly limited to ~4.5MB localStorage; larger indices silently fail to persist
-- Files: `scripts/services/IndexService.js` (line 271), `scripts/services/StorageService.js` (line 228)
-- Impact: Users with >4.5MB of token artwork will experience index rebuilds on every page load; no warning or fallback migration strategy
-- Fix approach: Implement IndexedDB-only mode without localStorage fallback; add user notification of size limit exceeded; provide selective indexing (path filters) to reduce cache size
-
-**Worker Error Handling Incomplete:**
-
-- Issue: Worker errors in `searchLocalIndexWithWorker()` post structured error message to main thread, but some worker crash scenarios may not be caught
-- Files: `scripts/services/SearchOrchestrator.js` (lines 311-387)
-- Impact: Unhandled worker crashes could leave search hanging indefinitely if error event fires but message handler isn't attached
-- Fix approach: Establish error handler BEFORE posting task; add timeout wrapper; implement health check ping before critical operations
-
-**Index termIndex Rebuild on Cache Load:**
-
-- Issue: Every time index is loaded from cache (first time after cache version bump), termIndex must be rebuilt from allPaths in main thread
-- Files: `scripts/services/IndexService.js` (lines 226-244)
-- Impact: User experiences UI pause on first load after version bump; termIndex not included in IndexedDB cache due to indexing complexity
-- Fix approach: Either build and persist termIndex in IndexedDB as separate record, or build during worker phase (pass allPaths to worker for term indexing)
+**IndexedDB DB_VERSION Stuck at 1:**
+- Issue: `scripts/services/StorageService.js:11` defines `DB_VERSION = 1`. The migration handler at line 104 has a `case 0` branch for fresh installs and a comment stub for future `case 1` migrations.
+- Files: `scripts/services/StorageService.js:11,104,113-121`
+- Impact: Low risk today. Becomes a concern if the stored data structure changes — silently loading v1 data in a v2 schema will cause runtime errors unless a migration case is added.
+- Fix approach: When adding future schema changes, increment `DB_VERSION` and add a `case 1:` branch with fallthrough in the switch block at line 113.
 
 ## Known Bugs
 
-**TVA Cache Timeout May Mask Real Issues:**
-
-- Symptoms: `loadTVACache()` waits up to 30 seconds for TVA caching to complete, then throws timeout error
-- Files: `scripts/services/TVACacheService.js` (lines 49-92)
-- Trigger: When TVA is slow to cache (large library, slow disk, network filesystem), or if cache never completes
-- Workaround: Increase `maxWaitMs` parameter from 30000; disable TVA cache integration and use fallback scan
-- Root cause: TVA's `isCaching()` function reliability depends on TVA implementation; no way to force completion or poll status
-
-**Filter Term Persistence Can Break on Quota Exceeded:**
-
-- Symptoms: Filter term saved to localStorage in UIManager fails silently when localStorage quota exceeded
-- Files: `scripts/ui/UIManager.js` (lines 63-73)
-- Trigger: After large index cached to localStorage, any attempt to save filter term fails without user notification
-- Workaround: User must manually clear localStorage or reduce index size
-- Root cause: `localStorage.setItem()` throws QuotaExceededError but try-catch only logs warning
-
-**Race Condition in TVA Cache Load Promise Deduplication:**
-
-- Symptoms: If `loadTVACache()` called multiple times concurrently, second call joins first promise but first caller may already return early
-- Files: `scripts/services/TVACacheService.js` (lines 50-56)
-- Trigger: Concurrent calls to `loadTVACache()` from different UI handlers
-- Workaround: Calling code must handle the promise being already resolved before final assignment
-- Root cause: Promise deduplication clears `_loadPromise` in `.finally()`, but concurrent caller may still be in promise chain
-
-**SearchOrchestrator Worker Not Terminated on Module Unload:**
-
-- Symptoms: Web Worker created in `SearchOrchestrator` is never explicitly terminated; threads accumulate if module reloaded
-- Files: `scripts/services/SearchOrchestrator.js` (lines 40-54)
-- Trigger: Module reload during development; reload world while searching
-- Workaround: Close browser tab or restart Foundry to clean up workers
-- Root cause: No cleanup hook in module lifecycle; `terminate()` method exists but never called
+**StorageService Test File Fails to Collect (31 Tests Silently Skipped):**
+- Symptoms: `npm test` exits 0 and reports `478 passed`, but also reports `1 failed | 10 passed (11)` test files. The failure is a collection error, not a test assertion failure. Vitest counts 0 tests from the failed file, so the pass count is not inflated — but 31 tests simply do not run.
+- Files: `tests/services/StorageService.test.js:14`
+- Trigger: The file includes an IIFE at lines 13-42 that polyfills `localStorage` for jsdom. The guard `if (typeof localStorage.getItem === 'function') return` crashes at line 14 because jsdom's `localStorage` is an object but without Web Storage API methods, making `localStorage.getItem` `undefined`. Accessing `.getItem` on `undefined` throws `TypeError: Cannot read properties of undefined (reading 'getItem')` at module load time (collection phase), not inside a test.
+- Workaround: Change the guard to use optional chaining: `if (typeof localStorage?.getItem === 'function') return;`
+- Priority: HIGH — the stated test count in `CLAUDE.md` ("509 tests") is stale. Actual passing count is 478. StorageService is a critical module and its 31 tests covering all 11 public methods are not running.
 
 ## Security Considerations
 
-**No XSS Protection Validation in Dynamic Template Rendering:**
+**Fuse.js CDN Without Subresource Integrity (SRI):**
+- Risk: `scripts/core/Constants.js:8` defines `FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs'`. This URL is fetched at runtime via dynamic `import()` in both `scripts/core/Utils.js:36` and `scripts/workers/IndexWorker.js:271`. Dynamic `import()` does not support SRI `integrity` attributes, so the browser cannot cryptographically verify the CDN response.
+- Files: `scripts/core/Constants.js:8`, `scripts/core/Utils.js:32-57`, `scripts/workers/IndexWorker.js:267-293`
+- Current mitigation: Post-load shape validation via `_validateFuseShape()` in both files verifies the loaded module is a constructor, has a `.search()` method, and returns an array — catching obvious CDN substitution. This is an effective behavioral guard but not cryptographic. A sophisticated attacker serving a modified Fuse.js that passes these checks would not be detected.
+- Recommendations: Bundle Fuse.js locally (copy to `scripts/vendor/fuse.mjs`) to eliminate the CDN dependency entirely. `security-scan/state.json` finding HIGH-001 is marked `fixed` (post-load validation added), but the underlying SRI limitation is an accepted residual risk.
 
-- Risk: While Handlebars auto-escapes by default, any dynamic HTML assignment via `.innerHTML` could introduce XSS
-- Files: `scripts/ui/UIManager.js` (lines 150-200 for dialog wrapper; event handlers with innerHTML assignments)
-- Current mitigation: `escapeHtml()` utility used in event handlers; Handlebars escaping in templates
-- Recommendations: Audit all `.innerHTML` assignments for dynamic content; enforce Content Security Policy headers; add input validation for user-controlled filter terms
+**GitHub OAuth Token on Disk (User Action Required):**
+- Risk: `security-scan/state.json` finding CRIT-001 has status `user_action_required`. A GitHub OAuth token was stored in plaintext in `.auto-claude/.env:21`. The file is now gitignored but remains on disk and the token has not been confirmed revoked.
+- Files: `.auto-claude/.env` (gitignored, not committed), `security-scan/state.json:26-31`
+- Current mitigation: `.gitignore` patterns `.env`, `.env.*`, `*.env`, and `.auto-claude/` are in place. The token is not in git history.
+- Recommendations: Revoke the token at `github.com/settings/tokens`, verify revocation, then delete `.auto-claude/.env` from disk. This is the only remaining open action from the 20-finding security audit.
 
-**Unvalidated File Paths in Token Image Replacement:**
-
-- Risk: Token image paths come from search results without validation; could potentially point to arbitrary URLs if search service compromised
-- Files: `scripts/main.js` (line 264 `replaceTokenImage()`), `scripts/services/TokenService.js`
-- Current mitigation: TVA API handles path validation; paths filtered through `isExcludedPath()` for certain patterns
-- Recommendations: Add whitelist validation for path prefixes; reject paths with suspicious patterns (parent directory traversal, protocol mismatches)
-
-**localStorage Secrets Exposure:**
-
-- Risk: If IndexedDB unavailable, cache falls back to localStorage which has no encryption
-- Files: `scripts/services/StorageService.js` (line 221 localStorage fallback)
-- Current mitigation: Only caches image metadata (paths, names, categories) - no sensitive data
-- Recommendations: Document that cache contains no sensitive data; never store API keys or user tokens in cache
+**Hardcoded `innerHTML` Spinner String (Accepted Risk):**
+- Risk: `scripts/ui/UIManager.js:1097` assigns `cancelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelling...'`. This is a fully hardcoded string with no user data and is safe in isolation, but inconsistent with the codebase's `escapeHtml()` pattern for dynamic content. Recorded as INFO-002 in security scan with accepted risk status.
+- Files: `scripts/ui/UIManager.js:1097`
+- Current mitigation: No user input flows into this string.
+- Recommendations: No immediate action. For consistency, replace with a template render call or add a lint-disable comment to suppress future warnings.
 
 ## Performance Bottlenecks
 
-**IndexService.categorizeImage() CPU-Intensive on Large Datasets:**
+**localStorage Size Cap Blocks Large Index Caching:**
+- Problem: `StorageService.js:265` enforces a 4.5MB ceiling on localStorage writes. When IndexedDB is unavailable (private browsing, storage quota exceeded), large TVA caches exceeding 4.5MB cannot be persisted.
+- Files: `scripts/services/StorageService.js:264-270`
+- Cause: Browser localStorage has a ~5MB total quota per origin. The 4.5MB per-key limit leaves some headroom but will still fail for large FA token packs.
+- Improvement path: Compress JSON before the localStorage write (e.g., LZ-string), or selectively cache only the category index rather than all paths when using the fallback path.
 
-- Problem: Linear scan through all creature type mappings (14 categories × ~20 terms each) for every image
-- Files: `scripts/services/IndexService.js` (lines 138-174)
-- Cause: Uses simple substring matching instead of pre-compiled regex; rebuilds match map for every image
-- Improvement path: Pre-compile regex patterns for all terms at service initialization; batch categorization calls
-
-**Main Thread Termination Missing for Worker Promise:**
-
-- Problem: If worker crashes after task posted, rejection handler only logs error; search silently fails
-- Files: `scripts/services/SearchOrchestrator.js` (lines 360-364)
-- Cause: No timeout wrapper; relies entirely on worker to respond
-- Improvement path: Add AbortController-based timeout (5-10s) to reject if worker doesn't respond; implement health check ping
-
-**UIManager I18n Cache Unbounded Growth:**
-
-- Problem: `I18N_CACHE` Map in UIManager has no eviction policy; grows indefinitely as strings are cached
-- Files: `scripts/ui/UIManager.js` (lines 10-17)
-- Cause: Used for optimization but never pruned; module lifetime = session duration for Foundry
-- Improvement path: Implement LRU eviction at 1000 entries; or use `WeakMap` if keys are objects
-
-**Index Build Blocking Even with Web Worker:**
-
-- Problem: When worker unavailable, fallback uses `setInterval(_, 10)` yields; still blocks for small time slices during large index builds
-- Files: `scripts/services/IndexService.js` (contains worker fallback with setTimeout)
-- Cause: Main thread yields only in 10ms increments; large indices can accumulate blocking time
-- Improvement path: Increase yield interval to 50-100ms; or move entire fallback to worker-like implementation using requestIdleCallback
+**`MAX_DISPLAY_RESULTS` Cap in Match Selection UI:**
+- Problem: The match-selection dialog is capped at 200 rendered results (`scripts/core/Constants.js:18`, applied at `scripts/ui/UIManager.js:337`). Results beyond 200 are silently truncated.
+- Files: `scripts/core/Constants.js:18`, `scripts/ui/UIManager.js:337-338`
+- Cause: Rendering more than 200 token thumbnails in the dialog causes noticeable DOM jank
+- Improvement path: Virtual scrolling or pagination in `UIManager.js`
 
 ## Fragile Areas
 
-**Dialog Lifecycle Management with Multiple Hooks:**
+**IndexWorker / Main Thread Parity:**
+- Files: `scripts/workers/IndexWorker.js:447-514`, `scripts/core/Utils.js:379-465`
+- Why fragile: `CDN_SEGMENTS` and `isExcludedPath()` exist in two independent copies. A difference in set members or filtering logic between copies produces silently different categorization results depending on whether the Worker is available or the fallback runs. No automated test exercises both code paths with the same inputs and asserts identical output.
+- Safe modification: When modifying `CDN_SEGMENTS` or `isExcludedPath()` in either file, search for `SYNC:` markers and apply the identical change to the counterpart file. Run `npm test` after.
+- Test coverage: No cross-copy parity test exists. `tests/core/Utils.test.js` covers the main-thread version only.
 
-- Files: `scripts/ui/UIManager.js`, `scripts/main.js` (lines 341-349)
-- Why fragile: ApplicationV2 dialog creation requires `{ force: true }` on first render - without it fails silently; multiple UI hooks can cause race conditions in dialog creation
-- Safe modification: Always call `dialog.render({ force: true })` on new dialogs; implement dialog queue to prevent concurrent creation; check `isDialogOpen()` before any DOM manipulation
-- Test coverage: No automated tests; manual testing only via Foundry VTT interface
-
-**TVACacheService Cache File Mutation During Fetch:**
-
-- Files: `scripts/services/TVACacheService.js` (lines 138-150)
-- Why fragile: Cache file path obtained from TVA config; if TVA changes path mid-operation, fetch fails silently; IndexedDB cache may have stale path stored
-- Safe modification: Lock cache path once loaded; verify file mtime before using cached version; handle 404 gracefully
-- Test coverage: No automated tests for file system edge cases
-
-**SearchOrchestrator Parallel Batch Processing State:**
-
-- Files: `scripts/services/SearchOrchestrator.js` (lines 556-592)
-- Why fragile: Batch processing maintains `searchCount` counter across parallel Promise.allSettled calls; if batch rejected, counter may become inconsistent with actual progress
-- Safe modification: Track actual completed results instead of counting batches; validate result count before incrementing progress
-- Test coverage: Integration tests only; no unit tests for error paths
-
-**Index Version Mismatch Recovery:**
-
-- Files: `scripts/services/IndexService.js` (lines 214-219)
-- Why fragile: If INDEX_VERSION bumped but cache deletion fails, service tries to use incompatible cache structure
-- Safe modification: Verify cache structure after load; if incompatible, force deletion and rebuild; add version compatibility helper
-- Test coverage: No tests for version mismatch scenarios
+**StorageService IndexedDB Connection State:**
+- Files: `scripts/services/StorageService.js:54-125`
+- Why fragile: `openDatabase()` caches the connection in `this.db` and tracks an in-flight promise in `this.dbPromise`. On unexpected close (`db.onclose`, line 87) or version change (`db.onversionchange`, line 94), both are nulled. The `onblocked` handler has a 10-second timeout (line 70) before rejecting — in scenarios with multiple simultaneous tabs at different module versions, this may cascade silently into the localStorage fallback.
+- Safe modification: All public methods wrap IndexedDB calls in `try/catch` with localStorage fallback. New storage operations must follow this same pattern.
+- Test coverage: `tests/services/StorageService.test.js` covers both paths but currently does not run due to the collection error documented above.
 
 ## Scaling Limits
 
-**Worker Thread Pool Size:**
+**localStorage (fallback path):**
+- Current capacity: 4.5MB enforced per-write limit (`scripts/services/StorageService.js:265`)
+- Limit: ~5MB total browser quota per origin; large FA packs will exceed per-key write limit
+- Scaling path: IndexedDB (primary path) has no practical size limit; localStorage is fallback only
 
-- Current capacity: Single worker shared across all search operations (IndexService, SearchOrchestrator)
-- Limit: Cannot parallelize independent searches; if one long search in progress, others queue
-- Scaling path: Implement worker pool manager; maintain 2-3 workers for parallel index/search operations; queue overflow searches on main thread with yields
+**Match Selection UI Results:**
+- Current capacity: 200 results rendered (`scripts/core/Constants.js:18`)
+- Limit: DOM jank above 200 thumbnails
+- Scaling path: Virtual scrolling or lazy-loading thumbnails in `scripts/ui/UIManager.js`
 
-**TVA Cache Memory Footprint:**
+## Dependencies at Risk
 
-- Current capacity: Entire cache loaded into memory as `tvaCacheImages` array; no streaming
-- Limit: Large token libraries (>50k images) may cause memory pressure on slower devices
-- Scaling path: Lazy-load cache chunks; implement pagination; stream file parsing instead of full JSON load
-
-**Index Cache Storage:**
-
-- Current capacity: ~4.5MB localStorage OR unlimited IndexedDB (browser-dependent, typically 50MB-2GB)
-- Limit: Quota exceeded silently fails with no alternative; users on slow network or shared browsers hit this
-- Scaling path: Implement selective indexing (whitelist/blacklist paths); compress cache (gzip); migrate to Service Worker CacheAPI
-
-**Parallel Batch Search Limits:**
-
-- Current capacity: PARALLEL_BATCH_SIZE (from Constants.js) searches executed concurrently
-- Limit: Each search makes TVA API call; TVA rate limiting may throttle or reject
-- Scaling path: Implement exponential backoff; add configurable rate limiting; cache TVA results more aggressively
-
-## Dependency Risks
-
-**Token Variant Art Module Required But Version Unconstrained:**
-
-- Risk: TVA_CONFIG structure may change in future TVA versions; static cache file format not guaranteed
-- Impact: Module breaks silently if TVA API incompatible; cache parsing fails on version mismatch
-- Migration plan: Monitor TVA releases; add TVA version compatibility matrix; implement feature detection instead of version checks
-
-**Fuse.js CDN-Loaded with No Fallback:**
-
-- Risk: If jsdelivr CDN unavailable or returns 404, search cannot execute
-- Impact: Search feature completely unavailable; module becomes unusable
-- Migration plan: Bundle Fuse.js locally instead of CDN; or fall back to built-in String.includes() for basic search
-
-**Foundry VTT v12-v13 Compatibility Boundary:**
-
-- Risk: ApplicationV2 API changed between v12 and v13; dialog event handling differs
-- Impact: Module tested on v12 and v13 but not guaranteed for intermediate builds
-- Migration plan: Monitor Foundry release notes; add compatibility shim layer; deprecate v12 support after EOL
+**Fuse.js 7.0.0 via jsdelivr CDN:**
+- Risk: Version is pinned in the CDN URL (`scripts/core/Constants.js:8`, `scripts/workers/IndexWorker.js:15`). A CDN outage or compromise causes `loadFuse()` to return `null`, disabling fuzzy name matching entirely. The two copies of the CDN URL can also drift if one is updated without the other.
+- Impact: Fuzzy name matching unavailable; only exact category matches work. Search continues but quality degrades silently.
+- Migration plan: Bundle locally as `scripts/vendor/fuse.mjs` to remove the CDN dependency. Update both `Constants.js:8` and `IndexWorker.js:15`.
 
 ## Missing Critical Features
 
-**No Offline Mode:**
-
-- Problem: All search requires TVA module or live network fetch; no offline fallback or local-only mode
-- Blocks: Users in offline mode cannot use module; air-gapped Foundry instances cannot build index
-
-**No Batch Token Replacement:**
-
-- Problem: Tokens processed sequentially through UI flow; no bulk operation mode
-- Blocks: Replacing hundreds of tokens one-by-one is tedious; users must repeat entire process
-
-**No Search Filter Persistence Across Sessions:**
-
-- Problem: Filter term saved only during session; cleared on page reload
-- Blocks: Users cannot maintain search preferences; must re-enter filter each session
-
-**No Progress Cancellation Feedback:**
-
-- Problem: Cancel button in dialog doesn't provide visual feedback; user unsure if cancel worked
-- Blocks: For long operations, user may click cancel multiple times thinking first click failed
+**Forge Bazaar Integration:**
+- Problem: The `forgeBazaar` priority setting is selectable in the UI but has no functional implementation. Users selecting this priority receive TVA-backed results with no indication the setting has no effect.
+- Blocks: True Forge Bazaar browsing/search cannot be implemented without a public API.
 
 ## Test Coverage Gaps
 
-**No Unit Tests:**
+**StorageService (31 Tests Not Running):**
+- What's not tested: All 11 public methods of `StorageService` — `openDatabase()`, `save()` (IndexedDB and localStorage paths), `load()`, `remove()`, `has()`, `_sanitizeData()`, `_jsonReviver()`, migration handler, singleton verification, and the 4.5MB size guard.
+- Files: `tests/services/StorageService.test.js:1-445`
+- Risk: Regressions in the storage layer will not be caught by CI. `npm test` exits 0, providing false confidence.
+- Priority: High — fix the `localStorage.getItem` guard at line 14 using optional chaining: `if (typeof localStorage?.getItem === 'function') return;`
 
-- What's not tested: IndexService categorization logic, StorageService IndexedDB operations, SearchOrchestrator batch logic, Worker message handling
-- Files: All service files (`scripts/services/*`)
-- Risk: Changes to complex logic (categorizeImage, search batch processing) may introduce bugs undetected
-- Priority: HIGH - Unit tests would catch ~80% of edge case bugs before runtime
+**Worker / Main-Thread Parity:**
+- What's not tested: No test verifies that `isExcludedPath()` in `IndexWorker.js` and `Utils.js` produce identical results for the same inputs. `CDN_SEGMENTS` set equality is also untested.
+- Files: `scripts/workers/IndexWorker.js:488`, `scripts/core/Utils.js:430`
+- Risk: Silent behavioral divergence between worker and fallback code paths causes different token sets to be indexed depending on which path runs.
+- Priority: Medium
 
-**No Integration Tests:**
-
-- What's not tested: TVA cache load → index build → search flow; error recovery scenarios; race conditions in promise chains
-- Files: Cross-module interactions in `main.js`, service initialization chain
-- Risk: Module-level bugs (missing event listeners, race conditions) only found through manual testing
-- Priority: HIGH - Integration tests essential for detecting promise/async flow issues
-
-**No E2E Tests:**
-
-- What's not tested: Full user workflow (select tokens → run replacement → verify results); UI dialog lifecycle
-- Files: `scripts/ui/UIManager.js`, `scripts/main.js` (full flow)
-- Risk: UI freeze, dialog not appearing, click events not working only found through manual Foundry VTT testing
-- Priority: MEDIUM - Would require Foundry VTT test harness; less critical than unit/integration
-
-**No Error Scenario Testing:**
-
-- What's not tested: TVA timeout, cache corruption, localStorage full, worker crash, network failure
-- Files: `scripts/services/TVACacheService.js`, `scripts/services/SearchOrchestrator.js`, `scripts/services/StorageService.js`
-- Risk: Error recovery code paths untested; real-world failures may not be handled gracefully
-- Priority: MEDIUM - Manual testing with simulated failures would improve robustness
+**ForgeBazaarService:**
+- What's not tested: No dedicated test file exists. The stub is only mocked (never called) in `tests/services/SearchOrchestrator.test.js` and `tests/services/SearchService.test.js`.
+- Files: `scripts/services/ForgeBazaarService.js`
+- Risk: Low today (always returns empty). Becomes high if the service is ever activated.
+- Priority: Low
 
 ---
 
-_Concerns audit: 2025-02-28_
+*Concerns audit: 2026-05-27*
