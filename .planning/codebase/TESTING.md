@@ -19,27 +19,9 @@ npm run test:watch    # Watch mode (vitest)
 
 No coverage script is configured in `package.json`.
 
-## CRITICAL: StorageService Collection Failure
+## Resolved: StorageService Collection Failure
 
-`tests/services/StorageService.test.js` **fails at collection time** and its 31 tests never run.
-
-**Root cause:** The file's top-level IIFE (line 13–46) reads `localStorage.getItem` before the import is hoisted. In Vitest's jsdom environment, `localStorage` is `undefined` when the IIFE executes at collection time, so `Cannot read properties of undefined (reading 'getItem')` is thrown and the entire test file is skipped.
-
-**Observable behavior:**
-```
-FAIL  tests/services/StorageService.test.js
-TypeError: Cannot read properties of undefined (reading 'getItem')
-  ❯ tests/services/StorageService.test.js:14:27
-
-Test Files  1 failed | 10 passed (11)
-Tests  478 passed (478)
-```
-
-The process exits 0 because `--passWithNoTests` absorbs the failure at the file level, **but the exit code is misleading — one file always fails.**
-
-**Impact:** 31 StorageService tests (IndexedDB path, localStorage path, migration, sanitization) are never executed. `StorageService` has zero test coverage.
-
-**CLAUDE.md states 509 tests — the actual runnable count is 478.**
+_Historical note (fixed in commit `53ad614`, 2026-05-28)._ The polyfill IIFE in `tests/services/StorageService.test.js` previously guarded itself with bare `typeof localStorage.getItem === 'function'`, which threw `TypeError` at collection time when jsdom hadn't exposed `localStorage` on `globalThis`. All 31 StorageService tests were silently skipped (the suite reported 478 passing instead of 509). The guard now uses `typeof globalThis.localStorage?.getItem === 'function'` — full suite is 509/509.
 
 ## Test File Organization
 
@@ -61,7 +43,7 @@ tests/
 │   ├── IndexService.test.js
 │   ├── SearchOrchestrator.test.js
 │   ├── SearchService.test.js
-│   ├── StorageService.test.js  # FAILS AT COLLECTION — see above
+│   ├── StorageService.test.js  # 31 tests (was failing at collection — see Resolved note)
 │   ├── TokenService.test.js
 │   └── TVACacheService.test.js
 └── setup/
@@ -227,7 +209,6 @@ setSetting('fuzzyThreshold', 0.3);
 **Requirements:** None enforced — no coverage threshold configured, no `--coverage` in any script.
 
 **Gaps:**
-- `StorageService` — 0% (collection failure, 31 tests never run; see `tests/services/StorageService.test.js`)
 - `UIManager` — no test file exists for `scripts/ui/UIManager.js`
 - `ScanService` — no test file exists for `scripts/services/ScanService.js`
 - `ForgeBazaarService` — no test file (intentional — service is a stub with no public API)

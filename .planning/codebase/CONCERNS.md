@@ -30,12 +30,9 @@
 
 ## Known Bugs
 
-**StorageService Test File Fails to Collect (31 Tests Silently Skipped):**
-- Symptoms: `npm test` exits 0 and reports `478 passed`, but also reports `1 failed | 10 passed (11)` test files. The failure is a collection error, not a test assertion failure. Vitest counts 0 tests from the failed file, so the pass count is not inflated — but 31 tests simply do not run.
-- Files: `tests/services/StorageService.test.js:14`
-- Trigger: The file includes an IIFE at lines 13-42 that polyfills `localStorage` for jsdom. The guard `if (typeof localStorage.getItem === 'function') return` crashes at line 14 because jsdom's `localStorage` is an object but without Web Storage API methods, making `localStorage.getItem` `undefined`. Accessing `.getItem` on `undefined` throws `TypeError: Cannot read properties of undefined (reading 'getItem')` at module load time (collection phase), not inside a test.
-- Workaround: Change the guard to use optional chaining: `if (typeof localStorage?.getItem === 'function') return;`
-- Priority: HIGH — the stated test count in `CLAUDE.md` ("509 tests") is stale. Actual passing count is 478. StorageService is a critical module and its 31 tests covering all 11 public methods are not running.
+None currently outstanding.
+
+_Recently resolved: `StorageService.test.js` collection-time crash on bare `localStorage` — the polyfill IIFE dereferenced an undefined `localStorage` in its own "is it already functional?" guard. Fixed in commit `53ad614` (2026-05-28) by using `typeof globalThis.localStorage?.getItem === 'function'`. Full suite now reports 509/509 passing._
 
 ## Security Considerations
 
@@ -83,7 +80,7 @@
 - Files: `scripts/services/StorageService.js:54-125`
 - Why fragile: `openDatabase()` caches the connection in `this.db` and tracks an in-flight promise in `this.dbPromise`. On unexpected close (`db.onclose`, line 87) or version change (`db.onversionchange`, line 94), both are nulled. The `onblocked` handler has a 10-second timeout (line 70) before rejecting — in scenarios with multiple simultaneous tabs at different module versions, this may cascade silently into the localStorage fallback.
 - Safe modification: All public methods wrap IndexedDB calls in `try/catch` with localStorage fallback. New storage operations must follow this same pattern.
-- Test coverage: `tests/services/StorageService.test.js` covers both paths but currently does not run due to the collection error documented above.
+- Test coverage: `tests/services/StorageService.test.js` covers both paths (31 tests, all passing as of commit `53ad614`).
 
 ## Scaling Limits
 
@@ -111,12 +108,6 @@
 - Blocks: True Forge Bazaar browsing/search cannot be implemented without a public API.
 
 ## Test Coverage Gaps
-
-**StorageService (31 Tests Not Running):**
-- What's not tested: All 11 public methods of `StorageService` — `openDatabase()`, `save()` (IndexedDB and localStorage paths), `load()`, `remove()`, `has()`, `_sanitizeData()`, `_jsonReviver()`, migration handler, singleton verification, and the 4.5MB size guard.
-- Files: `tests/services/StorageService.test.js:1-445`
-- Risk: Regressions in the storage layer will not be caught by CI. `npm test` exits 0, providing false confidence.
-- Priority: High — fix the `localStorage.getItem` guard at line 14 using optional chaining: `if (typeof localStorage?.getItem === 'function') return;`
 
 **Worker / Main-Thread Parity:**
 - What's not tested: No test verifies that `isExcludedPath()` in `IndexWorker.js` and `Utils.js` produce identical results for the same inputs. `CDN_SEGMENTS` set equality is also untested.
