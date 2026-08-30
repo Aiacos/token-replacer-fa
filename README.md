@@ -1,8 +1,14 @@
 # Token Replacer - Forgotten Adventures
 
+[![CI](https://github.com/Aiacos/token-replacer-fa/actions/workflows/ci.yml/badge.svg)](https://github.com/Aiacos/token-replacer-fa/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Aiacos/token-replacer-fa?sort=semver)](https://github.com/Aiacos/token-replacer-fa/releases/latest)
+[![Foundry](https://img.shields.io/badge/Foundry-v12%E2%80%93v13-informational)](https://foundryvtt.com/)
+[![System](https://img.shields.io/badge/system-dnd5e-red)](https://github.com/foundryvtt/dnd5e)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A Foundry VTT module that automatically replaces NPC token art with matching tokens from Forgotten Adventures and The Forge Bazaar using fuzzy search.
 
-## Features
+## ✨ Features
 
 - **One-click token replacement**: Adds a button to the token controls that scans all NPC tokens on the current scene
 - **Fuzzy search**: Uses Fuse.js for intelligent matching based on creature type, name, and subtype
@@ -15,7 +21,7 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 - **Configurable**: Adjustable fuzzy threshold, search priority, fallback options, and custom paths
 - **Localization**: Available in English and Italian
 
-## Requirements
+## 📦 Requirements
 
 - Foundry VTT v12+ (verified on v13)
 - D&D 5e System v3.0+
@@ -25,13 +31,17 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 
 - **[FA Nexus](https://foundryvtt.com/packages/fa-nexus)**: Provides access to Forgotten Adventures token library
 
-## Installation
+## 🚀 Installation
 
 ### Manifest URL (Recommended)
 
 ```
 https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 ```
+
+Once installed this way, Foundry checks that manifest URL on its own and offers
+the update in **Add-on Modules** whenever a new version is released — no manual
+re-download.
 
 ### Manual Installation
 
@@ -40,7 +50,7 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 3. Restart Foundry VTT
 4. Enable the module in your world
 
-## Usage
+## 🎮 Usage
 
 1. Open a scene with NPC tokens
 2. Select the **Token Controls** layer (the person icon)
@@ -52,7 +62,7 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
    - Show matching options for each creature type
 5. Select the desired replacement, skip, or cancel
 
-## Settings
+## ⚙️ Settings
 
 | Setting                     | Description                                                             | Default |
 | --------------------------- | ----------------------------------------------------------------------- | ------- |
@@ -65,7 +75,7 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 | **Use TVA Cache**           | Use Token Variant Art's pre-built cache instead of manual scanning      | On      |
 | **Refresh TVA Cache**       | Force refresh TVA cache before searching (for new images)               | Off     |
 
-## How It Works
+## 🧠 How It Works
 
 ### Search Process
 
@@ -126,7 +136,7 @@ Uses [Fuse.js](https://fusejs.io/) for intelligent fuzzy matching:
 - Configurable threshold for match sensitivity
 - Weighted search prioritizing name over filename
 
-## API
+## 🔌 API
 
 The module exposes `window.TokenReplacerFA` for debugging and integration:
 
@@ -150,7 +160,7 @@ TokenReplacerFA.i18n('dialog.title');
 TokenReplacerFA.isProcessing;
 ```
 
-## Troubleshooting
+## 🔍 Troubleshooting
 
 ### No matches found
 
@@ -192,7 +202,7 @@ token-replacer-fa | TVA search for "goblin" found 15 valid results
 token-replacer-fa | Optimized search: Found 50 images in humanoid category
 ```
 
-## Changelog
+## 📜 Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
@@ -204,22 +214,22 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 - **v2.11.0** — ApplicationV2 dialog migration for Foundry v13 compatibility, service decomposition
 - **v2.10.0** — Handlebars templates, Web Worker index building, IndexedDB storage, skeleton loaders, O(1) search index
 
-## License
+## 📜 License
 
 MIT License
 
-## Credits
+## 🙌 Credits
 
 - **Author**: [Aiacos](https://github.com/Aiacos)
 - [Forgotten Adventures](https://www.forgotten-adventures.net/) for the amazing token art
 - [Aedif](https://github.com/Aedif/TokenVariants) for Token Variant Art module
 - [Fuse.js](https://fusejs.io/) for fuzzy search library
 
-## Contributing
+## 🙌 Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, conventions, and testing guidelines.
 
-## Support
+## 🙌 Support
 
 - Report issues on [GitHub Issues](https://github.com/Aiacos/token-replacer-fa/issues)
 - Contributions welcome via Pull Requests

@@ -2,13 +2,13 @@
 
 Thank you for your interest in contributing! This guide covers the development workflow, conventions, and testing expectations.
 
-## Prerequisites
+## 📦 Prerequisites
 
 - [Node.js](https://nodejs.org/) v18+
 - [Foundry VTT](https://foundryvtt.com/) v12 or v13 for manual testing
 - [Token Variant Art](https://foundryvtt.com/packages/token-variants) module installed in Foundry
 
-## Getting Started
+## 🚀 Getting Started
 
 ```bash
 git clone https://github.com/Aiacos/token-replacer-fa.git
@@ -16,20 +16,36 @@ cd token-replacer-fa
 npm install
 ```
 
-## Development Commands
+## 🎮 Development Commands
 
-| Command                | Description                                 |
-| ---------------------- | ------------------------------------------- |
-| `npm test`             | Run all tests (Vitest)                      |
-| `npm run test:watch`   | Run tests in watch mode                     |
-| `npm run lint`         | Lint source files (ESLint)                  |
-| `npm run format`       | Format all files (Prettier)                 |
-| `npm run format:check` | Check formatting without writing            |
-| `npm run typecheck`    | Type-check JSDoc annotations (tsc --noEmit) |
-| `bash build.sh`        | Build release ZIP (Linux/macOS)             |
-| `build.bat`            | Build release ZIP (Windows)                 |
+**One command before every commit** — it is exactly what CI runs, so green here
+means green there:
 
-## Project Structure
+```bash
+npm run check
+```
+
+| Command                 | Description                                                       |
+| ----------------------- | ----------------------------------------------------------------- |
+| `npm run check`         | lint → format:check → typecheck → validate → test (the full gate) |
+| `npm run fix`           | Auto-fix what is mechanically fixable (Prettier + ESLint)         |
+| `npm test`              | Run all tests (Vitest)                                            |
+| `npm run test:watch`    | Run tests in watch mode                                           |
+| `npm run test:coverage` | Coverage report into `coverage/`                                  |
+| `npm run lint`          | Lint `scripts/`, `tools/`, `tests/` (ESLint)                      |
+| `npm run lint:fix`      | Lint and auto-fix                                                 |
+| `npm run format`        | Format all files (Prettier)                                       |
+| `npm run format:check`  | Check formatting without writing                                  |
+| `npm run typecheck`     | Type-check JSDoc annotations (tsc --noEmit)                       |
+| `npm run validate`      | Validate the manifest, runtime assets, i18n keys and translations |
+| `npm run build`         | Build release ZIP (`bash build.sh`; `build.bat` on Windows)       |
+
+`npm run validate` is the one worth knowing about: it catches the failures that
+otherwise only appear inside a live Foundry world — a renamed `.hbs`, a moved
+Web Worker, an i18n key used in code but missing from `lang/en.json`, a
+`download` URL left pointing at the previous version.
+
+## 🧠 Project Structure
 
 ```
 scripts/
@@ -40,9 +56,11 @@ scripts/
 templates/      Handlebars templates (.hbs)
 tests/          Vitest test suites mirroring scripts/ structure
 lang/           Localization files (en.json, it.json)
+tools/          CI/CD scripts (validation, version bump, release publishing)
+.github/        Dependabot config and the four workflows
 ```
 
-## Code Conventions
+## 🧹 Code Conventions
 
 ### Naming
 
@@ -75,7 +93,7 @@ lang/           Localization files (en.json, it.json)
 2. Utilities (`../core/Utils.js`)
 3. Sibling services (`./TVACacheService.js`)
 
-## Testing
+## 🧪 Testing
 
 ### Running Tests
 
@@ -126,7 +144,7 @@ tests/
 - **MockWorker**: simulates Web Worker message passing
 - **Foundry mocks**: game, canvas, ui, Hooks, and settings globals
 
-## Manual Testing in Foundry VTT
+## 🧪 Manual Testing in Foundry VTT
 
 Automated tests cover logic, but UI and Foundry integration require manual testing:
 
@@ -136,7 +154,7 @@ Automated tests cover logic, but UI and Foundry integration require manual testi
 4. Click the wand button in Token Controls
 5. Verify search, selection dialog, and token replacement work correctly
 
-## Localization
+## 🎛️ Localization
 
 Localization files are in `lang/`. When adding user-facing strings:
 
@@ -146,16 +164,36 @@ Localization files are in `lang/`. When adding user-facing strings:
 
 Error messages use `errors.{type}` keys. Recovery suggestions use `recovery.{key}` keys.
 
-## Version Management
+## 🔄 Version Management
 
-**Do not manually update version numbers in JS files.** The version is defined in `module.json` only. The build script automatically syncs it to `main.js` and `CLAUDE.md` via `sync-version.sh`.
+**Do not manually update version numbers anywhere.** `module.json` is the single
+source of truth; `sync-version.sh` propagates it to `main.js` and `CLAUDE.md`, and
+`npm run validate` fails the build if `package.json` has drifted out of sync.
 
-## Submitting Changes
+Releases are fully automated: a maintainer runs the **Release** workflow with a
+bump type (`patch`/`minor`/`major`, or an explicit `x.y.z`) and Actions handles
+the bump, the CHANGELOG promotion, the tag, the ZIP, the GitHub release and the
+announcement to the Foundry package registry.
+
+## 🔄 Continuous integration
+
+| Workflow                    | When                         | What it does                                                             |
+| --------------------------- | ---------------------------- | ------------------------------------------------------------------------ |
+| `ci.yml`                    | every push and PR            | `npm run check` on Node 20 and 22, coverage artifact, package smoke test |
+| `release.yml`               | manual dispatch, or `v*` tag | The full release pipeline                                                |
+| `foundry-compat.yml`        | weekly                       | Opens a PR when a newer Foundry generation ships                         |
+| `dependabot-auto-merge.yml` | daily                        | Merges green patch/minor dependency PRs, holds majors for review         |
+
+The decision-making lives in `tools/*.mjs` and is unit-tested in `tests/tools/`,
+not in workflow YAML — so the release path can be changed with the same
+confidence as any other code.
+
+## 🙌 Submitting Changes
 
 1. Fork the repository and create a feature branch from `develop`
 2. Make your changes following the conventions above
-3. Run `npm test` and ensure all tests pass
-4. Run `npm run lint` and `npm run format:check`
+3. Run `npm run check` and make sure it is green
+4. Add a `## [Unreleased]` entry to `CHANGELOG.md` for any user-visible change
 5. Submit a Pull Request against the `develop` branch
 
 ### PR Guidelines
@@ -166,7 +204,7 @@ Error messages use `errors.{type}` keys. Recovery suggestions use `recovery.{key
 - Update `lang/en.json` if adding user-facing strings
 - Do not bump the version number (maintainer handles releases)
 
-## Reporting Issues
+## 🔍 Reporting Issues
 
 Use [GitHub Issues](https://github.com/Aiacos/token-replacer-fa/issues) with:
 
@@ -176,6 +214,6 @@ Use [GitHub Issues](https://github.com/Aiacos/token-replacer-fa/issues) with:
 - Browser console output (F12) if relevant
 - Whether you're using The Forge or self-hosted
 
-## License
+## 📜 License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
