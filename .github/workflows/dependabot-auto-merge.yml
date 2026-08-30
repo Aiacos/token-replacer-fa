@@ -1,0 +1,58 @@
+name: Dependabot auto-merge
+
+# Merges low-risk Dependabot updates on its own and leaves the rest for a human.
+#
+# A daily sweep rather than a per-PR trigger: it needs no branch protection and
+# no repository auto-merge setting, and it cannot race the CI run it depends on.
+# A day of delay is irrelevant for dependency updates.
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Triage open Dependabot pull requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh pr list \
+            --author "app/dependabot" \
+            --state open \
+            --json number,title,body,mergeable,statusCheckRollup \
+            > dependabot-prs.json
+
+          COUNT=$(jq 'length' dependabot-prs.json)
+          echo "Open Dependabot pull requests: $COUNT"
+          if [ "$COUNT" -eq 0 ]; then exit 0; fi
+
+          node tools/dependabot-triage.mjs dependabot-prs.json > decisions.tsv
+          cat decisions.tsv
+
+          # Label exists after the first run; creating it again is not an error.
+          gh label create needs-review --color FBCA04 --description "Held by Dependabot triage" 2>/dev/null || true
+
+          while IFS=$'\t' read -r NUMBER ACTION REASON; do
+            [ -z "$NUMBER" ] && continue
+            if [ "$ACTION" = "merge" ]; then
+              echo "::notice::Merging #$NUMBER — $REASON"
+              gh pr merge "$NUMBER" --merge --delete-branch
+            else
+              echo "::notice::Holding #$NUMBER — $REASON"
+              gh pr edit "$NUMBER" --add-label needs-review 2>/dev/null || true
+            fi
+          done < decisions.tsv

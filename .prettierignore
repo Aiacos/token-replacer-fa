@@ -8,3 +8,4 @@ templates/no-match.hbs
 .planning/
 security-scan/
 fix-todos/
+coverage/

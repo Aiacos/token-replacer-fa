@@ -1,105 +1,174 @@
 name: Release
 
 on:
+  # Manual, fully automated path: pick a bump and everything else happens here.
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump (or an explicit x.y.z)'
+        required: true
+        default: patch
+        type: string
+      publish_to_registry:
+        description: 'Announce the release on the Foundry package registry'
+        required: false
+        default: true
+        type: boolean
+  # Manual tagging still works: push a vX.Y.Z tag matching module.json.
   push:
     tags:
       - 'v*'
+
+# Never let two releases race each other.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  quality-gate:
+  release:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version: '22'
-          cache: 'npm'
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: npm ci
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
 
+      - run: npm ci
+
+      # ── quality gates ───────────────────────────────────────────────────
       - name: Lint
         run: npm run lint
 
       - name: Format check
         run: npm run format:check
 
-      - name: Test
-        run: npm test
-
       - name: Typecheck
         run: npm run typecheck
 
-  release:
-    needs: quality-gate
-    runs-on: ubuntu-latest
+      - name: Unit tests
+        run: npm test
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # ── resolve the version being released ──────────────────────────────
+      - name: Bump version
+        id: bump
+        if: github.event_name == 'workflow_dispatch'
+        run: node tools/bump-version.mjs "${{ inputs.bump }}"
 
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Validate tag matches module.json
+      - name: Read version from the tag
+        id: tag
+        if: github.event_name == 'push'
         run: |
-          MODULE_VERSION=$(jq -r '.version' module.json)
-          TAG_VERSION="${{ steps.version.outputs.version }}"
-          if [ "$MODULE_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::Tag version ($TAG_VERSION) does not match module.json version ($MODULE_VERSION)"
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          JSON_VERSION=$(jq -r '.version' module.json)
+          if [ "$TAG_VERSION" != "$JSON_VERSION" ]; then
+            echo "::error::Tag v${TAG_VERSION} does not match module.json version ${JSON_VERSION}"
             exit 1
           fi
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Read module metadata
-        id: meta
+      - name: Resolve version
+        id: version
         run: |
-          echo "id=$(jq -r '.id' module.json)" >> "$GITHUB_OUTPUT"
-          echo "title=$(jq -r '.title' module.json)" >> "$GITHUB_OUTPUT"
+          VERSION="${{ steps.bump.outputs.version || steps.tag.outputs.version }}"
+          [ -n "$VERSION" ] || { echo "::error::could not determine the release version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "module_id=$(jq -r '.id' module.json)" >> "$GITHUB_OUTPUT"
+          # A hyphen marks a pre-release (2.13.0-rc.1) — it must not become "latest".
+          case "$VERSION" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
 
-      - name: Build release ZIP
+      # Version-stamped sources (CLAUDE.md, the main.js banner) must match the
+      # version being shipped, and validation runs after the bump so it checks
+      # what is actually going out.
+      - name: Sync version-stamped files
+        run: bash sync-version.sh
+
+      - name: Validate manifest, i18n keys and runtime assets
+        run: npm run validate
+
+      - name: Commit and tag the bump
+        if: github.event_name == 'workflow_dispatch'
         run: |
+          set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
-          MODULE_ID="${{ steps.meta.outputs.id }}"
-          OUTPUT_FILE="${MODULE_ID}-v${VERSION}.zip"
-          GITHUB_PATH="${{ github.repository }}"
-          DOWNLOAD_URL="https://github.com/${GITHUB_PATH}/releases/download/v${VERSION}/${OUTPUT_FILE}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add module.json package.json CHANGELOG.md CLAUDE.md scripts/main.js
+          git commit -m "chore: release v${VERSION}"
+          git tag -a "v${VERSION}" -m "v${VERSION}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
+          git push origin "v${VERSION}"
 
-          # Create staging directory
-          STAGING=$(mktemp -d)
+      # ── build and publish ───────────────────────────────────────────────
+      - name: Build the release ZIP
+        run: bash build.sh
 
-          # Copy module files
-          cp module.json "$STAGING/"
-          for dir in scripts lang styles templates assets packs icons images fonts; do
-            [ -d "$dir" ] && cp -r "$dir" "$STAGING/"
+      - name: Verify the ZIP contents
+        run: |
+          set -euo pipefail
+          ZIP="releases/${{ steps.version.outputs.module_id }}-v${{ steps.version.outputs.version }}.zip"
+          CONTENTS=$(unzip -Z1 "$ZIP")
+          # The Web Worker and the templates are loaded by path, so a packaging
+          # regression there is invisible until a user opens the dialog.
+          {
+            printf '%s\n' module.json LICENSE scripts/main.js scripts/workers/IndexWorker.js styles/styles.css
+            find templates -name '*.hbs' | sort
+            jq -r '.languages[].path' module.json
+          } | while IFS= read -r file; do
+            grep -Fxq "$file" <<< "$CONTENTS" || { echo "::error::missing from package: $file"; exit 1; }
           done
-          for file in README.md LICENSE CHANGELOG.md; do
-            [ -f "$file" ] && cp "$file" "$STAGING/"
-          done
+          PACKAGED_VERSION=$(unzip -p "$ZIP" module.json | jq -r '.version')
+          [ "$PACKAGED_VERSION" = "${{ steps.version.outputs.version }}" ] \
+            || { echo "::error::packaged module.json says $PACKAGED_VERSION"; exit 1; }
 
-          # Update download URL in staged module.json
-          jq --arg url "$DOWNLOAD_URL" '.download = $url' "$STAGING/module.json" > "$STAGING/module.json.tmp"
-          mv "$STAGING/module.json.tmp" "$STAGING/module.json"
+      - name: Point the standalone manifest at this release
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          MODULE_ID="${{ steps.version.outputs.module_id }}"
+          jq --arg dl "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${MODULE_ID}-v${VERSION}.zip" \
+             --arg mf "https://github.com/${{ github.repository }}/releases/latest/download/module.json" \
+             '.download = $dl | .manifest = $mf' module.json > module-release.json
+          mv module-release.json module.json
 
-          # Create ZIP
-          mkdir -p releases
-          (cd "$STAGING" && zip -r -q "$GITHUB_WORKSPACE/releases/${OUTPUT_FILE}" .)
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          MODULE_ID="${{ steps.version.outputs.module_id }}"
+          # `[ cond ] && x` would abort the step under `set -e` when cond is false
+          if [ "${{ steps.version.outputs.prerelease }}" = "true" ]; then
+            LATEST_FLAG="--prerelease"
+          else
+            LATEST_FLAG="--latest"
+          fi
 
-          echo "zip_path=releases/${OUTPUT_FILE}" >> "$GITHUB_OUTPUT"
-          echo "zip_name=${OUTPUT_FILE}" >> "$GITHUB_OUTPUT"
+          gh release create "v${VERSION}" \
+            "releases/${MODULE_ID}-v${VERSION}.zip#${MODULE_ID} v${VERSION} (Foundry module)" \
+            "module.json#module.json (Foundry manifest)" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            $LATEST_FLAG
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: 'v${{ steps.version.outputs.version }}'
-          generate_release_notes: true
-          files: |
-            releases/${{ steps.meta.outputs.id }}-v${{ steps.version.outputs.version }}.zip
-            module.json
+      - name: Announce the release on the Foundry package registry
+        # On a tag push `inputs` is empty, and GitHub coerces "" to false — so
+        # `inputs.publish_to_registry != false` would silently skip this step for
+        # every tag-triggered release. Only the dispatch path may opt out.
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_to_registry }}
+        env:
+          FOUNDRY_PACKAGE_TOKEN: ${{ secrets.FOUNDRY_PACKAGE_TOKEN }}
+          # Pre-releases are validated but never published to the registry.
+          DRY_RUN: ${{ steps.version.outputs.prerelease }}
+        run: node tools/publish-foundry.mjs

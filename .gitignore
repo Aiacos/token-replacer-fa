@@ -37,3 +37,10 @@ releases/
 .worktrees/
 .security-key
 logs/security/
+
+# Test coverage output
+coverage/
+
+# Agent session state (kept on disk, not versioned)
+fix-todos/
+security-scan/
