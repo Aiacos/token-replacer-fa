@@ -653,9 +653,7 @@ export class SearchOrchestrator {
       // cache — one cheap read — rather than letting the index's emptiness be authoritative.
       // (Intentionally not cascading to SLOW per-term API search; the cache read is enough.)
       if (results.length === 0 && this._tvaCacheService?.tvaCacheLoaded) {
-        console.log(
-          `${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`
-        );
+        console.log(`${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`);
         if (progressCallback) {
           progressCallback({ current: 0, total: 1, term: 'TVA cache fallback', resultsFound: 0 });
         }
@@ -677,9 +675,7 @@ export class SearchOrchestrator {
           });
         }
 
-        console.log(
-          `${MODULE_ID} | TVA cache fallback found ${results.length} results`
-        );
+        console.log(`${MODULE_ID} | TVA cache fallback found ${results.length} results`);
       }
     }
     // Priority: forgeBazaar - Try ForgeBazaarService first

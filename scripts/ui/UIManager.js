@@ -883,37 +883,41 @@ export class UIManager {
           }
 
           // Tie to the dialog's AbortController so re-renders don't stack duplicate listeners
-          categorySearchInput.addEventListener('input', () => {
-            toggleClearButton();
-            saveFilterTerm(categorySearchInput.value);
+          categorySearchInput.addEventListener(
+            'input',
+            () => {
+              toggleClearButton();
+              saveFilterTerm(categorySearchInput.value);
 
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-              const filterTerms = parseFilterTerms(categorySearchInput.value);
+              clearTimeout(debounceTimer);
+              debounceTimer = setTimeout(() => {
+                const filterTerms = parseFilterTerms(categorySearchInput.value);
 
-              // Filter the FULL dataset, not just rendered DOM elements
-              const filtered =
-                filterTerms.length > 0
-                  ? fullCategoryResults.filter((m) =>
-                      matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
-                    )
-                  : fullCategoryResults;
+                // Filter the FULL dataset, not just rendered DOM elements
+                const filtered =
+                  filterTerms.length > 0
+                    ? fullCategoryResults.filter((m) =>
+                        matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
+                      )
+                    : fullCategoryResults;
 
-              const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
+                const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
-              // Re-render grid with filtered results
-              this._renderMatchGrid(
-                display,
-                matchGrid,
-                multiSelectEnabled,
-                resolve,
-                updateSelectionCount
-              );
+                // Re-render grid with filtered results
+                this._renderMatchGrid(
+                  display,
+                  matchGrid,
+                  multiSelectEnabled,
+                  resolve,
+                  updateSelectionCount
+                );
 
-              if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
-              if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
-            }, 150);
-          }, { signal: ac.signal });
+                if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
+                if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
+              }, 150);
+            },
+            { signal: ac.signal }
+          );
 
           if (categoryClearBtn) {
             categoryClearBtn.addEventListener('click', () => {
