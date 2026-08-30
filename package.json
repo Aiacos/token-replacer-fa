@@ -1,6 +1,6 @@
 {
   "name": "token-replacer-fa",
-  "version": "2.12.6",
+  "version": "2.13.0",
   "foundry": {
     "minimum": "13",
     "verified": "14"

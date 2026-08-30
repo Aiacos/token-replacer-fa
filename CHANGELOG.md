@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-08-30
+
 ### Added
 
 - **Stop control for the background index build**: the first-time build can run for minutes with no way to interrupt it. Its notification is now clickable to stop, and reports plainly that searches will use a slower path until the index is rebuilt on the next reload. Works on both Foundry notification APIs — v13 returns a `Notification` with its own element and `remove()`, v12 only an id — and degrades to a plain, non-clickable message if neither can be resolved, because losing the control is acceptable and throwing during startup is not
