@@ -383,7 +383,10 @@ export class TokenReplacerApp {
       // the flag stops the pipeline at the next phase boundary.
       uiManager.setCancelCallback(() => {
         this.cancelRequested = true;
+        // Two separate workers run this phase: one builds the index, the other
+        // runs fuzzy search. Cancelling only the first leaves the second going.
         indexService.cancelOperation();
+        searchOrchestrator.cancelOperation();
         this._debugLog('Cancellation requested by user');
       });
 

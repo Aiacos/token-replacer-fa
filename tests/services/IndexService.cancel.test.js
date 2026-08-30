@@ -109,3 +109,32 @@ describe('indexPathsDirectly', () => {
     expect(service._cancelRequested).toBe(false);
   });
 });
+
+describe('SearchOrchestrator cancellation', () => {
+  it('mirrors the IndexService semantics', async () => {
+    const { SearchOrchestrator } = await import('../../scripts/services/SearchOrchestrator.js');
+    const worker = {
+      postMessage: vi.fn(),
+      terminate: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    };
+    const orchestrator = new SearchOrchestrator({
+      workerFactory: vi.fn(() => worker),
+      getSetting: vi.fn(),
+    });
+
+    // A second worker runs fuzzy search, separate from the indexing one — a
+    // cancel that reaches only the indexer leaves this one running.
+    orchestrator._ensureWorker();
+    orchestrator.cancelOperation();
+    expect(orchestrator._cancelRequested).toBe(true);
+    expect(worker.postMessage).toHaveBeenCalledWith({ command: 'cancel' });
+
+    expect(orchestrator._cancelledError().cancelled).toBe(true);
+
+    orchestrator.terminate();
+    orchestrator._ensureWorker();
+    expect(orchestrator.worker).toBe(worker);
+  });
+});

@@ -50,6 +50,9 @@ export class SearchOrchestrator {
     this.worker = null;
     this._workerInitialized = false;
     this._workerIndexSet = false;
+    // Distinguishes a user cancellation from a worker failure, so a cancelled
+    // search is not "recovered" by running the slow main-thread path anyway.
+    this._cancelRequested = false;
     this._debugLog = createDebugLogger('SearchOrchestrator');
   }
 
@@ -120,6 +123,9 @@ export class SearchOrchestrator {
       this.worker.terminate();
       this.worker = null;
       this._workerIndexSet = false;
+      // Allow _ensureWorker() to build a fresh one: without this the orchestrator
+      // silently stays on the slow main-thread path for the rest of the session.
+      this._workerInitialized = false;
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
   }
@@ -130,10 +136,25 @@ export class SearchOrchestrator {
    * @returns {void}
    */
   cancelOperation() {
+    // Set unconditionally: the main-thread fallback has no worker to message.
+    this._cancelRequested = true;
     if (this.worker) {
       this.worker.postMessage({ command: 'cancel' });
-      console.log(`${MODULE_ID} | Cancellation requested`);
     }
+    console.log(`${MODULE_ID} | Cancellation requested`);
+  }
+
+  /**
+   * Build the error thrown when a search is cancelled.
+   * The `cancelled` marker is what stops the caller from treating it as a
+   * worker failure and falling back to the slower main-thread path.
+   * @private
+   * @returns {Error} Cancellation error
+   */
+  _cancelledError() {
+    const error = /** @type {Error & { cancelled?: boolean }} */ (new Error('Operation cancelled'));
+    error.cancelled = true;
+    return error;
   }
 
   /**
@@ -297,6 +318,9 @@ export class SearchOrchestrator {
       try {
         return await this.searchLocalIndexWithWorker(searchTerms, index, creatureType, onProgress);
       } catch (error) {
+        // A cancellation is not a failure: falling back here would disable the
+        // worker for the session and run the search the user asked to stop.
+        if (error?.cancelled) throw error;
         // Worker failed, fallback to direct search on main thread
         console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
         this.worker = null;
@@ -434,7 +458,7 @@ export class SearchOrchestrator {
           case 'cancelled':
             cleanup();
             console.log(`${MODULE_ID} | Search operation cancelled by user`);
-            reject(new Error('Operation cancelled'));
+            reject(this._cancelledError());
             break;
 
           case 'error':
