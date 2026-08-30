@@ -23,6 +23,7 @@ import {
   createDebugLogger,
   createDefaultGetSetting,
   createModuleError,
+  i18nOrEnglish,
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -350,8 +351,10 @@ export class SearchOrchestrator {
         this._teardownWorker();
         try {
           ui.notifications.warn(
-            game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
-              'Token Replacer FA: Background worker failed, using slower method.',
+            i18nOrEnglish(
+              'notifications.workerFallback',
+              'Token Replacer FA: Background worker failed, using slower method.'
+            ),
             { permanent: false }
           );
         } catch {

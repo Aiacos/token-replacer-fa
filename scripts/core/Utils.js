@@ -78,6 +78,45 @@ function _validateFuseShape(Candidate) {
 }
 
 /**
+ * Localize a key, falling back to a declared English string.
+ *
+ * This exists so a fallback is *declared* rather than improvised. The idiom it
+ * replaces — `game.i18n.localize(key) || 'English'` — never fired: Foundry
+ * returns the key itself for a missing key, which is truthy, so a missing
+ * translation reached the user as a raw `TOKEN_REPLACER_FA.…` string while the
+ * English text sat there unreachable. It also throws outright when called
+ * before `game.i18n` exists, which is exactly when an init-failure notification
+ * needs to say something.
+ *
+ * Marking these call sites is also what lets `npm run validate` fail on every
+ * *other* English literal handed to `ui.notifications.*`: a deliberate fallback
+ * is now distinguishable from one that was simply never translated.
+ *
+ * @param {string} key - Key without the TOKEN_REPLACER_FA prefix
+ * @param {string} english - Text to use when localization cannot answer
+ * @param {Object<string, string|number>} [data={}] - {placeholder} values
+ * @returns {string} Localized text, or the English fallback
+ */
+export function i18nOrEnglish(key, english, data = {}) {
+  const full = `TOKEN_REPLACER_FA.${key}`;
+  let text = english;
+
+  try {
+    const localized = game?.i18n?.localize?.(full);
+    // A missing key comes back as the key itself; an empty string is a blank
+    // translation. Neither is something to show a user.
+    if (localized && localized !== full && localized.trim() !== '') text = localized;
+  } catch (error) {
+    console.debug(`token-replacer-fa | Localization unavailable for ${full}:`, error);
+  }
+
+  for (const [placeholder, value] of Object.entries(data)) {
+    text = text.replaceAll(`{${placeholder}}`, String(value));
+  }
+  return text;
+}
+
+/**
  * Escape HTML to prevent XSS
  * @param {string} text - Text to escape
  * @returns {string} Escaped text

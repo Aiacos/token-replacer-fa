@@ -58,7 +58,12 @@ tests (~10s). It is the gate for Articles I–V. Run it before every commit;
 ### Article III — 🎛️ User experience consistency
 
 1. Every user-visible string goes through `lang/en.json` and is mirrored in
-   `lang/it.json`. Hardcoded English in a template or a dialog is a defect.
+   `lang/it.json`. Hardcoded English in a template, a dialog or a notification
+   is a defect. The one exception is a fallback for the window before
+   `game.i18n` exists, and it must be _declared_ with `i18nOrEnglish(key,
+english)` — never improvised as `localize(key) || 'English'`, which cannot
+   work: Foundry returns the key itself for a missing key, so the fallback is
+   unreachable and the user sees a raw `TOKEN_REPLACER_FA.…` string.
 2. All UI is rendered from `/templates/*.hbs` via `renderTemplate()`. No HTML
    string concatenation in service or UI code; Handlebars auto-escaping is the
    XSS boundary.
@@ -68,8 +73,9 @@ tests (~10s). It is the gate for Articles I–V. Run it before every commit;
    no-op and never a raw stack trace.
 5. Terminology is stable across UI, README and settings: _token art_, _category_,
    _index_, _cache_, _match_. Do not invent synonyms.
-6. **Enforced by:** `npm run validate` (i18n keys used vs. defined, translation
-   parity, template reachability).
+6. **Enforced by:** `npm run validate` — i18n keys used vs. defined, translation
+   parity, template reachability, no literal text in a template, and no
+   untranslated prose handed to `ui.notifications.*`.
 
 ### Article IV — ⚡ Performance requirements
 

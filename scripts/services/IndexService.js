@@ -18,6 +18,7 @@ import {
   createModuleError,
   createDebugLogger,
   createDefaultGetSetting,
+  i18nOrEnglish,
 } from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
@@ -432,7 +433,10 @@ export class IndexService {
         console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
         if (typeof ui !== 'undefined' && ui.notifications) {
           ui.notifications.warn(
-            'Token Replacer FA: Cache storage is full. Index will be rebuilt each session.'
+            i18nOrEnglish(
+              'notifications.storageFull',
+              'Token Replacer FA: browser storage is full, so the index will be rebuilt every session.'
+            )
           );
         }
       } else {
@@ -898,8 +902,10 @@ export class IndexService {
             this._teardownWorker();
             try {
               ui.notifications.warn(
-                game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
-                  'Token Replacer FA: Background worker failed, using slower method.',
+                i18nOrEnglish(
+                  'notifications.workerFallback',
+                  'Token Replacer FA: Background worker failed, using slower method.'
+                ),
                 { permanent: false }
               );
             } catch {

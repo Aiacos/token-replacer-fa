@@ -103,7 +103,9 @@
       "workerFallback": "Token Replacer FA: Worker in background fallito, utilizzo del metodo più lento.",
       "replaceFailed": "{count} token hanno trovato art ma la sostituzione dell'immagine è fallita. Controlla la console per dettagli.",
       "indexingStoppable": "Creazione dell'indice delle immagini in background — clicca questo messaggio per fermarla.",
-      "indexingStopped": "Creazione dell'indice interrotta. La ricerca dei token userà un percorso più lento finché l'indice non verrà ricostruito al prossimo ricaricamento."
+      "indexingStopped": "Creazione dell'indice interrotta. La ricerca dei token userà un percorso più lento finché l'indice non verrà ricostruito al prossimo ricaricamento.",
+      "controlButtonFailed": "Token Replacer FA: impossibile aggiungere il pulsante ai controlli scena. Controlla la console per i dettagli.",
+      "storageFull": "Token Replacer FA: lo spazio di archiviazione del browser è pieno, quindi l'indice verrà ricostruito a ogni sessione."
     },
     "errors": {
       "tva_missing": "Il modulo Token Variant Art non è installato o abilitato",

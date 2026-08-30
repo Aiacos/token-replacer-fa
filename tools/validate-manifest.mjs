@@ -232,6 +232,80 @@ if (englishKeys) {
   }
 }
 
+// ── hardcoded user-visible text in notifications ────────────────────────────
+// The template check above only covers .hbs files, and the localization sweep
+// missed two of three identical `ui.notifications.error()` calls precisely
+// because nothing looked at JS. It could not look before: main.js was full of
+// English literals that were deliberate fallbacks for the window in which
+// game.i18n does not exist yet, so a literal-scanning rule would have fired
+// mostly on correct code and been switched off within a week.
+//
+// Those fallbacks now go through i18nOrEnglish(key, english), which declares
+// them. That is what makes this rule possible: any *other* English literal
+// reaching a notification is text nobody translated.
+const NOTIFICATION_CALL = /ui\.notifications\.(?:info|warn|error|notify)\s*\(/g;
+
+/**
+ * Extract the first argument of a call, given the offset just past its `(`.
+ * Walks the source tracking nesting and string state, so commas and parens
+ * inside nested calls, strings or template literals do not end the argument.
+ * @param {string} source - File contents
+ * @param {number} start - Index of the first character after the opening paren
+ * @returns {string} The argument text, or '' when the call is unbalanced
+ */
+const firstArgument = (source, start) => {
+  let depth = 0;
+  let quote = null;
+  for (let i = start; i < source.length; i++) {
+    const char = source[i];
+    if (quote) {
+      if (char === '\\') i++;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if ('([{'.includes(char)) depth++;
+    else if (')]}'.includes(char)) {
+      if (depth === 0) return source.slice(start, i);
+      depth--;
+    } else if (char === ',' && depth === 0) return source.slice(start, i);
+  }
+  return '';
+};
+
+/** Two or more consecutive words — enough to be a sentence, not an identifier. */
+const ENGLISH_PROSE = /[A-Za-z]{2,}\s+[A-Za-z]{2,}/;
+
+for (const file of scriptFiles) {
+  const source = readFileSync(file, 'utf8');
+  const relative = path.relative(ROOT, file);
+
+  for (const match of source.matchAll(NOTIFICATION_CALL)) {
+    const argument = firstArgument(source, match.index + match[0].length);
+    // A declared fallback is the one place an English literal belongs.
+    if (argument.includes('i18nOrEnglish(')) continue;
+
+    const literals = [
+      ...argument.matchAll(/'([^'\\]*(?:\\.[^'\\]*)*)'/g),
+      ...argument.matchAll(/`([^`\\]*(?:\\.[^`\\]*)*)`/g),
+    ].map((literal) => literal[1]);
+
+    for (const literal of literals) {
+      // i18n keys are dotted identifiers, never prose.
+      if (literal.startsWith('TOKEN_REPLACER_FA.')) continue;
+      const withoutInterpolation = literal.replace(/\$\{[^}]*\}/g, ' ');
+      if (ENGLISH_PROSE.test(withoutInterpolation)) {
+        fail(
+          `${relative} passes untranslated text to a notification: "${withoutInterpolation.trim().slice(0, 60)}" — use i18n(), or i18nOrEnglish() for a deliberate fallback`
+        );
+      }
+    }
+  }
+}
+
 // ── runtime asset paths referenced from source exist ────────────────────────
 // Covers both `renderTemplate('modules/${MODULE_ID}/templates/x.hbs')` and the
 // Web Worker URL, which is loaded by path and therefore invisible to the

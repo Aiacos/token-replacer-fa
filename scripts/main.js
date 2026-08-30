@@ -6,7 +6,7 @@
  */
 
 import { MODULE_ID } from './core/Constants.js';
-import { loadFuse, yieldToMain, loadModuleTemplates } from './core/Utils.js';
+import { loadFuse, yieldToMain, loadModuleTemplates, i18nOrEnglish } from './core/Utils.js';
 import { tokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { searchOrchestrator } from './services/SearchOrchestrator.js';
@@ -912,14 +912,14 @@ Hooks.once('init', async () => {
     tokenReplacerApp._debugLog('Module initialization complete');
   } catch (error) {
     console.error(`${MODULE_ID} | Initialization failed:`, error);
-    const msg = game.i18n
-      ? game.i18n
-          .localize('TOKEN_REPLACER_FA.notifications.initFailed')
-          .replace('{error}', error.message || String(error))
-      : `Token Replacer FA: Initialization failed. ${error.message || String(error)}`;
-    // Same guard as `msg` above: when i18n is not ready the whole notification
-    // falls back to English, so the label has to follow it rather than throw.
-    const tryLabel = game.i18n ? tokenReplacerApp.i18n('ui.tryThis') : 'Try:';
+    // This catch can run before game.i18n exists, which is exactly why both of
+    // these declare an English fallback rather than assuming localization works.
+    const msg = i18nOrEnglish(
+      'notifications.initFailed',
+      'Token Replacer FA: Initialization failed. {error}',
+      { error: error.message || String(error) }
+    );
+    const tryLabel = i18nOrEnglish('ui.tryThis', 'Try:');
     if (error.recoverySuggestions?.length > 0) {
       ui.notifications.error(`${msg} ${tryLabel} ${error.recoverySuggestions.join('. ')}`, {
         permanent: true,
@@ -997,8 +997,11 @@ Hooks.once('ready', async () => {
             if (percent < 100 && percent - lastNotifiedPercent < 10) return;
             lastNotifiedPercent = percent;
             ui.notifications.info(
-              tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
-                `Token Replacer FA: Building index... ${percent}% (${images} images)`,
+              i18nOrEnglish(
+                'notifications.indexing',
+                'Token Replacer FA: Building index... {percent}% ({images} images)',
+                { percent, images }
+              ),
               { permanent: false }
             );
           };
@@ -1010,8 +1013,10 @@ Hooks.once('ready', async () => {
           if (!hasCache) {
             tokenReplacerApp._debugLog('Showing first-time index build notification');
             ui.notifications.info(
-              tokenReplacerApp.i18n('notifications.indexingStart') ||
-                'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
+              i18nOrEnglish(
+                'notifications.indexingStart',
+                'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.'
+              ),
               { permanent: false }
             );
             indexNotification = showStoppableIndexingNotification(
@@ -1046,9 +1051,11 @@ Hooks.once('ready', async () => {
             if (!hasCache) {
               tokenReplacerApp._debugLog('Showing index build completion notification');
               ui.notifications.info(
-                tokenReplacerApp.i18n('notifications.indexingComplete', {
-                  count: stats.totalImages,
-                }) || `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
+                i18nOrEnglish(
+                  'notifications.indexingComplete',
+                  'Token Replacer FA: Index ready! {count} images indexed.',
+                  { count: stats.totalImages }
+                ),
                 { permanent: false }
               );
             }
@@ -1150,7 +1157,12 @@ Hooks.on('getSceneControlButtons', (controls) => {
     }
   } catch (error) {
     console.error(`${MODULE_ID} | Failed to add scene control button:`, error);
-    ui.notifications.error('Token Replacer FA: Failed to add scene control button.');
+    ui.notifications.error(
+      i18nOrEnglish(
+        'notifications.controlButtonFailed',
+        'Token Replacer FA: could not add its scene control button. Check the console for details.'
+      )
+    );
   }
 });
 
