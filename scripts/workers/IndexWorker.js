@@ -121,6 +121,10 @@ function handleIndexPaths(data) {
     throw new Error('excludedFilenameTerms must be an array');
   }
 
+  // Compiled once per run: the mappings arrive fresh from the main thread each
+  // time, so this cannot be hoisted to module scope.
+  const compiledCategorizer = compileCategorizer(creatureTypeMappings);
+
   // Initialize empty index structure
   const categories = {};
   for (const category of Object.keys(creatureTypeMappings)) {
@@ -176,7 +180,7 @@ function handleIndexPaths(data) {
       'Unknown';
 
     // Try to categorize the image
-    const { category, subcategories } = categorizeImage(path, imageName, creatureTypeMappings);
+    const { category, subcategories } = categorizeImage(path, imageName, compiledCategorizer);
 
     // ALWAYS add to allPaths (even if uncategorized) for general search
     allPaths[path] = {
@@ -412,31 +416,119 @@ async function handleFuzzySearch(data) {
  * @param {Object} creatureTypeMappings - Creature category mappings
  * @returns {Object} { category, subcategories }
  */
-function categorizeImage(path, name, creatureTypeMappings) {
-  const searchText = `${path} ${name}`.toLowerCase();
-  let bestCategory = null;
-  let subcategories = [];
-  let maxMatches = 0;
+/**
+ * Compile CREATURE_TYPE_MAPPINGS into a structure `categorizeWith()` can search
+ * quickly and deterministically.
+ *
+ * Two things are precomputed. Terms are lowercased once instead of once per
+ * image — the naive loop re-lowercased all 444 terms for every path, which on a
+ * 50k library is 22 million throwaway strings. And terms are bucketed by their
+ * first two characters: a term of two or more characters can only occur in the
+ * search text if its opening bigram does, so scanning the text's own bigrams
+ * tests a handful of candidate terms instead of all 444. The result is
+ * identical, verified path-by-path against the naive loop.
+ *
+ * `categoryIndex` and `termIndex` preserve declaration order, which is what
+ * breaks ties — without them the winning category would depend on which bigram
+ * happened to be scanned first.
+ *
+ * SYNC: Keep in sync with IndexService.js compileCategorizer()
+ * @param {Object<string, string[]>} mappings - Category to search terms
+ * @returns {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}}
+ */
+function compileCategorizer(mappings) {
+  const categories = Object.keys(mappings);
+  const buckets = new Map();
+  const shortTerms = [];
 
-  for (const [category, terms] of Object.entries(creatureTypeMappings)) {
-    let matches = 0;
-    const matchedTerms = [];
-
-    for (const term of terms) {
-      if (searchText.includes(term.toLowerCase())) {
-        matches++;
-        matchedTerms.push(term);
+  categories.forEach((category, categoryIndex) => {
+    mappings[category].forEach((original, termIndex) => {
+      const lower = String(original).toLowerCase();
+      if (!lower) return;
+      const entry = { category, categoryIndex, original, termIndex, lower };
+      // A single character has no bigram to bucket on, so it is always tested.
+      if (lower.length < 2) {
+        shortTerms.push(entry);
+        return;
       }
-    }
+      const key = lower.slice(0, 2);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = [];
+        buckets.set(key, bucket);
+      }
+      bucket.push(entry);
+    });
+  });
 
-    if (matches > maxMatches) {
-      maxMatches = matches;
+  return { categories, buckets, shortTerms };
+}
+
+/**
+ * Pick the category whose terms appear most often in the given text.
+ *
+ * Ties go to the category declared first in CREATURE_TYPE_MAPPINGS, and matched
+ * terms come back in declaration order, so the worker and the main-thread
+ * fallback cannot disagree about where an image belongs.
+ *
+ * SYNC: Keep in sync with IndexService.js categorizeWith()
+ * @param {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}} compiled
+ * @param {string} searchText - Lowercased path and name
+ * @returns {{category: string|null, subcategories: string[]}}
+ */
+function categorizeWith(compiled, searchText) {
+  const { categories, buckets, shortTerms } = compiled;
+  const hits = new Map();
+
+  const consider = (entry) => {
+    if (!searchText.includes(entry.lower)) return;
+    let matched = hits.get(entry.category);
+    if (!matched) {
+      matched = [];
+      hits.set(entry.category, matched);
+    }
+    matched.push(entry);
+  };
+
+  const seenBigrams = new Set();
+  for (let i = 0; i < searchText.length - 1; i++) {
+    const key = searchText.slice(i, i + 2);
+    if (seenBigrams.has(key)) continue;
+    seenBigrams.add(key);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      for (const entry of bucket) consider(entry);
+    }
+  }
+  for (const entry of shortTerms) consider(entry);
+
+  let bestCategory = null;
+  let best = null;
+  let maxMatches = 0;
+  for (const category of categories) {
+    const matched = hits.get(category);
+    if (matched && matched.length > maxMatches) {
+      maxMatches = matched.length;
       bestCategory = category;
-      subcategories = matchedTerms;
+      best = matched;
     }
   }
 
-  return { category: bestCategory, subcategories };
+  if (!best) return { category: null, subcategories: [] };
+
+  best.sort((a, b) => a.termIndex - b.termIndex);
+  return { category: bestCategory, subcategories: best.map((entry) => entry.original) };
+}
+
+/**
+ * Categorize an image using the compiled categorizer for this run.
+ * @param {string} path - Image path
+ * @param {string} name - Image display name
+ * @param {Object} compiled - Result of compileCategorizer()
+ * @returns {{category: string|null, subcategories: string[]}}
+ */
+function categorizeImage(path, name, compiled) {
+  return categorizeWith(compiled, `${path} ${name}`.toLowerCase());
 }
 
 /**

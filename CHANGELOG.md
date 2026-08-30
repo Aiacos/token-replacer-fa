@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Categorization is ~1.9x faster** (35.6k → 66.2k paths/sec on a 50k-path benchmark, byte-identical results): terms are lowercased once per build instead of once per image — the old loop rebuilt all 444 lowercased terms for every path — and are bucketed by their opening two characters, so each path tests a handful of candidate terms instead of all 444
 - CI now runs on Node 20 and 22 and includes format, typecheck and manifest validation
 - ESLint covers `tools/` and `tests/` in addition to `scripts/`
 - README, CONTRIBUTING and CLAUDE.md chapters use the shared icon vocabulary; README gained status badges and a note on automatic updates
@@ -36,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Worker and main thread categorized images differently**: the Web Worker counted a term for every category it was listed under and broke ties by declaration order, while the main-thread fallback used a term→category `Map` that silently kept only the _last_ category for a shared term and broke ties by whichever term happened to match first. The same image library therefore produced a different index depending on whether the worker was available. Both paths now share one compiled categorizer, and a test fails if the two copies drift
+- **Four creature terms filed under the wrong type**: `bone devil` was listed as undead, `night hag` and `displacer beast` as fey, and `firbolg` as giant. Verified against the Monster Manual and corrected; `yuan-ti` legitimately stays under both humanoid and monstrosity, and a test now requires every shared term to be declared intentional
+- **Missing `SYNC` markers**: `loadFuse()`, `CDN_SEGMENTS` and `isExcludedPath()` in `Utils.js` carried no marker pointing at their worker copies, so the CDN path-filtering logic CLAUDE.md singles out as duplicated could be edited on one side only. All four pairs are now marked and the pairing is enforced by a test
 - **Cancel button did nothing**: `setCancelCallback()` was defined but never called, so `cancelCallback` was permanently `null` and every click on Cancel — shown during the two longest phases, TVA cache loading and category search — was silently ignored. It is now wired for the whole pre-replacement stretch and disarmed once tokens start changing, so an aborted run always leaves the scene untouched
 - **Cancelling ran the slow path anyway**: a user cancellation rejected the worker promise, which `build()` caught as a worker _failure_ — warning the user that the background worker had failed, permanently disabling the Web Worker for the session, and then running the slower main-thread indexing the user had just asked it to stop. Cancellation now carries a marker that `build()` re-throws instead of recovering from
 - **`terminate()` disabled the worker for the session**: it nulled `worker` without clearing `_workerInitialized`, so `_ensureWorker()` refused to build a replacement and every later run silently used the slow main-thread path

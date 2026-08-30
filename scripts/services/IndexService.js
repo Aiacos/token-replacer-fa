@@ -48,6 +48,110 @@ const UPDATE_FREQUENCIES = {
  *   termIndex: { "term": ["path1", "path2", ...] }
  * }
  */
+/**
+ * Compile CREATURE_TYPE_MAPPINGS into a structure `categorizeWith()` can search
+ * quickly and deterministically.
+ *
+ * Two things are precomputed. Terms are lowercased once instead of once per
+ * image — the naive loop re-lowercased all 444 terms for every path, which on a
+ * 50k library is 22 million throwaway strings. And terms are bucketed by their
+ * first two characters: a term of two or more characters can only occur in the
+ * search text if its opening bigram does, so scanning the text's own bigrams
+ * tests a handful of candidate terms instead of all 444. The result is
+ * identical, verified path-by-path against the naive loop.
+ *
+ * `categoryIndex` and `termIndex` preserve declaration order, which is what
+ * breaks ties — without them the winning category would depend on which bigram
+ * happened to be scanned first.
+ *
+ * SYNC: Keep in sync with IndexWorker.js compileCategorizer()
+ * @param {Object<string, string[]>} mappings - Category to search terms
+ * @returns {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}}
+ */
+function compileCategorizer(mappings) {
+  const categories = Object.keys(mappings);
+  const buckets = new Map();
+  const shortTerms = [];
+
+  categories.forEach((category, categoryIndex) => {
+    mappings[category].forEach((original, termIndex) => {
+      const lower = String(original).toLowerCase();
+      if (!lower) return;
+      const entry = { category, categoryIndex, original, termIndex, lower };
+      // A single character has no bigram to bucket on, so it is always tested.
+      if (lower.length < 2) {
+        shortTerms.push(entry);
+        return;
+      }
+      const key = lower.slice(0, 2);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = [];
+        buckets.set(key, bucket);
+      }
+      bucket.push(entry);
+    });
+  });
+
+  return { categories, buckets, shortTerms };
+}
+
+/**
+ * Pick the category whose terms appear most often in the given text.
+ *
+ * Ties go to the category declared first in CREATURE_TYPE_MAPPINGS, and matched
+ * terms come back in declaration order, so the worker and the main-thread
+ * fallback cannot disagree about where an image belongs.
+ *
+ * SYNC: Keep in sync with IndexWorker.js categorizeWith()
+ * @param {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}} compiled
+ * @param {string} searchText - Lowercased path and name
+ * @returns {{category: string|null, subcategories: string[]}}
+ */
+function categorizeWith(compiled, searchText) {
+  const { categories, buckets, shortTerms } = compiled;
+  const hits = new Map();
+
+  const consider = (entry) => {
+    if (!searchText.includes(entry.lower)) return;
+    let matched = hits.get(entry.category);
+    if (!matched) {
+      matched = [];
+      hits.set(entry.category, matched);
+    }
+    matched.push(entry);
+  };
+
+  const seenBigrams = new Set();
+  for (let i = 0; i < searchText.length - 1; i++) {
+    const key = searchText.slice(i, i + 2);
+    if (seenBigrams.has(key)) continue;
+    seenBigrams.add(key);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      for (const entry of bucket) consider(entry);
+    }
+  }
+  for (const entry of shortTerms) consider(entry);
+
+  let bestCategory = null;
+  let best = null;
+  let maxMatches = 0;
+  for (const category of categories) {
+    const matched = hits.get(category);
+    if (matched && matched.length > maxMatches) {
+      maxMatches = matched.length;
+      bestCategory = category;
+      best = matched;
+    }
+  }
+
+  if (!best) return { category: null, subcategories: [] };
+
+  best.sort((a, b) => a.termIndex - b.termIndex);
+  return { category: bestCategory, subcategories: best.map((entry) => entry.original) };
+}
+
 export class IndexService {
   constructor(deps = {}) {
     const {
@@ -65,7 +169,7 @@ export class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
-    this.termCategoryMap = this.buildTermCategoryMap();
+    this.categorizer = compileCategorizer(CREATURE_TYPE_MAPPINGS);
     this.worker = null;
     this._workerInitialized = false;
     // Set by cancelOperation(); distinguishes a user cancellation from a failure
@@ -91,25 +195,6 @@ export class IndexService {
       console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
       this.worker = null;
     }
-  }
-
-  /**
-   * Build reverse lookup Map from CREATURE_TYPE_MAPPINGS
-   * Maps each term to its category for O(1) lookups
-   * @private
-   * @returns {Map<string, Object>} Map of lowercase term → {category, originalTerm}
-   */
-  buildTermCategoryMap() {
-    const map = new Map();
-
-    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
-      for (const term of terms) {
-        const termLower = term.toLowerCase();
-        map.set(termLower, { category, originalTerm: term });
-      }
-    }
-
-    return map;
   }
 
   /**
@@ -192,35 +277,7 @@ export class IndexService {
       return { category: null, subcategories: [] };
     }
 
-    const searchText = `${path} ${name || ''}`.toLowerCase();
-    const categoryMatches = new Map(); // category -> {count, terms}
-
-    // Single loop through all terms using the pre-built map
-    for (const [termLower, { category, originalTerm }] of this.termCategoryMap.entries()) {
-      if (searchText.includes(termLower)) {
-        if (!categoryMatches.has(category)) {
-          categoryMatches.set(category, { count: 0, terms: [] });
-        }
-        const match = categoryMatches.get(category);
-        match.count++;
-        match.terms.push(originalTerm);
-      }
-    }
-
-    // Find category with most matches
-    let bestCategory = null;
-    let subcategories = [];
-    let maxMatches = 0;
-
-    for (const [category, { count, terms }] of categoryMatches.entries()) {
-      if (count > maxMatches) {
-        maxMatches = count;
-        bestCategory = category;
-        subcategories = terms;
-      }
-    }
-
-    return { category: bestCategory, subcategories };
+    return categorizeWith(this.categorizer, `${path} ${name || ''}`.toLowerCase());
   }
 
   /**

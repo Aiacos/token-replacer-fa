@@ -77,16 +77,13 @@ describe('IndexService', () => {
       expect(mockWorkerFactory).not.toHaveBeenCalled();
     });
 
-    it('buildTermCategoryMap() works (pure logic, no globals)', () => {
+    it('compiles the categorizer at construction (pure logic, no globals)', () => {
       const service = createService();
-      const map = service.termCategoryMap;
+      const { categorizer } = service;
 
-      expect(map).toBeInstanceOf(Map);
-      expect(map.size).toBeGreaterThan(0);
-
-      const wolfEntry = map.get('wolf');
-      expect(wolfEntry).toBeDefined();
-      expect(wolfEntry.category).toBe('beast');
+      expect(categorizer.buckets).toBeInstanceOf(Map);
+      expect(categorizer.buckets.size).toBeGreaterThan(0);
+      expect(categorizer.categories).toEqual(Object.keys(CREATURE_TYPE_MAPPINGS));
     });
 
     it('default constructor (no args) does not throw at construction time', () => {
@@ -139,53 +136,63 @@ describe('IndexService', () => {
   // -----------------------------------------------------------------------
   // buildTermCategoryMap()
   // -----------------------------------------------------------------------
-  describe('buildTermCategoryMap()', () => {
-    it('returns Map with entries for all CREATURE_TYPE_MAPPINGS terms', () => {
+  describe('compileCategorizer()', () => {
+    it('buckets every term in CREATURE_TYPE_MAPPINGS', () => {
       const service = createService();
-      const map = service.termCategoryMap;
+      const { buckets, shortTerms } = service.categorizer;
 
-      // Count total terms across all categories
-      let totalTerms = 0;
-      const seenTerms = new Set();
-      for (const terms of Object.values(CREATURE_TYPE_MAPPINGS)) {
-        for (const term of terms) {
-          const lower = term.toLowerCase();
-          if (!seenTerms.has(lower)) {
-            seenTerms.add(lower);
-            totalTerms++;
-          }
-        }
-      }
+      const bucketed = [...buckets.values()].reduce((total, list) => total + list.length, 0);
+      const declared = Object.values(CREATURE_TYPE_MAPPINGS).reduce(
+        (total, terms) => total + terms.length,
+        0
+      );
 
-      expect(map.size).toBe(totalTerms);
+      // Unlike the term->category Map it replaced, bucketing keeps every term:
+      // a term listed under two categories used to silently lose one of them.
+      expect(bucketed + shortTerms.length).toBe(declared);
     });
 
-    it('maps wolf to beast category', () => {
+    it('keeps a term that legitimately belongs to two categories', () => {
       const service = createService();
-      const entry = service.termCategoryMap.get('wolf');
-      expect(entry).toBeDefined();
-      expect(entry.category).toBe('beast');
+      const { buckets } = service.categorizer;
+
+      // Yuan-ti purebloods are humanoid and malisons are monstrosities, so the
+      // term genuinely belongs to both and must count for both.
+      const entries = [...buckets.values()]
+        .flat()
+        .filter((entry) => entry.lower === 'yuan-ti')
+        .map((entry) => entry.category)
+        .sort();
+
+      expect(entries).toEqual(['humanoid', 'monstrosity']);
     });
 
-    it('maps zombie to undead category', () => {
+    it('categorizes wolf as beast', () => {
       const service = createService();
-      const entry = service.termCategoryMap.get('zombie');
-      expect(entry).toBeDefined();
-      expect(entry.category).toBe('undead');
+      expect(service.categorizeImage('tokens/wolf.webp', 'wolf').category).toBe('beast');
     });
 
-    it('maps elf to humanoid category', () => {
+    it('categorizes zombie as undead', () => {
       const service = createService();
-      const entry = service.termCategoryMap.get('elf');
-      expect(entry).toBeDefined();
-      expect(entry.category).toBe('humanoid');
+      expect(service.categorizeImage('tokens/zombie.webp', 'zombie').category).toBe('undead');
     });
 
-    it('each entry maps to { category, originalTerm }', () => {
+    it('categorizes elf as humanoid', () => {
       const service = createService();
-      const entry = service.termCategoryMap.get('dragon');
-      expect(entry).toHaveProperty('category', 'dragon');
-      expect(entry).toHaveProperty('originalTerm', 'dragon');
+      expect(service.categorizeImage('tokens/elf.webp', 'elf').category).toBe('humanoid');
+    });
+
+    it('breaks ties by declaration order, not by scan order', () => {
+      const service = createService();
+      const categories = Object.keys(CREATURE_TYPE_MAPPINGS);
+
+      // One term from each of two categories: whichever category is declared
+      // first must win, regardless of the order the terms appear in the path.
+      const first =
+        categories.indexOf('beast') < categories.indexOf('humanoid') ? 'beast' : 'humanoid';
+
+      expect(service.categorizeImage('tokens/wolf-guard.webp', 'wolf guard').category).toBe(first);
+      expect(service.categorizeImage('tokens/guard-wolf.webp', 'guard wolf').category).toBe(first);
     });
   });
 

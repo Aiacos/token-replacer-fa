@@ -27,6 +27,7 @@ const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(
  * Load Fuse.js library from CDN
  * On failure, FuseClass stays null so subsequent calls retry the import.
  * Note: browsers may cache failed dynamic import() — this is not controllable in userland.
+ * SYNC: Keep in sync with IndexWorker.js loadFuse()
  * @returns {Promise<Function|null>} Fuse constructor or null
  */
 export async function loadFuse() {
@@ -375,6 +376,7 @@ export function extractNameFromTVAResult(item, imagePath) {
 /**
  * CDN URL segments to skip when checking folder exclusions
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+ * SYNC: Keep in sync with IndexWorker.js CDN_SEGMENTS
  */
 const CDN_SEGMENTS = new Set([
   'https:',
@@ -424,6 +426,10 @@ function _evictCacheIfFull() {
  * Check if a path should be excluded from token search
  * Checks both folder names and filename for environmental/prop terms
  * Results are memoized for performance (50K+ calls per search)
+ *
+ * The worker copy takes the excluded folders and terms as arguments because it
+ * cannot import Constants.js — the signatures differ, the filtering must not.
+ * SYNC: Keep in sync with IndexWorker.js isExcludedPath()
  * @param {string} path - Image path to check
  * @returns {boolean} True if path should be excluded
  */
