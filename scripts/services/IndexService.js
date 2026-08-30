@@ -22,7 +22,7 @@ import {
 import { storageService } from './StorageService.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 14; // v2.10.0: Added termIndex for O(1) search term lookups
+const INDEX_VERSION = 15; // v2.13.0: Paths interned in pathList; everything else holds ids
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -44,8 +44,9 @@ const UPDATE_FREQUENCIES = {
  *     beast: { wolf: [...], bear: [...] },
  *     ...
  *   },
- *   allPaths: { "path": { name, category, subcategories: [] } },
- *   termIndex: { "term": ["path1", "path2", ...] }
+ *   pathList: ["path1", "path2", ...],
+ *   allPaths: [ { name, category, subcategories: [] }, ... ],   // parallel to pathList
+ *   termIndex: { "term": [0, 5, 12, ...] }                      // ids, not paths
  * }
  */
 /**
@@ -328,7 +329,8 @@ export class IndexService {
       }
 
       this.index = data;
-      const imageCount = Object.keys(data.allPaths || {}).length;
+      this._rebuildPathIds();
+      const imageCount = data.pathList?.length ?? 0;
       this._debugLog(`Loaded index from cache: ${imageCount} images`);
       console.log(`${MODULE_ID} | Loaded index from cache: ${imageCount} images`);
 
@@ -337,13 +339,14 @@ export class IndexService {
       if (imageCount > 0 && termIndexSize === 0) {
         console.log(`${MODULE_ID} | Rebuilding termIndex from cached allPaths...`);
         this.index.termIndex = {};
-        for (const [path, pathData] of Object.entries(this.index.allPaths)) {
-          const searchTerms = this.tokenizeSearchText(`${path} ${pathData.name}`);
+        for (let id = 0; id < this.index.pathList.length; id++) {
+          const path = this.index.pathList[id];
+          const searchTerms = this.tokenizeSearchText(`${path} ${this.index.allPaths[id].name}`);
           for (const term of searchTerms) {
             if (!this.index.termIndex[term]) {
               this.index.termIndex[term] = [];
             }
-            this.index.termIndex[term].push(path);
+            this.index.termIndex[term].push(id);
           }
         }
         const rebuiltSize = Object.keys(this.index.termIndex).length;
@@ -382,7 +385,7 @@ export class IndexService {
       this._debugLog('Attempting to save index to localStorage');
 
       // Estimate size from entry counts to avoid blocking JSON.stringify on large indexes
-      const pathCount = this.index.allPaths ? Object.keys(this.index.allPaths).length : 0;
+      const pathCount = this.index.pathList?.length ?? 0;
       const catCount = this.index.categories ? Object.keys(this.index.categories).length : 0;
       const approxKB = Math.round(pathCount * 0.2 + catCount * 0.5);
 
@@ -425,9 +428,39 @@ export class IndexService {
       timestamp: Date.now(),
       lastUpdate: Date.now(),
       categories,
-      allPaths: {},
+      // Paths are interned here once and referenced by index everywhere else.
+      // Repeating the strings cost 39 MB of structured clone on a 50k library —
+      // paid on the main thread, which is what the Web Worker exists to spare.
+      pathList: [],
+      allPaths: [],
       termIndex: {},
     };
+  }
+
+  /**
+   * Rebuild the path -> id lookup used to skip already-indexed paths.
+   * Derived state: it is never serialized, because it is exactly as large as
+   * pathList and trivially recomputed.
+   * @private
+   */
+  _rebuildPathIds() {
+    this._pathIds = new Map();
+    const pathList = this.index?.pathList ?? [];
+    for (let id = 0; id < pathList.length; id++) this._pathIds.set(pathList[id], id);
+  }
+
+  /**
+   * Turn a path id into a search result.
+   * @private
+   * @param {number} id - Index into pathList
+   * @param {Object} [extra={}] - Extra fields merged into the result
+   * @returns {Object|null} Result object, or null when the id is dangling
+   */
+  _resultForId(id, extra = {}) {
+    const path = this.index?.pathList?.[id];
+    const data = this.index?.allPaths?.[id];
+    if (path === undefined || !data) return null;
+    return { path, name: data.name, source: 'index', category: data.category, ...extra };
   }
 
   /**
@@ -445,13 +478,17 @@ export class IndexService {
     }
 
     // Validate index exists
-    if (!this.index || !this.index.allPaths || !this.index.termIndex) {
+    if (!this.index || !this.index.pathList || !this.index.allPaths || !this.index.termIndex) {
       this._debugLog('Index not initialized, cannot add image');
       return false;
     }
 
+    if (!this._pathIds || this._pathIds.size !== this.index.pathList.length) {
+      this._rebuildPathIds();
+    }
+
     // Skip if already indexed or excluded folder
-    if (this.index.allPaths[path] || isExcludedPath(path)) return false;
+    if (this._pathIds.has(path) || isExcludedPath(path)) return false;
 
     try {
       // Extract name from path if not provided
@@ -467,12 +504,15 @@ export class IndexService {
       // Try to categorize the image
       const { category, subcategories } = this.categorizeImage(path, imageName);
 
-      // ALWAYS add to allPaths (even if uncategorized) for general search
-      this.index.allPaths[path] = {
+      // ALWAYS index the path (even if uncategorized) for general search
+      const id = this.index.pathList.length;
+      this.index.pathList.push(path);
+      this._pathIds.set(path, id);
+      this.index.allPaths.push({
         name: imageName,
         category: category || null,
         subcategories: subcategories || [],
-      };
+      });
 
       // Populate termIndex for O(1) search term lookups
       const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
@@ -480,7 +520,7 @@ export class IndexService {
         if (!this.index.termIndex[term]) {
           this.index.termIndex[term] = [];
         }
-        this.index.termIndex[term].push(path);
+        this.index.termIndex[term].push(id);
       }
 
       // If categorized, also add to category structure for fast category lookups
@@ -495,14 +535,14 @@ export class IndexService {
           if (!this.index.categories[category][subcat]) {
             this.index.categories[category][subcat] = [];
           }
-          this.index.categories[category][subcat].push({ path, name: imageName });
+          this.index.categories[category][subcat].push(id);
         }
 
         // Also add to a "_all" subcategory for the category
         if (!this.index.categories[category]._all) {
           this.index.categories[category]._all = [];
         }
-        this.index.categories[category]._all.push({ path, name: imageName });
+        this.index.categories[category]._all.push(id);
       }
 
       return true;
@@ -1080,8 +1120,10 @@ export class IndexService {
             }
             // Merge worker results into the index (termIndex now built by Worker)
             this.index.categories = result.categories;
+            this.index.pathList = result.pathList || [];
             this.index.allPaths = result.allPaths;
             this.index.termIndex = result.termIndex || {};
+            this._rebuildPathIds();
 
             this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
             console.log(
@@ -1376,14 +1418,14 @@ export class IndexService {
 
       processed += batch.length;
       if (onProgress && (processed % 50 === 0 || processed === totalTerms)) {
-        onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
+        onProgress(processed, totalTerms, this.index.pathList.length);
       }
       await new Promise((r) => setTimeout(r, 50));
     }
 
     // Final performance summary
     const totalTime = performance.now() - startTime;
-    const totalImages = Object.keys(this.index.allPaths).length;
+    const totalImages = this.index.pathList.length;
     if (totalImages > 0) {
       const avgTimePerImage = totalTime / totalImages;
       const throughput = ((totalImages / totalTime) * 1000).toFixed(0);
@@ -1472,8 +1514,8 @@ export class IndexService {
         // Build from TVA (pass pre-loaded cache if available)
         await this.buildFromTVA(onProgress, tvaCacheImages);
 
-        // Use actual count from allPaths
-        const totalImages = Object.keys(this.index.allPaths).length;
+        // Use actual count from pathList
+        const totalImages = this.index.pathList.length;
 
         if (totalImages > 0) {
           this.index.lastUpdate = Date.now();
@@ -1555,12 +1597,9 @@ export class IndexService {
       }
 
       // Return all images in this category
-      const results = categoryData._all.map((item) => ({
-        path: item.path,
-        name: item.name,
-        source: 'index',
-        category: categoryLower,
-      }));
+      const results = categoryData._all
+        .map((id) => this._resultForId(id, { category: categoryLower }))
+        .filter(Boolean);
 
       this._debugLog(`Found ${results.length} results for category: ${categoryLower}`);
       return results;
@@ -1607,13 +1646,9 @@ export class IndexService {
 
       // Direct subcategory match
       if (categoryData[subcatLower]) {
-        const results = categoryData[subcatLower].map((item) => ({
-          path: item.path,
-          name: item.name,
-          source: 'index',
-          category: categoryLower,
-          subcategory: subcatLower,
-        }));
+        const results = categoryData[subcatLower]
+          .map((id) => this._resultForId(id, { category: categoryLower, subcategory: subcatLower }))
+          .filter(Boolean);
         this._debugLog(
           `Found ${results.length} results for subcategory: ${categoryLower}/${subcatLower}`
         );
@@ -1622,22 +1657,19 @@ export class IndexService {
 
       // Partial match in subcategory names
       const results = [];
-      const seenPaths = new Set();
+      const seenIds = new Set();
 
-      for (const [subcat, items] of Object.entries(categoryData)) {
+      for (const [subcat, ids] of Object.entries(categoryData)) {
         if (subcat === '_all') continue;
         if (subcat.includes(subcatLower) || subcatLower.includes(subcat)) {
-          for (const item of items) {
-            if (!seenPaths.has(item.path)) {
-              seenPaths.add(item.path);
-              results.push({
-                path: item.path,
-                name: item.name,
-                source: 'index',
-                category: categoryLower,
-                subcategory: subcat,
-              });
-            }
+          for (const id of ids) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+            const result = this._resultForId(id, {
+              category: categoryLower,
+              subcategory: subcat,
+            });
+            if (result) results.push(result);
           }
         }
       }
@@ -1677,28 +1709,20 @@ export class IndexService {
     try {
       const termLower = term.toLowerCase();
       const tokens = this.tokenizeSearchText(termLower);
-      const seenPaths = new Set();
+      const seenIds = new Set();
       const results = [];
 
       this._debugLog(`Searching for term: "${term}" (tokens: ${tokens.join(', ')})`);
 
       // O(1) lookup in termIndex for each token
       for (const token of tokens) {
-        const paths = this.index.termIndex[token];
-        if (paths) {
-          for (const path of paths) {
-            if (!seenPaths.has(path)) {
-              seenPaths.add(path);
-              const data = this.index.allPaths[path];
-              if (data) {
-                results.push({
-                  path,
-                  name: data.name,
-                  source: 'index',
-                  category: data.category,
-                });
-              }
-            }
+        const ids = this.index.termIndex[token];
+        if (ids) {
+          for (const id of ids) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+            const result = this._resultForId(id);
+            if (result) results.push(result);
           }
         }
       }
@@ -1731,7 +1755,7 @@ export class IndexService {
     }
 
     try {
-      const seenPaths = new Set();
+      const seenIds = new Set();
       const results = [];
 
       // Tokenize all terms once and collect unique tokens
@@ -1751,21 +1775,13 @@ export class IndexService {
 
       // O(1) lookup in termIndex for each unique token
       for (const token of allTokens) {
-        const paths = this.index.termIndex[token];
-        if (paths) {
-          for (const path of paths) {
-            if (!seenPaths.has(path)) {
-              seenPaths.add(path);
-              const data = this.index.allPaths[path];
-              if (data) {
-                results.push({
-                  path,
-                  name: data.name,
-                  source: 'index',
-                  category: data.category,
-                });
-              }
-            }
+        const ids = this.index.termIndex[token];
+        if (ids) {
+          for (const id of ids) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+            const result = this._resultForId(id);
+            if (result) results.push(result);
           }
         }
       }
@@ -1795,7 +1811,7 @@ export class IndexService {
       }
     }
 
-    const totalImages = Object.keys(this.index?.allPaths || {}).length;
+    const totalImages = this.index?.pathList?.length ?? 0;
 
     return {
       isBuilt: this.isBuilt,

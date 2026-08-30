@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Worker → main thread handoff is 3.25x faster and 4.3x smaller** (44.3 MB / 319ms → 10.2 MB / 98ms on a 50k-image index, identical search results): paths are now interned once in `index.pathList` and referenced by integer id from `allPaths`, `categories` and `termIndex`, instead of the same string being repeated as an `allPaths` key, in every category bucket, and once per search term. The clone cost is paid on the _main thread_ while deserializing, so it was cancelling out much of the benefit of building the index in a worker at all. The same reduction applies to what gets written to IndexedDB
 - **Categorization is ~1.9x faster** (35.6k → 66.2k paths/sec on a 50k-path benchmark, byte-identical results): terms are lowercased once per build instead of once per image — the old loop rebuilt all 444 lowercased terms for every path — and are bucketed by their opening two characters, so each path tests a handful of candidate terms instead of all 444
 - CI now runs on Node 20 and 22 and includes format, typecheck and manifest validation
 - ESLint covers `tools/` and `tests/` in addition to `scripts/`
@@ -29,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SPECIFICATIONS.md` moved to `docs/` and re-scoped to requirements, acceptance test cases and known issues (CLAUDE.md is authoritative for architecture)
 
 ### Removed
+
+- `INDEX_VERSION` is now 15; cached indexes from earlier versions are discarded and rebuilt automatically on first use (the version check already handled this)
 
 - Dead i18n keys: `TOKEN_REPLACER_FA.title` (duplicate of `dialog.title`, which is what the window actually uses) and `settings.searchSources` (no such setting is registered)
 

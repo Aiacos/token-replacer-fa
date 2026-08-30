@@ -107,10 +107,12 @@ describe('IndexService', () => {
       expect(index).toHaveProperty('termIndex');
     });
 
-    it('has version set to 14 (INDEX_VERSION)', () => {
+    it('has version set to 15 (INDEX_VERSION)', () => {
       const service = createService();
       const index = service.createEmptyIndex();
-      expect(index.version).toBe(14);
+      // Bumping this invalidates every cached index, which is the migration:
+      // v15 interns paths in pathList and references them by id.
+      expect(index.version).toBe(15);
     });
 
     it('categories has keys for all CREATURE_TYPE_MAPPINGS entries', () => {
@@ -124,11 +126,13 @@ describe('IndexService', () => {
       }
     });
 
-    it('allPaths and termIndex are empty objects', () => {
+    it('starts with an empty pathList, allPaths and termIndex', () => {
       const service = createService();
       const index = service.createEmptyIndex();
 
-      expect(index.allPaths).toEqual({});
+      // pathList and allPaths are parallel arrays; termIndex maps a term to ids.
+      expect(index.pathList).toEqual([]);
+      expect(index.allPaths).toEqual([]);
       expect(index.termIndex).toEqual({});
     });
   });
@@ -319,7 +323,9 @@ describe('IndexService', () => {
       const result = service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
       expect(result).toBe(true);
-      const entry = service.index.allPaths['FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp'];
+      const id = service.index.pathList.indexOf('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
+      expect(id).toBe(0);
+      const entry = service.index.allPaths[id];
       expect(entry).toBeDefined();
       expect(entry.name).toBe('Wolf');
       expect(entry.category).toBe('beast');
@@ -329,17 +335,17 @@ describe('IndexService', () => {
     it('adds search terms to termIndex', () => {
       service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
-      expect(service.index.termIndex['wolf']).toContain('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
+      const id = service.index.pathList.indexOf('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
+      expect(service.index.termIndex['wolf']).toContain(id);
     });
 
     it('adds to categories structure when categorizable', () => {
       service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp', 'Wolf');
 
+      const id = service.index.pathList.indexOf('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
       expect(service.index.categories.beast.wolf).toBeDefined();
       expect(service.index.categories.beast.wolf.length).toBe(1);
-      expect(service.index.categories.beast.wolf[0].path).toBe(
-        'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp'
-      );
+      expect(service.index.categories.beast.wolf[0]).toBe(id);
     });
 
     it('adds to _all subcategory', () => {
@@ -373,7 +379,8 @@ describe('IndexService', () => {
     it('extracts name from path when name not provided', () => {
       service.addImageToIndex('FA_Pack/Tokens/Beasts/Wolf/Wolf_Dire_01.webp');
 
-      const entry = service.index.allPaths['FA_Pack/Tokens/Beasts/Wolf/Wolf_Dire_01.webp'];
+      const id = service.index.pathList.indexOf('FA_Pack/Tokens/Beasts/Wolf/Wolf_Dire_01.webp');
+      const entry = service.index.allPaths[id];
       expect(entry).toBeDefined();
       expect(entry.name).toBe('Wolf Dire 01');
     });
@@ -386,12 +393,13 @@ describe('IndexService', () => {
     it('returns true and sets index when storageService.load returns valid data', async () => {
       const mockStorage = createMockStorage();
       const validIndex = {
-        version: 14,
+        version: 15,
         timestamp: Date.now(),
         lastUpdate: Date.now(),
         categories: { humanoid: {}, beast: {} },
-        allPaths: { 'test/path.webp': { name: 'Test', category: 'beast', subcategories: [] } },
-        termIndex: { test: ['test/path.webp'] },
+        pathList: ['test/path.webp'],
+        allPaths: [{ name: 'Test', category: 'beast', subcategories: [] }],
+        termIndex: { test: [0] },
       };
       mockStorage.load.mockResolvedValue(validIndex);
 
@@ -434,17 +442,12 @@ describe('IndexService', () => {
     it('rebuilds termIndex from allPaths when termIndex is empty', async () => {
       const mockStorage = createMockStorage();
       const indexWithEmptyTermIndex = {
-        version: 14,
+        version: 15,
         timestamp: Date.now(),
         lastUpdate: Date.now(),
         categories: { beast: {} },
-        allPaths: {
-          'FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp': {
-            name: 'Wolf',
-            category: 'beast',
-            subcategories: ['wolf'],
-          },
-        },
+        pathList: ['FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp'],
+        allPaths: [{ name: 'Wolf', category: 'beast', subcategories: ['wolf'] }],
         termIndex: {}, // empty - needs rebuild
       };
       mockStorage.load.mockResolvedValue(indexWithEmptyTermIndex);
@@ -453,9 +456,9 @@ describe('IndexService', () => {
       const result = await service.loadFromCache();
 
       expect(result).toBe(true);
-      // termIndex should now have entries
+      // termIndex should now have entries, keyed to the path's id
       expect(Object.keys(service.index.termIndex).length).toBeGreaterThan(0);
-      expect(service.index.termIndex['wolf']).toContain('FA_Pack/Tokens/Beasts/Wolf/Wolf_01.webp');
+      expect(service.index.termIndex['wolf']).toContain(0);
       // Should also save the updated index back
       expect(mockStorage.save).toHaveBeenCalled();
     });

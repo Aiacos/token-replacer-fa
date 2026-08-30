@@ -130,7 +130,13 @@ function handleIndexPaths(data) {
   for (const category of Object.keys(creatureTypeMappings)) {
     categories[category] = {};
   }
-  const allPaths = {};
+  // Paths are interned in pathList and referenced by id everywhere else. Sending
+  // the strings back repeated across allPaths, categories and termIndex cost
+  // 39 MB of structured clone on a 50k library — deserialized on the main
+  // thread, which is exactly what this worker exists to keep free.
+  const pathList = [];
+  const allPaths = [];
+  const pathIds = new Map();
 
   // Send initial progress
   self.postMessage({
@@ -165,7 +171,11 @@ function handleIndexPaths(data) {
     }
 
     // Skip if no path, already indexed, or excluded
-    if (!path || allPaths[path] || isExcludedPath(path, excludedFolders, excludedFilenameTerms)) {
+    if (
+      !path ||
+      pathIds.has(path) ||
+      isExcludedPath(path, excludedFolders, excludedFilenameTerms)
+    ) {
       continue;
     }
 
@@ -182,12 +192,15 @@ function handleIndexPaths(data) {
     // Try to categorize the image
     const { category, subcategories } = categorizeImage(path, imageName, compiledCategorizer);
 
-    // ALWAYS add to allPaths (even if uncategorized) for general search
-    allPaths[path] = {
+    // ALWAYS index the path (even if uncategorized) for general search
+    const id = pathList.length;
+    pathList.push(path);
+    pathIds.set(path, id);
+    allPaths.push({
       name: imageName,
       category: category || null,
       subcategories: subcategories || [],
-    };
+    });
 
     imagesFound++;
 
@@ -203,14 +216,14 @@ function handleIndexPaths(data) {
         if (!categories[category][subcategory]) {
           categories[category][subcategory] = [];
         }
-        categories[category][subcategory].push({ path, name: imageName });
+        categories[category][subcategory].push(id);
       }
 
       // Also add to a "_all" subcategory for the category
       if (!categories[category]._all) {
         categories[category]._all = [];
       }
-      categories[category]._all.push({ path, name: imageName });
+      categories[category]._all.push(id);
     }
 
     // Report progress every 1000 items
@@ -225,23 +238,23 @@ function handleIndexPaths(data) {
   // Build termIndex from allPaths (O(1) search term lookups on main thread)
   // Uses same tokenization regex as IndexService.tokenizeSearchText() — keep in sync
   const termIndex = {};
-  for (const [path, data] of Object.entries(allPaths)) {
+  for (let id = 0; id < pathList.length; id++) {
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;
     }
-    const searchText = `${path} ${data.name}`.toLowerCase();
+    const searchText = `${pathList[id]} ${allPaths[id].name}`.toLowerCase();
     const terms = searchText.split(/[/\\\-_\s.]+/).filter((t) => t.length > 0);
     for (const term of new Set(terms)) {
       if (!termIndex[term]) termIndex[term] = [];
-      termIndex[term].push(path);
+      termIndex[term].push(id);
     }
   }
 
   // Send completion message with results
   self.postMessage({
     type: 'complete',
-    result: { categories, allPaths, termIndex },
+    result: { categories, pathList, allPaths, termIndex },
     imagesFound,
     total: paths.length,
   });

@@ -450,10 +450,13 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
           type: 'complete',
           result: {
             categories: directIndex.categories,
+            // pathList must travel with the rest: since v15 every other
+            // structure holds ids into it, so omitting it yields empty results.
+            pathList: directIndex.pathList,
             allPaths: directIndex.allPaths,
             termIndex: directIndex.termIndex,
           },
-          imagesFound: Object.keys(directIndex.allPaths).length,
+          imagesFound: directIndex.pathList.length,
           total: parsedImages.length,
         });
       }
@@ -512,10 +515,13 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
           type: 'complete',
           result: {
             categories: directIndex.categories,
+            // pathList must travel with the rest: since v15 every other
+            // structure holds ids into it, so omitting it yields empty results.
+            pathList: directIndex.pathList,
             allPaths: directIndex.allPaths,
             termIndex: directIndex.termIndex,
           },
-          imagesFound: Object.keys(directIndex.allPaths).length,
+          imagesFound: directIndex.pathList.length,
           total: parsedImages.length,
         });
       }
@@ -573,10 +579,13 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
           type: 'complete',
           result: {
             categories: directIndex.categories,
+            // pathList must travel with the rest: since v15 every other
+            // structure holds ids into it, so omitting it yields empty results.
+            pathList: directIndex.pathList,
             allPaths: directIndex.allPaths,
             termIndex: directIndex.termIndex,
           },
-          imagesFound: Object.keys(directIndex.allPaths).length,
+          imagesFound: directIndex.pathList.length,
           total: parsedImages.length,
         });
       }
@@ -634,10 +643,13 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
           type: 'complete',
           result: {
             categories: directIndex.categories,
+            // pathList must travel with the rest: since v15 every other
+            // structure holds ids into it, so omitting it yields empty results.
+            pathList: directIndex.pathList,
             allPaths: directIndex.allPaths,
             termIndex: directIndex.termIndex,
           },
-          imagesFound: Object.keys(directIndex.allPaths).length,
+          imagesFound: directIndex.pathList.length,
           total: parsedImages.length,
         });
       }

@@ -78,14 +78,19 @@ tests (~10s). It is the gate for Articles I–V. Run it before every commit;
    yields.
 2. Searches over the index are O(1)/O(log n) via `termIndex` and the category
    pre-cache — never a full scan of `allPaths` per query.
-3. Anything computed once per build (lowercasing, category maps, compiled
+3. Paths are interned once in `index.pathList`; `allPaths`, `categories` and
+   `termIndex` hold integer ids into it. Repeating the strings cost 44MB of
+   structured clone per 50k images on the worker handoff — deserialized on the
+   main thread, defeating the worker. Never store a path string in those
+   structures again; `_resultForId()` resolves ids at the edge.
+4. Anything computed once per build (lowercasing, category maps, compiled
    regexes) is computed at build time, not per search. Compiled patterns are
    reset on every re-index — stale reuse has bitten this codebase before.
-4. Persisted state goes to IndexedDB first, `localStorage` only as a fallback
+5. Persisted state goes to IndexedDB first, `localStorage` only as a fallback
    (~4.5MB ceiling), and every load is sanitized.
-5. A change that touches the search or index path reports before/after numbers
+6. A change that touches the search or index path reports before/after numbers
    (the index build already logs images/sec). "Feels faster" is not a result.
-6. **Enforced by:** review + the timing logs in `IndexService`.
+7. **Enforced by:** review + the timing logs in `IndexService`.
 
 ### Article V — 🔍 Automatic debug & validation system
 
