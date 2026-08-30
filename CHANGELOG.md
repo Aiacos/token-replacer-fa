@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Stop control for the background index build**: the first-time build can run for minutes with no way to interrupt it. Its notification is now clickable to stop, and reports plainly that searches will use a slower path until the index is rebuilt on the next reload. Works on both Foundry notification APIs — v13 returns a `Notification` with its own element and `remove()`, v12 only an id — and degrades to a plain, non-clickable message if neither can be resolved, because losing the control is acceptable and throwing during startup is not
+
 - **Automated release pipeline**: the `Release` workflow bumps the version, promotes the changelog, tags, builds, verifies and publishes the GitHub release, then announces it to the Foundry package registry (`tools/publish-foundry.mjs`) — no local steps
 - **Foundry compatibility watch**: a weekly workflow compares `compatibility.verified` against the newest published Foundry generation and opens a bump PR on its own
 - **Dependabot with auto-merge triage**: grouped weekly dependency updates; green patch/minor PRs merge automatically, majors are labelled `needs-review` (`tools/dependabot-triage.mjs`)

@@ -101,7 +101,9 @@
       "initFailed": "Token Replacer FA: Inizializzazione fallita. {error}",
       "backgroundFailed": "Token Replacer FA: Configurazione in background fallita. {error}",
       "workerFallback": "Token Replacer FA: Worker in background fallito, utilizzo del metodo più lento.",
-      "replaceFailed": "{count} token hanno trovato art ma la sostituzione dell'immagine è fallita. Controlla la console per dettagli."
+      "replaceFailed": "{count} token hanno trovato art ma la sostituzione dell'immagine è fallita. Controlla la console per dettagli.",
+      "indexingStoppable": "Creazione dell'indice delle immagini in background — clicca questo messaggio per fermarla.",
+      "indexingStopped": "Creazione dell'indice interrotta. La ricerca dei token userà un percorso più lento finché l'indice non verrà ricostruito al prossimo ricaricamento."
     },
     "errors": {
       "tva_missing": "Il modulo Token Variant Art non è installato o abilitato",

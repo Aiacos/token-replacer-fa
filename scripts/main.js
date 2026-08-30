@@ -31,6 +31,65 @@ function fisherYatesShuffle(arr) {
 }
 
 /**
+ * Show the background index-build notification with a click-to-stop control.
+ *
+ * The first-time build can run for minutes and, until now, offered no way to
+ * stop it — the only visible affordance was a notification that ignored clicks.
+ *
+ * Foundry v13 returns a Notification carrying its own `element` and `remove()`;
+ * v12 returns only an id, so the element is located in the notification list
+ * instead. When neither works the message is still shown and simply is not
+ * clickable: losing the control is acceptable, throwing during startup is not.
+ *
+ * @param {string} message - Localized notification text
+ * @param {Function} onStop - Called once, when the user asks to stop
+ * @returns {{dismiss: () => void}} Handle that removes the notification
+ */
+export function showStoppableIndexingNotification(message, onStop) {
+  let handle;
+  try {
+    handle = ui.notifications.info(message, { permanent: true });
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not show the indexing notification:`, error);
+    return { dismiss: () => {} };
+  }
+
+  const element =
+    handle?.element ?? document.querySelector('#notifications li.notification:last-child');
+
+  if (element) {
+    element.classList.add('token-replacer-fa-stoppable');
+    element.setAttribute('role', 'button');
+    element.addEventListener(
+      'click',
+      () => {
+        try {
+          onStop();
+        } catch (error) {
+          console.warn(`${MODULE_ID} | Stop-indexing handler failed:`, error);
+        }
+      },
+      { once: true }
+    );
+  } else {
+    // Worth knowing about: it means the control silently was not offered.
+    console.debug(`${MODULE_ID} | Indexing notification element not found, stop control not wired`);
+  }
+
+  return {
+    dismiss() {
+      try {
+        if (typeof handle?.remove === 'function') handle.remove();
+        else if (handle !== undefined) ui.notifications.remove?.(handle);
+        else element?.remove();
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Could not dismiss the indexing notification:`, error);
+      }
+    },
+  };
+}
+
+/**
  * TokenReplacerApp class - Main application controller
  * Manages module state and orchestrates token replacement workflow
  */
@@ -941,12 +1000,24 @@ Hooks.once('ready', async () => {
             );
           };
 
+          // The stop control is only offered for a first-time build: that is the
+          // one that runs for minutes. A cached rebuild finishes before anyone
+          // could reach for it.
+          let indexNotification = { dismiss: () => {} };
           if (!hasCache) {
             tokenReplacerApp._debugLog('Showing first-time index build notification');
             ui.notifications.info(
               tokenReplacerApp.i18n('notifications.indexingStart') ||
                 'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
               { permanent: false }
+            );
+            indexNotification = showStoppableIndexingNotification(
+              tokenReplacerApp.i18n('notifications.indexingStoppable'),
+              () => {
+                console.log(`${MODULE_ID} | Index build stopped by user`);
+                tokenReplacerApp._debugLog('Index build stopped from the notification');
+                indexService.cancelOperation();
+              }
             );
           }
 
@@ -956,11 +1027,12 @@ Hooks.once('ready', async () => {
           tokenReplacerApp._debugLog(
             `Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`
           );
-          const success = await indexService.build(
-            false,
-            hasCache ? null : onProgress,
-            tvaCacheImages
-          );
+          let success;
+          try {
+            success = await indexService.build(false, hasCache ? null : onProgress, tvaCacheImages);
+          } finally {
+            indexNotification.dismiss();
+          }
           if (success) {
             const stats = indexService.getStats();
             console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
@@ -983,8 +1055,17 @@ Hooks.once('ready', async () => {
             tokenReplacerApp._debugLog('Index build failed, will fall back to direct API calls');
           }
         } catch (err) {
-          console.warn(`${MODULE_ID} | Index build error:`, err);
-          tokenReplacerApp._debugLog('Index build error:', err.message);
+          // Stopping the build is an outcome the user asked for, not a failure —
+          // but it does leave the session without a category index, so say so
+          // rather than letting searches quietly get slower.
+          if (err?.cancelled) {
+            console.log(`${MODULE_ID} | Index build cancelled by user`);
+            tokenReplacerApp._debugLog('Index build cancelled by user');
+            ui.notifications.info(tokenReplacerApp.i18n('notifications.indexingStopped'));
+          } else {
+            console.warn(`${MODULE_ID} | Index build error:`, err);
+            tokenReplacerApp._debugLog('Index build error:', err.message);
+          }
         }
       } catch (error) {
         console.error(`${MODULE_ID} | Background initialization failed:`, error);

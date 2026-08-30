@@ -101,7 +101,9 @@
       "initFailed": "Token Replacer FA: Initialization failed. {error}",
       "backgroundFailed": "Token Replacer FA: Background setup failed. {error}",
       "workerFallback": "Token Replacer FA: Background worker failed, using slower method.",
-      "replaceFailed": "{count} token(s) matched art but image replacement failed. Check console for details."
+      "replaceFailed": "{count} token(s) matched art but image replacement failed. Check console for details.",
+      "indexingStoppable": "Building the image index in the background — click this message to stop.",
+      "indexingStopped": "Index build stopped. Token search will use a slower path until the index is rebuilt on the next reload."
     },
     "errors": {
       "tva_missing": "Token Variant Art module is not installed or enabled",

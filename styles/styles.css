@@ -1094,3 +1094,20 @@
   scrollbar-width: thin;
   scrollbar-color: #444 #1a1a1a;
 }
+
+/* ============================================
+   Stoppable background-index notification
+   ============================================ */
+
+.notification.token-replacer-fa-stoppable {
+  cursor: pointer;
+}
+
+.notification.token-replacer-fa-stoppable:hover {
+  filter: brightness(1.15);
+}
+
+.notification.token-replacer-fa-stoppable:focus-visible {
+  outline: 2px solid #4ade80;
+  outline-offset: 2px;
+}
