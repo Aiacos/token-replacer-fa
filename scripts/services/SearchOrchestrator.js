@@ -49,7 +49,11 @@ export class SearchOrchestrator {
     this._workerFactory = workerFactory;
     this.worker = null;
     this._workerInitialized = false;
-    this._workerIndexSet = false;
+    // The index the Worker currently holds, tracked by identity. A boolean
+    // "already sent" flag was never cleared when the index itself changed, so a
+    // rebuilt local index — new artwork, changed search paths — was silently
+    // searched against the copy from earlier in the session.
+    this._workerIndex = null;
     // Distinguishes a user cancellation from a worker failure, so a cancelled
     // search is not "recovered" by running the slow main-thread path anyway.
     this._cancelRequested = false;
@@ -122,7 +126,7 @@ export class SearchOrchestrator {
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
-      this._workerIndexSet = false;
+      this._workerIndex = null;
       // Allow _ensureWorker() to build a fresh one: without this the orchestrator
       // silently stays on the slow main-thread path for the rest of the session.
       this._workerInitialized = false;
@@ -324,7 +328,7 @@ export class SearchOrchestrator {
         // Worker failed, fallback to direct search on main thread
         console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
         this.worker = null;
-        this._workerIndexSet = false;
+        this._workerIndex = null;
         try {
           ui.notifications.warn(
             game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
@@ -504,7 +508,7 @@ export class SearchOrchestrator {
         if (this.worker) {
           this.worker.terminate();
           this.worker = null;
-          this._workerIndexSet = false;
+          this._workerIndex = null;
         }
         reject(
           createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
@@ -514,10 +518,12 @@ export class SearchOrchestrator {
         );
       }, 60000);
 
-      // Send index to Worker once — subsequent calls reuse the persisted copy
-      if (!this._workerIndexSet) {
+      // Send the index only when the Worker is not already holding this exact
+      // one. Identity, not a boolean: buildLocalTokenIndex() returns a fresh
+      // array whenever the library is rescanned, and the Worker must see it.
+      if (this._workerIndex !== index) {
         this.worker.postMessage({ command: 'setSearchIndex', data: { index } });
-        this._workerIndexSet = true;
+        this._workerIndex = index;
       }
 
       this.worker.postMessage({
