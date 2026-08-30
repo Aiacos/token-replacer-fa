@@ -2,21 +2,21 @@
   <div class='progress-bar'>
     <div class='progress-fill' style='width: {{percent}}%'></div>
   </div>
-  <div class='progress-text'>{{current}} / {{total}} - {{status}}</div>
+  <div class='progress-text'>{{progressLabel}}</div>
 </div>
 
 <div class='token-replacer-fa-summary'>
   <div class='summary-item success'>
     <div class='count'>{{successCount}}</div>
-    <div class='label'>Replaced</div>
+    <div class='label'>{{replacedLabel}}</div>
   </div>
   <div class='summary-item failed'>
     <div class='count'>{{failedCount}}</div>
-    <div class='label'>No Match</div>
+    <div class='label'>{{noMatchLabel}}</div>
   </div>
   <div class='summary-item skipped'>
     <div class='count'>{{skippedCount}}</div>
-    <div class='label'>Skipped</div>
+    <div class='label'>{{skippedLabel}}</div>
   </div>
 </div>
 

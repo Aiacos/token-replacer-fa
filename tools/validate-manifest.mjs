@@ -137,7 +137,27 @@ const templateFiles = await collectFiles('templates', ['.hbs', '.html']);
 //      which prefixes the namespace itself;
 //   3. `{{localize "NS.x"}}` inside a Handlebars template.
 const QUALIFIED_KEY = new RegExp(`["'\`](${I18N_NAMESPACE}\\.[A-Za-z0-9_$.{}]+)["'\`]`, 'g');
-const WRAPPER_KEY = /\bi18n\(\s*["'`]([A-Za-z0-9_$.{}]+)["'`]/g;
+// The wrapper is also called with a computed key —
+// `i18n(capped ? 'ui.showingResultsCapped' : 'ui.showingResults', …)` — so a
+// pattern anchored to the opening paren misses one branch of every ternary.
+// Instead, treat any quoted literal whose first segment is a real top-level
+// section of lang/en.json as a key: precise enough not to over-match, and
+// blind to how the call is written.
+const NAMESPACE_SECTIONS = [
+  'button',
+  'settings',
+  'frequency',
+  'priority',
+  'dialog',
+  'notifications',
+  'errors',
+  'recovery',
+  'ui',
+];
+const WRAPPER_KEY = new RegExp(
+  `["'\`]((?:${NAMESPACE_SECTIONS.join('|')})\\.[A-Za-z0-9_$.{}]+)["'\`]`,
+  'g'
+);
 const TEMPLATE_KEY = new RegExp(`localize\\s+"(${I18N_NAMESPACE}\\.[^"]+)"`, 'g');
 
 const usedKeys = new Set();
@@ -241,23 +261,45 @@ for (const file of templateFiles) {
 }
 
 // ── hardcoded user-visible text in templates ────────────────────────────────
-// Every one of the eight templates currently ships English text inline
-// (">Total Tokens<", ">Show Details<", ">Scanning token artwork...<"), so an
-// Italian user reads an English dialog. Constitution Article III.1 forbids it.
+// Every template used to ship English text inline (">Total Tokens<",
+// ">Show Details<"), so an Italian user read an English dialog even though
+// lang/it.json was complete. Constitution Article III.1 forbids it, and only a
+// check keeps it forbidden: this is a `fail`, because the debt is paid off and
+// re-introducing it is a regression, not a backlog item.
 //
-// TODO(you): implement this check. The trade-off is the policy, not the regex:
-//   - `fail()` makes the rule real but turns the whole suite red until all
-//     ~40 strings are moved into lang/en.json — a big, blocking first commit;
-//   - `warn()` reports the drift and lets it be paid down template by template,
-//     but a warning nobody clears is a warning everyone stops reading;
-//   - a third option: fail only for templates added or changed after today,
-//     freezing the existing debt without letting it grow.
-// Text nodes to skip: pure `{{expressions}}`, whitespace, numbers, and single
-// punctuation. Attribute values (title=, placeholder=) are user-visible too.
+// User-visible text reaches a template one of two ways: a {{placeholder}} the
+// create*HTML method fills with a localized string, or {{localize "KEY"}}.
+// Anything else is a literal, and a literal cannot be translated.
+const LOCALIZABLE_ATTRIBUTES = ['title', 'placeholder', 'alt', 'aria-label', 'label'];
+const WORD = /\p{L}{2,}/u;
+
+/**
+ * Report literal user-visible text left in a template.
+ * @param {string} source Template contents
+ * @param {string} file Path relative to the repo root, for the message
+ */
 const checkHardcodedText = (source, file) => {
-  void source;
-  void file;
+  // Drop everything a translator never sees: comments, expressions, and the
+  // tags themselves (class names and CSS are not user-visible text).
+  const withoutComments = source.replace(/\{\{!--[\s\S]*?--\}\}|<!--[\s\S]*?-->/g, '');
+
+  for (const match of withoutComments.matchAll(/>([^<]*)</g)) {
+    const text = match[1].replace(/\{\{[^}]*\}\}/g, ' ').replace(/&[a-z]+;/gi, ' ');
+    if (WORD.test(text)) {
+      fail(`${file} has hardcoded text: "${text.trim().replace(/\s+/g, ' ').slice(0, 60)}"`);
+    }
+  }
+
+  for (const match of withoutComments.matchAll(/([a-z-]+)\s*=\s*"([^"]*)"/gi)) {
+    const [, attribute, value] = match;
+    if (!LOCALIZABLE_ATTRIBUTES.includes(attribute.toLowerCase())) continue;
+    const text = value.replace(/\{\{[^}]*\}\}/g, ' ');
+    if (WORD.test(text)) {
+      fail(`${file} has a hardcoded ${attribute}: "${text.trim().slice(0, 60)}"`);
+    }
+  }
 };
+
 for (const file of templateFiles) {
   checkHardcodedText(readFileSync(file, 'utf8'), path.relative(ROOT, file));
 }

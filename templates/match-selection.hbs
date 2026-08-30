@@ -6,7 +6,7 @@
     <div class="token-name">{{actorName}}</div>
     <div class="token-type">{{type}} {{subtype}}</div>
     {{#if showTokenCount}}
-      <div class="token-count">{{tokenCount}} tokens</div>
+      <div class="token-count">{{tokenCountLabel}}</div>
     {{/if}}
   </div>
 </div>
@@ -14,28 +14,24 @@
 <div class="token-replacer-fa-search-filter">
   <div class="search-input-wrapper">
     <i class="fas fa-search"></i>
-    <input type="text" class="search-filter-input" placeholder="Filter (e.g., dwarf monk)..." autocomplete="off" value="{{savedFilterTerm}}">
-    <i class="fas fa-times search-clear-btn"></i>
+    <input type="text" class="search-filter-input" placeholder="{{filterPlaceholder}}" autocomplete="off" value="{{savedFilterTerm}}">
+    <i class="fas fa-times search-clear-btn" title="{{clearFilterLabel}}"></i>
   </div>
-  {{#if isCapped}}
-    <div class="result-count">Showing <span class="visible-count">{{displayCount}}</span> of <span class="total-count">{{totalCount}}</span> results — use filter to narrow down</div>
-  {{else}}
-    <div class="result-count">Showing <span class="visible-count">{{totalCount}}</span> of <span class="total-count">{{totalCount}}</span> results</div>
-  {{/if}}
+  <div class="result-count">{{resultCountLabel}}</div>
 </div>
 
 {{#if showMultiSelect}}
   <div class="token-replacer-fa-mode-toggle">
-    <span class="mode-label">Variant assignment:</span>
+    <span class="mode-label">{{variantAssignmentLabel}}</span>
     <div class="mode-buttons">
       <button type="button" class="mode-btn active" data-mode="sequential">
-        <i class="fas fa-arrow-right"></i> Sequential
+        <i class="fas fa-arrow-right"></i> {{sequentialLabel}}
       </button>
       <button type="button" class="mode-btn" data-mode="random">
-        <i class="fas fa-random"></i> Random
+        <i class="fas fa-random"></i> {{randomLabel}}
       </button>
     </div>
-    <span class="mode-hint">Click to select multiple variants</span>
+    <span class="mode-hint">{{multiSelectHintLabel}}</span>
   </div>
 {{/if}}
 
@@ -54,13 +50,13 @@
 
 {{#if showMultiSelect}}
   <div class="token-replacer-fa-selection-info">
-    <span class="selection-count">1 selected</span>
+    <span class="selection-count">{{selectionCountLabel}}</span>
   </div>
 {{/if}}
 
 <div class="token-replacer-fa-selection-buttons">
   <button type="button" class="select-btn" data-action="select">
-    <i class="fas fa-check"></i> Apply
+    <i class="fas fa-check"></i> {{applyLabel}}
   </button>
   <button type="button" class="skip-btn" data-action="skip">
     <i class="fas fa-forward"></i> {{skipLabel}}

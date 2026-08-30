@@ -112,6 +112,21 @@ function clearFilterTerm() {
 }
 
 /**
+ * Localized "Showing X of Y results" label.
+ *
+ * The counts used to live in two bare <span>s that JS rewrote individually,
+ * which left the surrounding words untranslatable — word order differs between
+ * languages, so the sentence has to be formatted as a whole.
+ * @param {number} visible - Results currently rendered
+ * @param {number} total - Results matching the filter
+ * @param {boolean} capped - Whether the render cap truncated the list
+ * @returns {string} Localized label
+ */
+function resultCountLabel(visible, total, capped = false) {
+  return i18n(capped ? 'ui.showingResultsCapped' : 'ui.showingResults', { visible, total });
+}
+
+/**
  * TokenReplacerDialog - ApplicationV2-based dialog for Token Replacer FA
  * Replaces deprecated V1 Dialog API with modern ApplicationV2
  * Compatible with Foundry VTT v12-v13
@@ -292,6 +307,13 @@ export class UIManager {
       subDirs,
       currentFile,
       showDirInfo: filesInDir > 0,
+      scanningLabel: i18n('ui.scanningArtwork'),
+      directoriesLabel: i18n('ui.directories'),
+      imagesFoundLabel: i18n('ui.imagesFound'),
+      currentDirectoryLabel: i18n('ui.currentDirectory'),
+      filesLabel: i18n('ui.filesCount', { count: filesInDir }),
+      subdirectoriesLabel: i18n('ui.subdirectoriesCount', { count: subDirs }),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -315,6 +337,13 @@ export class UIManager {
       totalTokens,
       currentBatch,
       hasBatch: currentBatch.length > 0,
+      titleLabel: i18n('ui.parallelSearchTitle'),
+      uniqueCreaturesLabel: i18n('ui.uniqueCreatures'),
+      totalTokensLabel: i18n('ui.totalTokens'),
+      progressLabel: i18n('ui.creatureTypesSearched', { completed, total }),
+      currentlySearchingLabel: i18n('ui.currentlySearching'),
+      sharedResultsLabel: i18n('ui.sharedResultsInfo'),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -368,6 +397,16 @@ export class UIManager {
       matches: transformedMatches,
       skipLabel: i18n('dialog.skip'),
       savedFilterTerm,
+      tokenCountLabel: i18n('ui.tokenCount', { count: tokenCount }),
+      filterPlaceholder: i18n('ui.filterPlaceholder'),
+      clearFilterLabel: i18n('dialog.clearFilter'),
+      resultCountLabel: resultCountLabel(displayMatches.length, totalCount, isCapped),
+      variantAssignmentLabel: i18n('ui.variantAssignment'),
+      sequentialLabel: i18n('ui.modeSequential'),
+      randomLabel: i18n('ui.modeRandom'),
+      multiSelectHintLabel: i18n('ui.multiSelectHint'),
+      selectionCountLabel: i18n('ui.selectedCount', { count: 1 }),
+      applyLabel: i18n('ui.apply'),
     });
   }
 
@@ -405,6 +444,16 @@ export class UIManager {
       creatureTypes,
       skipLabel: i18n('dialog.skip'),
       savedFilterTerm,
+      tokenCountLabel: i18n('ui.tokenCount', { count: tokenCount }),
+      creatureTypePlaceholder: i18n('ui.creatureTypePlaceholder'),
+      filterPlaceholder: i18n('ui.filterPlaceholder'),
+      clearFilterLabel: i18n('dialog.clearFilter'),
+      emptyResultCountLabel: resultCountLabel(0, 0, false),
+      variantAssignmentLabel: i18n('ui.variantAssignment'),
+      sequentialLabel: i18n('ui.modeSequential'),
+      randomLabel: i18n('ui.modeRandom'),
+      emptySelectionCountLabel: i18n('ui.selectedCount', { count: 0 }),
+      applyLabel: i18n('ui.apply'),
     });
   }
 
@@ -425,6 +474,11 @@ export class UIManager {
       total,
       term: term || '',
       resultsFound,
+      headerLabel: i18n('ui.searchingCategory', { category: categoryType }),
+      searchingTermLabel: i18n('ui.searchingTerm'),
+      termsProgressLabel: i18n('ui.termsProgress', { current, total }),
+      resultsFoundLabel: i18n('ui.resultsFoundCount', { count: resultsFound }),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -468,6 +522,10 @@ export class UIManager {
       skippedCount,
       hasResults: results.length > 0,
       results: transformedResults,
+      progressLabel: i18n('ui.progressStatus', { current, total, status }),
+      replacedLabel: i18n('ui.replacedLabel'),
+      noMatchLabel: i18n('ui.noMatchLabel'),
+      skippedLabel: i18n('ui.skippedLabel'),
     });
   }
 
@@ -479,10 +537,14 @@ export class UIManager {
    */
   async createTVACacheHTML(refreshing = false, customMessage = null) {
     const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
-    const statusMessage = customMessage || 'Using Token Variant Art cache...';
+    const statusMessage = customMessage || i18n('ui.usingTvaCache');
     return await renderModuleTemplate(templatePath, {
       refreshing,
       statusMessage,
+      refreshingLabel: i18n('ui.refreshingCache'),
+      refreshingHintLabel: i18n('ui.refreshingCacheHint'),
+      tvaCacheInfoLabel: i18n('ui.tvaCacheInfo'),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -507,6 +569,8 @@ export class UIManager {
       message: data.message,
       details: data.details,
       recoverySuggestions: data.recoverySuggestions,
+      showDetailsLabel: i18n('ui.showDetails'),
+      howToFixLabel: i18n('ui.howToFix'),
     });
   }
 
@@ -620,14 +684,14 @@ export class UIManager {
         const selectedCount = container.querySelectorAll('.match-option.selected').length;
         const countEl = container.querySelector('.selection-count');
         if (countEl) {
-          countEl.textContent = `${selectedCount} selected`;
+          countEl.textContent = i18n('ui.selectedCount', { count: selectedCount });
         }
       };
 
       // Setup search filter
       const searchInput = container.querySelector('.search-filter-input');
       const searchClearBtn = container.querySelector('.search-clear-btn');
-      const visibleCountEl = container.querySelector('.visible-count');
+      const resultCountEl = container.querySelector('.result-count');
       if (searchInput) {
         let debounceTimer = null;
 
@@ -658,7 +722,6 @@ export class UIManager {
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             const filterTerms = parseFilterTerms(searchInput.value);
-            const totalCountEl = container.querySelector('.total-count');
 
             // Filter the FULL dataset in memory, not just rendered DOM
             const fullData = this._currentMatches || [];
@@ -682,8 +745,13 @@ export class UIManager {
             );
 
             // Update counts
-            if (visibleCountEl) visibleCountEl.textContent = display.length;
-            if (totalCountEl) totalCountEl.textContent = filtered.length;
+            if (resultCountEl) {
+              resultCountEl.textContent = resultCountLabel(
+                display.length,
+                filtered.length,
+                filtered.length > MAX_DISPLAY_RESULTS
+              );
+            }
           }, 150);
         });
 
@@ -791,7 +859,7 @@ export class UIManager {
         const selectedCount = container.querySelectorAll('.match-option.selected').length;
         const countEl = container.querySelector('.selection-count');
         if (countEl) {
-          countEl.textContent = `${selectedCount} selected`;
+          countEl.textContent = i18n('ui.selectedCount', { count: selectedCount });
         }
         if (selectBtn) {
           selectBtn.disabled = selectedCount === 0;
@@ -816,8 +884,7 @@ export class UIManager {
         if (loadingEl) loadingEl.style.display = 'none';
 
         const categoryFilter = container.querySelector('.category-filter');
-        const categoryVisibleCount = container.querySelector('.category-visible-count');
-        const categoryTotalCount = container.querySelector('.category-total-count');
+        const categoryResultCount = container.querySelector('.category-result-count');
         const categorySearchInput = container.querySelector('.category-search-filter-input');
 
         // Store full dataset for filtering
@@ -840,8 +907,13 @@ export class UIManager {
 
         if (categoryFilter) {
           categoryFilter.style.display = 'block';
-          if (categoryVisibleCount) categoryVisibleCount.textContent = displayItems.length;
-          if (categoryTotalCount) categoryTotalCount.textContent = results.length;
+          if (categoryResultCount) {
+            categoryResultCount.textContent = resultCountLabel(
+              displayItems.length,
+              results.length,
+              results.length > MAX_DISPLAY_RESULTS
+            );
+          }
           if (categorySearchInput) categorySearchInput.value = '';
         }
 
@@ -912,8 +984,13 @@ export class UIManager {
                   updateSelectionCount
                 );
 
-                if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
-                if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
+                if (categoryResultCount) {
+                  categoryResultCount.textContent = resultCountLabel(
+                    display.length,
+                    filtered.length,
+                    filtered.length > MAX_DISPLAY_RESULTS
+                  );
+                }
               }, 150);
             },
             { signal: ac.signal }
@@ -1098,14 +1175,14 @@ export class UIManager {
       if (this.cancelCallback) {
         console.log(`${MODULE_ID} | Cancel button clicked`);
         cancelBtn.disabled = true;
-        cancelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelling...';
+        cancelBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(i18n('ui.cancelling'))}`;
 
         try {
           await this.cancelCallback();
-          this.updateDialogContent(await this.createErrorHTML('Operation cancelled by user'));
+          this.updateDialogContent(await this.createErrorHTML(i18n('ui.cancelled')));
         } catch (e) {
           console.error(`${MODULE_ID} | Error during cancellation:`, e);
-          this.updateDialogContent(await this.createErrorHTML('Error cancelling operation'));
+          this.updateDialogContent(await this.createErrorHTML(i18n('ui.cancelFailed')));
         }
 
         this.cancelCallback = null;

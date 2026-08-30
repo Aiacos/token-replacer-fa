@@ -1,6 +1,5 @@
 {
   "TOKEN_REPLACER_FA": {
-    "title": "Token Replacer - Forgotten Adventures",
     "button": {
       "title": "Replace Token Art",
       "tooltip": "Search and replace NPC tokens with Forgotten Adventures art"
@@ -25,10 +24,6 @@
       "fallbackFullSearch": {
         "name": "Fallback to Full Search",
         "hint": "If no matches found in creature type category, search the entire index. Default: Off"
-      },
-      "searchSources": {
-        "name": "Search Sources",
-        "hint": "Select which sources to search for token art"
       },
       "additionalPaths": {
         "name": "Additional Search Paths",
@@ -140,6 +135,51 @@
       "clear_storage": "Clear browser localStorage or disable index caching in settings",
       "disable_worker": "If the issue persists, the module will fallback to main thread indexing",
       "contact_support": "If the problem continues, please report this issue on GitHub with console logs"
+    },
+    "ui": {
+      "showDetails": "Show Details",
+      "howToFix": "How to fix this:",
+      "filterPlaceholder": "Filter (e.g., dwarf monk)...",
+      "showingResults": "Showing {visible} of {total} results",
+      "showingResultsCapped": "Showing {visible} of {total} results — use filter to narrow down",
+      "selectedCount": "{count} selected",
+      "variantAssignment": "Variant assignment:",
+      "modeSequential": "Sequential",
+      "modeRandom": "Random",
+      "multiSelectHint": "Click to select multiple variants",
+      "apply": "Apply",
+      "tokenCount": "{count} tokens",
+      "creatureTypePlaceholder": "Search creature type or name...",
+      "parallelSearchTitle": "Parallel Search in Progress...",
+      "uniqueCreatures": "Unique Creatures",
+      "totalTokens": "Total Tokens",
+      "creatureTypesSearched": "{completed} / {total} creature types searched",
+      "currentlySearching": "Currently searching (parallel):",
+      "sharedResultsInfo": "Identical creatures share search results for faster processing",
+      "replacedLabel": "Replaced",
+      "noMatchLabel": "No Match",
+      "skippedLabel": "Skipped",
+      "progressStatus": "{current} / {total} - {status}",
+      "scanningArtwork": "Scanning token artwork...",
+      "directories": "Directories",
+      "imagesFound": "Images Found",
+      "currentDirectory": "Current directory:",
+      "filesCount": "{count} files",
+      "subdirectoriesCount": "{count} subdirectories",
+      "searchingCategory": "Searching {category} artwork...",
+      "searchingTerm": "Searching:",
+      "termsProgress": "{current} / {total} terms",
+      "resultsFoundCount": "{count} results found",
+      "refreshingCache": "Refreshing TVA cache...",
+      "refreshingCacheHint": "This may take a moment for large image libraries",
+      "tvaCacheInfo": "Leveraging TVA's pre-built image index for faster search",
+      "usingTvaCache": "Using Token Variant Art cache...",
+      "loadingTvaCache": "Loading TVA cache...",
+      "initializing": "Initializing...",
+      "cancelling": "Cancelling...",
+      "cancelled": "Indexing cancelled — no tokens were changed",
+      "cancelFailed": "Could not cancel the operation",
+      "tryThis": "Try:"
     }
   }
 }

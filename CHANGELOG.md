@@ -29,11 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- Dead i18n keys: `TOKEN_REPLACER_FA.title` (duplicate of `dialog.title`, which is what the window actually uses) and `settings.searchSources` (no such setting is registered)
+
 - Session artifacts left in the repository root: `TEST_SUMMARY.md`, `TESTING-REQUIRED.md`, `TEST-CACHING.md`, `MANUAL_TESTING_GUIDE.md` (a skeleton-loader checklist, not a general guide) and `console-test-script.js` — all describing work already shipped and covered by the suite
 - `fix-todos/`, `security-scan/` and `.auto-claude/` are no longer versioned (kept on disk, now gitignored)
 
 ### Fixed
 
+- **Cancel button did nothing**: `setCancelCallback()` was defined but never called, so `cancelCallback` was permanently `null` and every click on Cancel — shown during the two longest phases, TVA cache loading and category search — was silently ignored. It is now wired for the whole pre-replacement stretch and disarmed once tokens start changing, so an aborted run always leaves the scene untouched
+- **Cancelling ran the slow path anyway**: a user cancellation rejected the worker promise, which `build()` caught as a worker _failure_ — warning the user that the background worker had failed, permanently disabling the Web Worker for the session, and then running the slower main-thread indexing the user had just asked it to stop. Cancellation now carries a marker that `build()` re-throws instead of recovering from
+- **`terminate()` disabled the worker for the session**: it nulled `worker` without clearing `_workerInitialized`, so `_ensureWorker()` refused to build a replacement and every later run silently used the slow main-thread path
+- **Cancellation was invisible to the main-thread fallback**: `cancelOperation()` only messaged the worker, leaving the path most in need of an escape hatch uninterruptible. It now sets a flag that `indexPathsDirectly()` checks at each batch boundary
+- **Entire UI was English regardless of language**: all eight Handlebars templates carried inline English text and five user-visible strings were hardcoded in JS, so Italian users read an English interface even though `lang/it.json` was complete. Every string now resolves through the language files, and `npm run validate` fails on any literal text reintroduced into a template
 - **Promise.allSettled for parallel batches**: `SearchOrchestrator` parallel category search now uses `Promise.allSettled` instead of `Promise.all`, preventing one failed category from aborting the entire batch
 - **isProcessing race condition**: `finally` block is now the sole owner of `isProcessing` reset in `processTokenReplacement()`, preventing TOCTOU race with `onClose` callback
 - **Score fallback**: unscored fuzzy matches now default to score `0` instead of `0.8`, ensuring the selection dialog always appears for ambiguous results

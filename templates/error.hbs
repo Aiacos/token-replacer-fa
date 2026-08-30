@@ -8,7 +8,7 @@
     <div class='error-details'>
       <button class='error-details-toggle' type='button'>
         <i class='fas fa-chevron-down'></i>
-        <span>Show Details</span>
+        <span>{{showDetailsLabel}}</span>
       </button>
       <div class='error-details-content' style='display: none;'>
         <pre>{{details}}</pre>
@@ -20,7 +20,7 @@
     <div class='error-recovery'>
       <div class='recovery-title'>
         <i class='fas fa-lightbulb'></i>
-        <span>How to fix this:</span>
+        <span>{{howToFixLabel}}</span>
       </div>
       <ul class='recovery-suggestions'>
         {{#each recoverySuggestions}}

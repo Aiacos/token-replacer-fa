@@ -37,6 +37,10 @@ function fisherYatesShuffle(arr) {
 export class TokenReplacerApp {
   constructor() {
     this.isProcessing = false;
+    // Set by the Cancel button while the index/search phases run. Cancelling is
+    // only offered before any token is touched, so an aborted run always leaves
+    // the scene exactly as it was.
+    this.cancelRequested = false;
     // i18n cache to avoid repeated localization lookups
     this.i18nCache = new Map();
     // Cache statistics for debugging
@@ -99,6 +103,30 @@ export class TokenReplacerApp {
       details,
       recoverySuggestions: recoverySuggestions.map((key) => this.i18n(`recovery.${key}`)),
     };
+  }
+
+  /**
+   * Stop the run if the user pressed Cancel, reporting it as an outcome rather
+   * than an error — nothing went wrong and no token was touched.
+   * @private
+   * @returns {Promise<boolean>} True if the run should stop
+   */
+  async _abortIfCancelled() {
+    if (!this.cancelRequested) return false;
+
+    this._debugLog('Run aborted by user before any token was modified');
+    uiManager.setCancelCallback(null);
+    if (uiManager.isDialogOpen()) {
+      uiManager.updateDialogContent(
+        await uiManager.createErrorHTML({
+          errorType: 'info',
+          message: this.i18n('ui.cancelled'),
+        })
+      );
+    } else {
+      ui.notifications.info(this.i18n('ui.cancelled'));
+    }
+    return true;
   }
 
   /**
@@ -297,6 +325,7 @@ export class TokenReplacerApp {
     }
 
     this.isProcessing = true;
+    this.cancelRequested = false;
     this._debugLog('Starting token replacement process');
 
     let dialog;
@@ -339,7 +368,7 @@ export class TokenReplacerApp {
 
       // Create main dialog
       dialog = await uiManager.createMainDialog(
-        await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+        await uiManager.createScanProgressHTML(this.i18n('ui.initializing'), 0, 0, 0, 0),
         () => {
           this._debugLog('Dialog closed by user');
           // Note: isProcessing is reset exclusively by the finally block to avoid race conditions.
@@ -348,6 +377,15 @@ export class TokenReplacerApp {
       );
       await dialog.render({ force: true });
       this._debugLog('Dialog rendered, starting token index build');
+
+      // Cancel is offered only while indexing and searching — everything before
+      // the first token is modified. indexService owns the actual interruption;
+      // the flag stops the pipeline at the next phase boundary.
+      uiManager.setCancelCallback(() => {
+        this.cancelRequested = true;
+        indexService.cancelOperation();
+        this._debugLog('Cancellation requested by user');
+      });
 
       // Initialize search service (basic setup)
       this._debugLog('Initializing search service');
@@ -379,14 +417,14 @@ export class TokenReplacerApp {
           await yieldToMain(100);
           // Force reload: clears in-memory + IndexedDB cache, then re-fetches
           uiManager.updateDialogContent(
-            await uiManager.createTVACacheHTML(false, 'Loading TVA cache...')
+            await uiManager.createTVACacheHTML(false, this.i18n('ui.loadingTvaCache'))
           );
           this._debugLog('Force reloading TVA cache after refresh');
           cacheLoaded = await tvaCacheService.reloadTVACache();
         } else {
           // Normal load (may restore from IndexedDB)
           uiManager.updateDialogContent(
-            await uiManager.createTVACacheHTML(false, 'Loading TVA cache...')
+            await uiManager.createTVACacheHTML(false, this.i18n('ui.loadingTvaCache'))
           );
           this._debugLog('Loading TVA cache');
           cacheLoaded = await tvaCacheService.loadTVACache();
@@ -428,6 +466,8 @@ export class TokenReplacerApp {
         uiManager.updateDialogContent(errorHTML);
         throw error;
       }
+
+      if (await this._abortIfCancelled()) return;
 
       // Group tokens by creature type
       const creatureGroups = tokenService.groupTokensByCreature(npcTokens);
@@ -477,6 +517,12 @@ export class TokenReplacerApp {
         searchResults.size,
         'creature types'
       );
+
+      if (await this._abortIfCancelled()) return;
+
+      // Past this point tokens start changing, so Cancel no longer applies:
+      // disarm it rather than leave a button that silently does nothing.
+      uiManager.setCancelCallback(null);
 
       // PHASE 3: Process tokens
       this._debugLog('Starting token replacement phase');
@@ -693,6 +739,13 @@ export class TokenReplacerApp {
 
       this._debugLog('Token replacement process completed successfully');
     } catch (error) {
+      // A cancellation reaches here when it interrupts an in-flight index build;
+      // it is an outcome, not a failure, so report it as such.
+      if (error?.cancelled || this.cancelRequested) {
+        await this._abortIfCancelled();
+        return;
+      }
+
       // Handle errors gracefully with user-friendly messages
       console.error(`${MODULE_ID} | Error during token replacement:`, error);
 
@@ -742,7 +795,7 @@ export class TokenReplacerApp {
           error: errorDisplay.message,
         });
         if (errorDisplay.recoverySuggestions?.length > 0) {
-          notificationMsg += ` Try: ${errorDisplay.recoverySuggestions.join('. ')}`;
+          notificationMsg += ` ${this.i18n('ui.tryThis')} ${errorDisplay.recoverySuggestions.join('. ')}`;
           ui.notifications.error(notificationMsg, { permanent: true });
         } else {
           ui.notifications.error(notificationMsg);
@@ -750,6 +803,8 @@ export class TokenReplacerApp {
         this._debugLog('Error displayed via notification');
       }
     } finally {
+      // Drop the callback so a stale closure cannot fire against the next run
+      uiManager.setCancelCallback(null);
       // Always reset processing flag, even on errors
       this.isProcessing = false;
       this._debugLog('Token replacement process ended, isProcessing reset to false');

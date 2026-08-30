@@ -68,6 +68,9 @@ export class IndexService {
     this.termCategoryMap = this.buildTermCategoryMap();
     this.worker = null;
     this._workerInitialized = false;
+    // Set by cancelOperation(); distinguishes a user cancellation from a failure
+    // so build() does not "recover" from it by running the slow path anyway.
+    this._cancelRequested = false;
     // Shared utilities
     this._createError = createModuleError;
     this._debugLog = createDebugLogger('IndexService');
@@ -117,6 +120,9 @@ export class IndexService {
     if (this.worker) {
       this.worker.terminate();
       this.worker = null;
+      // Allow _ensureWorker() to build a fresh one: without this the service
+      // silently stays on the slow main-thread path for the rest of the session.
+      this._workerInitialized = false;
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
   }
@@ -126,10 +132,26 @@ export class IndexService {
    * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
    */
   cancelOperation() {
+    // Set unconditionally: the main-thread fallback has no worker to message,
+    // and it is the path most in need of an escape hatch.
+    this._cancelRequested = true;
     if (this.worker) {
       this.worker.postMessage({ command: 'cancel' });
-      console.log(`${MODULE_ID} | Cancellation requested`);
     }
+    console.log(`${MODULE_ID} | Cancellation requested`);
+  }
+
+  /**
+   * Build the error thrown when an index build is cancelled.
+   * The `cancelled` marker is what stops build() from treating it as a worker
+   * failure and falling back to the slower main-thread path.
+   * @private
+   * @returns {Error} Cancellation error
+   */
+  _cancelledError() {
+    const error = /** @type {Error & { cancelled?: boolean }} */ (new Error('Operation cancelled'));
+    error.cancelled = true;
+    return error;
   }
 
   /**
@@ -740,6 +762,10 @@ export class IndexService {
           try {
             return await this.indexPathsWithWorker(allPaths, onProgress);
           } catch (error) {
+            // A cancellation is not a failure: falling back here would disable
+            // the worker for the session and then run the slow path the user
+            // just asked to stop.
+            if (error?.cancelled) throw error;
             // Worker failed, fallback to direct indexing
             this._debugLog('Worker indexing failed, falling back to direct indexing:', error);
             console.warn(`${MODULE_ID} | Worker failed, falling back to direct indexing:`, error);
@@ -1012,7 +1038,7 @@ export class IndexService {
             settled = true;
             cleanup();
             console.log(`${MODULE_ID} | Operation cancelled by user`);
-            reject(new Error('Operation cancelled'));
+            reject(this._cancelledError());
             break;
 
           case 'error': {
@@ -1158,6 +1184,12 @@ export class IndexService {
 
         // Yield to main thread
         await new Promise((r) => setTimeout(r, 10));
+
+        // Checked after the yield so a cancel that arrives mid-batch is seen
+        if (this._cancelRequested) {
+          console.log(`${MODULE_ID} | Direct indexing cancelled at ${processed}/${totalPaths}`);
+          throw this._cancelledError();
+        }
       }
 
       // Final performance summary
@@ -1175,6 +1207,7 @@ export class IndexService {
 
       return imagesFound;
     } catch (error) {
+      if (error?.cancelled) throw error;
       this._debugLog('Error during direct indexing:', error);
       throw this._createError(
         'index_build_failed',
@@ -1352,6 +1385,9 @@ export class IndexService {
       this._debugLog('Build already in progress, returning existing promise');
       return this.buildPromise;
     }
+
+    // A cancel from a previous run must not abort this one before it starts.
+    this._cancelRequested = false;
 
     this.buildPromise = (async () => {
       const startTime = performance.now();

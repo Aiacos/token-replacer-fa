@@ -1,22 +1,22 @@
 <div class='token-replacer-fa-scan-progress'>
   <div class='scan-status'>
     <i class='fas fa-search fa-spin'></i>
-    <span>Scanning token artwork...</span>
+    <span>{{scanningLabel}}</span>
   </div>
 
   <div class='scan-stats'>
     <div class='stat-item'>
       <div class='stat-value'>{{dirsScanned}}</div>
-      <div class='stat-label'>Directories</div>
+      <div class='stat-label'>{{directoriesLabel}}</div>
     </div>
     <div class='stat-item'>
       <div class='stat-value'>{{imagesFound}}</div>
-      <div class='stat-label'>Images Found</div>
+      <div class='stat-label'>{{imagesFoundLabel}}</div>
     </div>
   </div>
 
   <div class='scan-current'>
-    <div class='current-label'>Current directory:</div>
+    <div class='current-label'>{{currentDirectoryLabel}}</div>
     <div class='current-path' title='{{currentDir}}'>{{shortDir}}</div>
     {{#if currentFile}}
       <div class='current-file'>
@@ -28,8 +28,15 @@
 
   {{#if showDirInfo}}
     <div class='dir-info'>
-      <span><i class='fas fa-file-image'></i> {{filesInDir}} files</span>
-      <span><i class='fas fa-folder'></i> {{subDirs}} subdirectories</span>
+      <span><i class='fas fa-file-image'></i> {{filesLabel}}</span>
+      <span><i class='fas fa-folder'></i> {{subdirectoriesLabel}}</span>
     </div>
   {{/if}}
+
+  <div class='token-replacer-fa-progress-buttons'>
+    <button type='button' class='cancel-btn' data-action='cancel'>
+      <i class='fas fa-times'></i>
+      {{cancelLabel}}
+    </button>
+  </div>
 </div>

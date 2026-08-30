@@ -2,17 +2,11 @@
   {{#if refreshing}}
     <div class='scan-status'>
       <i class='fas fa-sync fa-spin'></i>
-      <span>Refreshing TVA cache...</span>
+      <span>{{refreshingLabel}}</span>
     </div>
     <p style='text-align: center; color: #888; margin-top: 10px;'>
-      This may take a moment for large image libraries
+      {{refreshingHintLabel}}
     </p>
-    <div class='token-replacer-fa-progress-buttons'>
-      <button type='button' class='cancel-btn' data-action='cancel'>
-        <i class='fas fa-times'></i>
-        Cancel
-      </button>
-    </div>
   {{else}}
     <div class='scan-status'>
       <i class='fas fa-bolt'></i>
@@ -20,7 +14,14 @@
     </div>
     <div class='optimization-info'>
       <i class='fas fa-info-circle'></i>
-      <span>Leveraging TVA's pre-built image index for faster search</span>
+      <span>{{tvaCacheInfoLabel}}</span>
     </div>
   {{/if}}
+
+  <div class='token-replacer-fa-progress-buttons'>
+    <button type='button' class='cancel-btn' data-action='cancel'>
+      <i class='fas fa-times'></i>
+      {{cancelLabel}}
+    </button>
+  </div>
 </div>
