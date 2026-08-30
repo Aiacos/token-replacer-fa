@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # Keep the CI actions current so workflows never run on a deprecated runner.
+  #
+  # Minor and patch updates are grouped into one low-risk PR that the auto-merge
+  # workflow can take on its own. Major updates fall outside the group and
+  # arrive as individual PRs for a human to review — a major action bump can
+  # change runtime defaults, and the release and compatibility workflows are
+  # never exercised by pull-request CI.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore'
+    labels: [dependencies, ci]
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  # Dev-only dependencies (the shipped module has no runtime dependencies).
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore'
+    labels: [dependencies]
+    groups:
+      dev-dependencies-minor-patch:
+        patterns: ['*']
+        update-types: [minor, patch]

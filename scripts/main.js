@@ -2,18 +2,17 @@
  * Token Replacer - Forgotten Adventures
  * Main entry point - orchestrates all modules
  * @module main
- * @version 2.12.4
+ * @version 2.12.5
  */
 
 import { MODULE_ID } from './core/Constants.js';
-import { loadFuse, yieldToMain, loadModuleTemplates } from './core/Utils.js';
+import { loadFuse, yieldToMain, loadModuleTemplates, i18nOrEnglish } from './core/Utils.js';
 import { tokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { searchOrchestrator } from './services/SearchOrchestrator.js';
 import { tvaCacheService } from './services/TVACacheService.js';
 import { scanService } from './services/ScanService.js';
 import { indexService } from './services/IndexService.js';
-import { forgeBazaarService } from './services/ForgeBazaarService.js';
 import { storageService } from './services/StorageService.js';
 import { uiManager, logI18nCacheStats as logUIManagerI18nCacheStats } from './ui/UIManager.js';
 
@@ -32,12 +31,75 @@ function fisherYatesShuffle(arr) {
 }
 
 /**
+ * Show the background index-build notification with a click-to-stop control.
+ *
+ * The first-time build can run for minutes and, until now, offered no way to
+ * stop it — the only visible affordance was a notification that ignored clicks.
+ *
+ * Foundry v13 returns a Notification carrying its own `element` and `remove()`;
+ * v12 returns only an id, so the element is located in the notification list
+ * instead. When neither works the message is still shown and simply is not
+ * clickable: losing the control is acceptable, throwing during startup is not.
+ *
+ * @param {string} message - Localized notification text
+ * @param {Function} onStop - Called once, when the user asks to stop
+ * @returns {{dismiss: () => void}} Handle that removes the notification
+ */
+export function showStoppableIndexingNotification(message, onStop) {
+  let handle;
+  try {
+    handle = ui.notifications.info(message, { permanent: true });
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not show the indexing notification:`, error);
+    return { dismiss: () => {} };
+  }
+
+  const element =
+    handle?.element ?? document.querySelector('#notifications li.notification:last-child');
+
+  if (element) {
+    element.classList.add('token-replacer-fa-stoppable');
+    element.setAttribute('role', 'button');
+    element.addEventListener(
+      'click',
+      () => {
+        try {
+          onStop();
+        } catch (error) {
+          console.warn(`${MODULE_ID} | Stop-indexing handler failed:`, error);
+        }
+      },
+      { once: true }
+    );
+  } else {
+    // Worth knowing about: it means the control silently was not offered.
+    console.debug(`${MODULE_ID} | Indexing notification element not found, stop control not wired`);
+  }
+
+  return {
+    dismiss() {
+      try {
+        if (typeof handle?.remove === 'function') handle.remove();
+        else if (handle !== undefined) ui.notifications.remove?.(handle);
+        else element?.remove();
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Could not dismiss the indexing notification:`, error);
+      }
+    },
+  };
+}
+
+/**
  * TokenReplacerApp class - Main application controller
  * Manages module state and orchestrates token replacement workflow
  */
 export class TokenReplacerApp {
   constructor() {
     this.isProcessing = false;
+    // Set by the Cancel button while the index/search phases run. Cancelling is
+    // only offered before any token is touched, so an aborted run always leaves
+    // the scene exactly as it was.
+    this.cancelRequested = false;
     // i18n cache to avoid repeated localization lookups
     this.i18nCache = new Map();
     // Cache statistics for debugging
@@ -100,6 +162,30 @@ export class TokenReplacerApp {
       details,
       recoverySuggestions: recoverySuggestions.map((key) => this.i18n(`recovery.${key}`)),
     };
+  }
+
+  /**
+   * Stop the run if the user pressed Cancel, reporting it as an outcome rather
+   * than an error — nothing went wrong and no token was touched.
+   * @private
+   * @returns {Promise<boolean>} True if the run should stop
+   */
+  async _abortIfCancelled() {
+    if (!this.cancelRequested) return false;
+
+    this._debugLog('Run aborted by user before any token was modified');
+    uiManager.setCancelCallback(null);
+    if (uiManager.isDialogOpen()) {
+      uiManager.updateDialogContent(
+        await uiManager.createErrorHTML({
+          errorType: 'info',
+          message: this.i18n('ui.cancelled'),
+        })
+      );
+    } else {
+      ui.notifications.info(this.i18n('ui.cancelled'));
+    }
+    return true;
   }
 
   /**
@@ -298,9 +384,10 @@ export class TokenReplacerApp {
     }
 
     this.isProcessing = true;
+    this.cancelRequested = false;
     this._debugLog('Starting token replacement process');
 
-    let dialog = null;
+    let dialog;
 
     try {
       searchService.clearCache();
@@ -340,14 +427,28 @@ export class TokenReplacerApp {
 
       // Create main dialog
       dialog = await uiManager.createMainDialog(
-        await uiManager.createScanProgressHTML('Initializing...', 0, 0, 0, 0),
+        await uiManager.createScanProgressHTML(this.i18n('ui.initializing'), 0, 0, 0, 0),
         () => {
           this._debugLog('Dialog closed by user');
-          this.isProcessing = false;
+          // Note: isProcessing is reset exclusively by the finally block to avoid race conditions.
+          // Closing the dialog does not cancel processing — it will complete in the background.
         }
       );
       await dialog.render({ force: true });
       this._debugLog('Dialog rendered, starting token index build');
+
+      // Cancel is offered only while indexing and searching — everything before
+      // the first token is modified. indexService owns the actual interruption;
+      // the flag stops the pipeline at the next phase boundary.
+      uiManager.setCancelCallback(() => {
+        this.cancelRequested = true;
+        // Only the search is cancelled here. The category index is built in the
+        // background by the `ready` hook and is never awaited by this dialog, so
+        // cancelling it would speed nothing up while destroying a build nothing
+        // ever retries. The flag stops the run at the next phase boundary.
+        searchOrchestrator.cancelOperation();
+        this._debugLog('Cancellation requested by user');
+      });
 
       // Initialize search service (basic setup)
       this._debugLog('Initializing search service');
@@ -379,14 +480,14 @@ export class TokenReplacerApp {
           await yieldToMain(100);
           // Force reload: clears in-memory + IndexedDB cache, then re-fetches
           uiManager.updateDialogContent(
-            await uiManager.createTVACacheHTML(false, 'Loading TVA cache...')
+            await uiManager.createTVACacheHTML(false, this.i18n('ui.loadingTvaCache'))
           );
           this._debugLog('Force reloading TVA cache after refresh');
           cacheLoaded = await tvaCacheService.reloadTVACache();
         } else {
           // Normal load (may restore from IndexedDB)
           uiManager.updateDialogContent(
-            await uiManager.createTVACacheHTML(false, 'Loading TVA cache...')
+            await uiManager.createTVACacheHTML(false, this.i18n('ui.loadingTvaCache'))
           );
           this._debugLog('Loading TVA cache');
           cacheLoaded = await tvaCacheService.loadTVACache();
@@ -428,6 +529,8 @@ export class TokenReplacerApp {
         uiManager.updateDialogContent(errorHTML);
         throw error;
       }
+
+      if (await this._abortIfCancelled()) return;
 
       // Group tokens by creature type
       const creatureGroups = tokenService.groupTokensByCreature(npcTokens);
@@ -478,6 +581,12 @@ export class TokenReplacerApp {
         'creature types'
       );
 
+      if (await this._abortIfCancelled()) return;
+
+      // Past this point tokens start changing, so Cancel no longer applies:
+      // disarm it rather than leave a button that silently does nothing.
+      uiManager.setCancelCallback(null);
+
       // PHASE 3: Process tokens
       this._debugLog('Starting token replacement phase');
       const results = [];
@@ -505,7 +614,7 @@ export class TokenReplacerApp {
 
       let tokenIndex = 0;
 
-      for (const [key, data] of searchResults) {
+      for (const [_key, data] of searchResults) {
         if (!uiManager.isDialogOpen()) break;
 
         const { matches, tokens, creatureInfo } = data;
@@ -585,7 +694,7 @@ export class TokenReplacerApp {
 
         // Has matches
         const bestMatch = matches[0];
-        const matchScore = bestMatch.score !== undefined ? 1 - bestMatch.score : 0.8;
+        const matchScore = bestMatch.score !== undefined ? 1 - bestMatch.score : 0;
         this._debugLog(
           `Found ${matches.length} match(es) for "${creatureInfo.actorName}", best score: ${matchScore.toFixed(2)}`
         );
@@ -687,12 +796,23 @@ export class TokenReplacerApp {
         ui.notifications.info(this.i18n('notifications.complete', { count: successCount }));
 
         if (failedCount > 0) {
-          this._debugLog(`${failedCount} tokens had no matching art found`);
+          ui.notifications.warn(this.i18n('notifications.replaceFailed', { count: failedCount }));
         }
       }
 
       this._debugLog('Token replacement process completed successfully');
     } catch (error) {
+      // A cancellation reaches here when it interrupts an in-flight index build;
+      // it is an outcome, not a failure, so report it as such.
+      if (error?.cancelled || this.cancelRequested) {
+        // _abortIfCancelled() re-tests the flag, so an error that carries the
+        // marker while the flag is clear would return silently and leave the
+        // user staring at a frozen progress dialog.
+        this.cancelRequested = true;
+        await this._abortIfCancelled();
+        return;
+      }
+
       // Handle errors gracefully with user-friendly messages
       console.error(`${MODULE_ID} | Error during token replacement:`, error);
 
@@ -726,7 +846,7 @@ export class TokenReplacerApp {
 
         errorDisplay = this._createError(
           errorType,
-          error.stack || error.message || String(error),
+          error.message || String(error),
           recoverySuggestions
         );
       }
@@ -742,7 +862,7 @@ export class TokenReplacerApp {
           error: errorDisplay.message,
         });
         if (errorDisplay.recoverySuggestions?.length > 0) {
-          notificationMsg += ` Try: ${errorDisplay.recoverySuggestions.join('. ')}`;
+          notificationMsg += ` ${this.i18n('ui.tryThis')} ${errorDisplay.recoverySuggestions.join('. ')}`;
           ui.notifications.error(notificationMsg, { permanent: true });
         } else {
           ui.notifications.error(notificationMsg);
@@ -750,6 +870,8 @@ export class TokenReplacerApp {
         this._debugLog('Error displayed via notification');
       }
     } finally {
+      // Drop the callback so a stale closure cannot fire against the next run
+      uiManager.setCancelCallback(null);
       // Always reset processing flag, even on errors
       this.isProcessing = false;
       this._debugLog('Token replacement process ended, isProcessing reset to false');
@@ -760,7 +882,8 @@ export class TokenReplacerApp {
 // Create singleton instance
 export const tokenReplacerApp = new TokenReplacerApp();
 
-// Backward compatibility - expose on window
+// Backward compatibility - expose read-only facade on window
+// Cannot Object.freeze the live instance (it mutates this.isProcessing, i18nCache, etc.)
 window.TokenReplacerFA = /** @type {any} */ (tokenReplacerApp);
 
 /**
@@ -768,7 +891,7 @@ window.TokenReplacerFA = /** @type {any} */ (tokenReplacerApp);
  */
 Hooks.once('init', async () => {
   try {
-    console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.4`);
+    console.log(`${MODULE_ID} | Initializing Token Replacer - Forgotten Adventures v2.12.5`);
 
     // Register settings FIRST - _debugLog() needs 'debugMode' setting to exist
     tokenReplacerApp.registerSettings();
@@ -789,13 +912,16 @@ Hooks.once('init', async () => {
     tokenReplacerApp._debugLog('Module initialization complete');
   } catch (error) {
     console.error(`${MODULE_ID} | Initialization failed:`, error);
-    const msg = game.i18n
-      ? game.i18n
-          .localize('TOKEN_REPLACER_FA.notifications.initFailed')
-          .replace('{error}', error.message || String(error))
-      : `Token Replacer FA: Initialization failed. ${error.message || String(error)}`;
+    // This catch can run before game.i18n exists, which is exactly why both of
+    // these declare an English fallback rather than assuming localization works.
+    const msg = i18nOrEnglish(
+      'notifications.initFailed',
+      'Token Replacer FA: Initialization failed. {error}',
+      { error: error.message || String(error) }
+    );
+    const tryLabel = i18nOrEnglish('ui.tryThis', 'Try:');
     if (error.recoverySuggestions?.length > 0) {
-      ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, {
+      ui.notifications.error(`${msg} ${tryLabel} ${error.recoverySuggestions.join('. ')}`, {
         permanent: true,
       });
     } else {
@@ -809,8 +935,12 @@ Hooks.once('ready', async () => {
   tokenReplacerApp._debugLog('Ready hook triggered, starting module initialization');
 
   tokenReplacerApp._debugLog('Loading Fuse.js library');
-  await loadFuse();
-  tokenReplacerApp._debugLog('Fuse.js library loaded');
+  const FuseLoaded = await loadFuse();
+  if (!FuseLoaded) {
+    ui.notifications.warn(tokenReplacerApp.i18n('notifications.fuseLoadFailed'));
+  } else {
+    tokenReplacerApp._debugLog('Fuse.js library loaded');
+  }
 
   console.log(`${MODULE_ID} | Token Variant Art available: ${tokenReplacerApp.hasTVA}`);
   console.log(`${MODULE_ID} | FA Nexus available: ${tokenReplacerApp.hasFANexus}`);
@@ -860,21 +990,42 @@ Hooks.once('ready', async () => {
             `Index cache check: ${hasCache ? 'cache found' : 'no cache, will be first-time build'}`
           );
 
+          // Throttle to ~10% steps so large caches (50K+ images) don't flood the notification log
+          let lastNotifiedPercent = -1;
           const onProgress = (current, total, images) => {
             const percent = Math.round((current / total) * 100);
+            if (percent < 100 && percent - lastNotifiedPercent < 10) return;
+            lastNotifiedPercent = percent;
             ui.notifications.info(
-              tokenReplacerApp.i18n('notifications.indexing', { percent, images }) ||
-                `Token Replacer FA: Building index... ${percent}% (${images} images)`,
+              i18nOrEnglish(
+                'notifications.indexing',
+                'Token Replacer FA: Building index... {percent}% ({images} images)',
+                { percent, images }
+              ),
               { permanent: false }
             );
           };
 
+          // The stop control is only offered for a first-time build: that is the
+          // one that runs for minutes. A cached rebuild finishes before anyone
+          // could reach for it.
+          let indexNotification = { dismiss: () => {} };
           if (!hasCache) {
             tokenReplacerApp._debugLog('Showing first-time index build notification');
             ui.notifications.info(
-              tokenReplacerApp.i18n('notifications.indexingStart') ||
-                'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.',
+              i18nOrEnglish(
+                'notifications.indexingStart',
+                'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.'
+              ),
               { permanent: false }
+            );
+            indexNotification = showStoppableIndexingNotification(
+              tokenReplacerApp.i18n('notifications.indexingStoppable'),
+              () => {
+                console.log(`${MODULE_ID} | Index build stopped by user`);
+                tokenReplacerApp._debugLog('Index build stopped from the notification');
+                indexService.cancelOperation();
+              }
             );
           }
 
@@ -884,11 +1035,12 @@ Hooks.once('ready', async () => {
           tokenReplacerApp._debugLog(
             `Starting index build with ${tvaCacheImages ? 'pre-loaded' : 'no'} TVA cache`
           );
-          const success = await indexService.build(
-            false,
-            hasCache ? null : onProgress,
-            tvaCacheImages
-          );
+          let success;
+          try {
+            success = await indexService.build(false, hasCache ? null : onProgress, tvaCacheImages);
+          } finally {
+            indexNotification.dismiss();
+          }
           if (success) {
             const stats = indexService.getStats();
             console.log(`${MODULE_ID} | Image index ready: ${stats.totalImages} images`);
@@ -899,19 +1051,31 @@ Hooks.once('ready', async () => {
             if (!hasCache) {
               tokenReplacerApp._debugLog('Showing index build completion notification');
               ui.notifications.info(
-                tokenReplacerApp.i18n('notifications.indexingComplete', {
-                  count: stats.totalImages,
-                }) || `Token Replacer FA: Index ready! ${stats.totalImages} images indexed.`,
+                i18nOrEnglish(
+                  'notifications.indexingComplete',
+                  'Token Replacer FA: Index ready! {count} images indexed.',
+                  { count: stats.totalImages }
+                ),
                 { permanent: false }
               );
             }
           } else {
+            // NOTE: Dead code — build() either returns true or throws. Kept for safety.
             console.log(`${MODULE_ID} | Index build failed, will use direct API calls`);
             tokenReplacerApp._debugLog('Index build failed, will fall back to direct API calls');
           }
         } catch (err) {
-          console.warn(`${MODULE_ID} | Index build error:`, err);
-          tokenReplacerApp._debugLog('Index build error:', err.message);
+          // Stopping the build is an outcome the user asked for, not a failure —
+          // but it does leave the session without a category index, so say so
+          // rather than letting searches quietly get slower.
+          if (err?.cancelled) {
+            console.log(`${MODULE_ID} | Index build cancelled by user`);
+            tokenReplacerApp._debugLog('Index build cancelled by user');
+            ui.notifications.info(tokenReplacerApp.i18n('notifications.indexingStopped'));
+          } else {
+            console.warn(`${MODULE_ID} | Index build error:`, err);
+            tokenReplacerApp._debugLog('Index build error:', err.message);
+          }
         }
       } catch (error) {
         console.error(`${MODULE_ID} | Background initialization failed:`, error);
@@ -919,7 +1083,8 @@ Hooks.once('ready', async () => {
           error: error.message || String(error),
         });
         if (error.recoverySuggestions?.length > 0) {
-          ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, {
+          const tryLabel = tokenReplacerApp.i18n('ui.tryThis');
+          ui.notifications.error(`${msg} ${tryLabel} ${error.recoverySuggestions.join('. ')}`, {
             permanent: true,
           });
         } else {
@@ -992,7 +1157,12 @@ Hooks.on('getSceneControlButtons', (controls) => {
     }
   } catch (error) {
     console.error(`${MODULE_ID} | Failed to add scene control button:`, error);
-    ui.notifications.error('Token Replacer FA: Failed to add scene control button.');
+    ui.notifications.error(
+      i18nOrEnglish(
+        'notifications.controlButtonFailed',
+        'Token Replacer FA: could not add its scene control button. Check the console for details.'
+      )
+    );
   }
 });
 
@@ -1003,12 +1173,12 @@ Hooks.on('getSceneControlButtons', (controls) => {
 window.addEventListener('beforeunload', () => {
   try {
     indexService.terminate();
-  } catch {
-    /* ignore cleanup errors */
+  } catch (e) {
+    console.debug(`${MODULE_ID} | Cleanup error:`, e);
   }
   try {
     searchOrchestrator?.terminate();
-  } catch {
-    /* ignore cleanup errors */
+  } catch (e) {
+    console.debug(`${MODULE_ID} | Cleanup error:`, e);
   }
 });

@@ -11,7 +11,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 // StorageService relies on getItem/setItem/removeItem/key/length.
 // ---------------------------------------------------------------------------
 (() => {
-  if (typeof localStorage.getItem === 'function') return; // Already functional
+  // Safe-check via globalThis + optional chaining: bare `localStorage.getItem`
+  // throws TypeError at collection time when jsdom hasn't exposed localStorage globally.
+  if (typeof globalThis.localStorage?.getItem === 'function') return; // Already functional
 
   const store = new Map();
 

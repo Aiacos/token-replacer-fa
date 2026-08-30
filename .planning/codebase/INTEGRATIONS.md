@@ -1,194 +1,145 @@
 # External Integrations
 
-**Analysis Date:** 2026-02-28
+**Analysis Date:** 2026-05-27
 
 ## APIs & External Services
 
-**Foundry VTT Core APIs:**
+**Fuzzy Search CDN:**
+- Fuse.js 7.0.0 — loaded at runtime via dynamic `import()` from jsdelivr CDN
+  - URL: `https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs`
+  - Defined in: `scripts/core/Constants.js` (`FUSE_CDN`)
+  - Loaded in: `scripts/core/Utils.js` (`loadFuse()`), duplicated in `scripts/workers/IndexWorker.js`
+  - Security: post-load shape validation via `_validateFuseShape()` in both files; no SRI hash
+  - Fallback: checks `window.Fuse` if CDN `import()` fails (see `scripts/core/Utils.js:49`)
 
-- Hooks system
-  - `Hooks.once('init', ...)` - Module initialization
-  - `Hooks.once('ready', ...)` - Post-load initialization
-  - `Hooks.on('getSceneControlButtons', ...)` - Scene control UI
-- Settings API - Module configuration persistence
-- Module API - Check module availability and access APIs
-- Dialog/UI - UI rendering and interaction
-- Localization (game.i18n) - Multi-language support
-- Token/Actor APIs - Token manipulation and data access
+**Forge Bazaar (The Forge hosting platform):**
+- Integration: STUB only — no functional implementation
+  - File: `scripts/services/ForgeBazaarService.js`
+  - Decision: NO-GO — no public Forge Bazaar asset-discovery API exists
+  - `ForgeBazaarService.isAvailable` is always `false`; all methods return empty arrays
+  - `game.forge` API (Forge-hosted games only) is detected but not used
+  - Forge CDN asset URLs (`https://assets.forge-vtt.com/bazaar/assets/...`) are handled in path filtering: `scripts/core/Utils.js` (`CDN_SEGMENTS` set) and `scripts/workers/IndexWorker.js`
 
-**Token Variant Art (TVA) - token-variants module:**
+## Foundry VTT Module Dependencies
 
-- SDK/Client: TVA module API accessed via `game.modules.get('token-variants')?.api`
-- Auth: No authentication required (module-to-module)
-- Methods used:
-  - `tvaAPI.cacheImages()` - Refresh TVA's image cache
-  - `tvaAPI.doImageSearch(...)` - Search TVA cache (fallback, slower)
-  - `tvaAPI.updateTokenImage(imagePath, config)` - Update token images with TVA styling
-  - `TVA_CONFIG.staticCacheFile` - Direct access to cache file path
-- Implementation: `scripts/services/TVACacheService.js`
-- Cache format: TVA cache JSON with category-based structure
-- Integration type: Direct cache access (primary path) + API fallback
+**Token Variant Art (`token-variants`) — REQUIRED:**
+- Purpose: Primary token image search and cache source
+- Accessed via: `game.modules.get('token-variants')?.api` (see `scripts/main.js:149`)
+- APIs used:
+  - `tvaAPI.updateTokenImage(imagePath, {token, actor, imgName})` — apply token image
+  - `tvaAPI.cacheImages()` — refresh TVA's static cache file
+  - `TVA_CONFIG.staticCacheFile` — path to TVA's JSON cache file (read directly)
+- Cache format read by `scripts/services/TVACacheService.js`:
+  ```javascript
+  // { category: [ path | [path, name] | [path, name, tags] ] }
+  ```
+- Cache key stored in IndexedDB: `tva-cache-v1`
+- Presence check: `tokenReplacerApp.hasTVA` in `scripts/main.js:131`
 
-**FA Nexus - fa-nexus module (Optional):**
+**FA Nexus (`fa-nexus`) — OPTIONAL:**
+- Purpose: Extends TVA with Forgotten Adventures token library
+- Accessed via: `game.modules.get('fa-nexus')?.active` (see `scripts/main.js:140`)
+- No direct API calls; FA Nexus extends TVA's search results automatically
+- Presence check: `tokenReplacerApp.hasFANexus` in `scripts/main.js:141`
 
-- SDK/Client: FA Nexus module API accessed via `game.modules.get('fa-nexus')?.active`
-- Auth: No authentication required
-- Purpose: Provides local Forgotten Adventures token library directory access
-- Used by: IndexService for local file scanning when TVA unavailable
-
-**Fuse.js - Fuzzy Search Library:**
-
-- URL: `https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs`
-- Type: CDN-hosted JavaScript library
-- Provider: jsDelivr CDN
-- Auth: None (public CDN)
-- Implementation: `scripts/core/Utils.js` - `loadFuse()` function
-- Fallback: Falls back to `window.Fuse` if dynamic import fails
-- Usage: Fuzzy string matching for token name searches
-
-**The Forge - forge-vtt module (Optional):**
-
-- SDK/Client: `game.forge` API (when available)
-- Auth: Requires API key (only available on Forge-hosted games or with explicit auth)
-- Status: STUB - No public Bazaar browsing API available
-- Implementation: `scripts/services/ForgeBazaarService.js` (non-functional)
-- Note: Service is disabled pending public API availability
+**D&D 5e System (`dnd5e`) — REQUIRED:**
+- Minimum version: 3.0.0
+- Purpose: Creature type and subtype extraction from actor data
+- Accessed in: `scripts/services/TokenService.js` (actor system data)
+- System-specific: module will not function correctly with other game systems
 
 ## Data Storage
 
 **Databases:**
+- IndexedDB (primary)
+  - Database name: `token-replacer-fa`
+  - Schema version: `DB_VERSION = 1` (defined in `scripts/services/StorageService.js:12`)
+  - Object store: `index` with `keyPath: 'id'`
+  - Keys used:
+    - `token-replacer-fa-index-v3` — hierarchical creature index (see `scripts/services/IndexService.js:24`)
+    - `tva-cache-v1` — TVA image cache (see `scripts/services/TVACacheService.js:18`)
+  - Migration: incremental `switch(oldVersion)` in `StorageService.openDatabase()` — add `case` blocks for future schema changes
+  - Anti-pollution: `_sanitizeData()` strips `__proto__`/`constructor`/`prototype` keys from loaded data
+  - Timeout: blocked open requests rejected after 10 seconds
 
-- No external database - fully client-side application
-- All data stored client-side in browser storage
+- localStorage (fallback when IndexedDB unavailable)
+  - Size limit: ~4.5MB enforced in `scripts/services/StorageService.js:265`
+  - JSON reviver strips prototype-polluting keys: `StorageService._jsonReviver()`
+  - Forge Bazaar cache stub uses localStorage directly: key `token-replacer-fa-bazaar-cache` in `scripts/services/ForgeBazaarService.js:28`
+  - Module-specific keys prefixed with `token-replacer-fa`
 
 **File Storage:**
-
-- Local filesystem (Foundry VTT installation)
-  - Token image paths from TVA cache
-  - Local directories scanned via ScanService
-- The Forge cloud storage (via TVA integration)
-  - Accessed through TVA's cache file
-  - Supports both local files and Forge URLs (forge://... protocol)
-
-**Client-side Storage:**
-
-- localStorage
-  - TVA cache copy: `tva-cache-v1` - Serialized TVA image data
-  - Image index cache: `token-replacer-fa-index-v3` - Categorized image index
-  - Bazaar service cache: `token-replacer-fa-bazaar-cache` - Search results (stub)
-  - Size limit: ~4.5MB (larger indices trigger rebuild)
-- IndexedDB
-  - Alternative persistent storage via StorageService (`scripts/services/StorageService.js`)
-  - Used when localStorage capacity exceeded
+- Token images: accessed via Foundry VTT file picker and TVA cache (paths are string URLs)
+- Forge CDN paths: `https://assets.forge-vtt.com/bazaar/assets/...`
+- Local paths: relative paths under Foundry data directory (e.g., `modules/forgotten-adventures/...`)
 
 **Caching:**
+- In-memory: `TVACacheService._categoryCache` (category → images Map, built at cache load time)
+- In-memory: `SearchOrchestrator.searchCache` (Map, max 200 entries)
+- In-memory: `TokenReplacerApp.i18nCache` (localization string cache)
+- In-memory: `Utils.excludedPathCache` (path exclusion results, max 20,000 entries with 25% LRU eviction)
+- Persistent: IndexedDB via `scripts/services/StorageService.js`
 
-- TVA cache file (.fdb JSON) - Direct read access
-  - Reduces search latency vs. API calls
-  - Built-in caching by TVA module
-- Hierarchical category index - Built and cached locally
-  - Cached in localStorage/IndexedDB with version checks
-  - Version: `INDEX_VERSION = 3`
-- Memoization caches for path exclusion lookups
-  - Cached for 50K+ lookups per search operation
-  - Max cache size: 20,000 entries (auto-clear when exceeded)
+## Web Workers
+
+**IndexWorker (`scripts/workers/IndexWorker.js`):**
+- Spawned by: `scripts/services/IndexService.js` via `workerFactory`
+- URL: `modules/token-replacer-fa/scripts/workers/IndexWorker.js`
+- Commands received: `indexPaths`, `setSearchIndex`, `fuzzySearch`, `cancel`, `ping`
+- Messages sent: `progress`, `complete`, `searchResults`, `error`, `cancelled`, `pong`, `indexSet`
+- Cannot share ES module imports with main thread — Fuse.js loading and CDN_SEGMENTS/isExcludedPath are duplicated
+- Terminated on `beforeunload` in `scripts/main.js:1013`
+
+**SearchOrchestrator Worker:**
+- Spawned by: `scripts/services/SearchOrchestrator.js` via `workerFactory`
+- Same `IndexWorker.js` script
+- Also terminated on `beforeunload` in `scripts/main.js:1020`
 
 ## Authentication & Identity
 
 **Auth Provider:**
-
-- Custom: Foundry VTT's built-in user/GM authentication
-- All operations scoped through `game.user` (current logged-in user)
-- GM-only operations: Scene control button visible only to GMs
-- No external identity provider needed
-
-**Environment Configuration:**
-
-- No API keys required (all module-to-module integration)
-- All configuration stored in Foundry's settings system
-  - Module ID: `token-replacer-fa`
-  - Settings keys: `fuzzyThreshold`, `searchPriority`, `autoReplace`, `confirmReplace`, `fallbackFullSearch`, `useTVACache`, `refreshTVACache`, `indexUpdateFrequency`, `debugMode`, `additionalPaths`
+- None — module has no authentication of its own
+- Foundry VTT handles all user authentication; module checks `game.user.isGM` to restrict scene control button to GMs
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-
-- None (no external service)
-- Local error handling with user-friendly notifications
-- Debug mode via setting: `debugMode` - Logs to browser console
+- None — no external error tracking service
 
 **Logs:**
-
-- Browser console (console.log, console.error, console.warn)
-- All logs prefixed with module ID: `token-replacer-fa |`
-- Debug-level logs: Conditional on `game.settings.get('token-replacer-fa', 'debugMode')`
-- Structured error objects with localized messages and recovery suggestions
+- All logging via `console.log/warn/error` with `${MODULE_ID} |` prefix
+- Debug logging gated behind `debugMode` setting via `createDebugLogger()` in `scripts/core/Utils.js`
+- i18n cache statistics logged on `ready` hook: `scripts/main.js:946`
 
 ## CI/CD & Deployment
 
 **Hosting:**
-
-- GitHub (source code repository)
-- GitHub Releases (module distribution)
-- jsDelivr (Fuse.js CDN)
-
-**Release Process:**
-
-- GitHub releases with both module.json manifest and distributable ZIP
-- Module discovery via Foundry's module installer (manifest URL in module.json)
+- GitHub Releases (`https://github.com/Aiacos/token-replacer-fa`)
 - Manifest URL: `https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json`
-- Package URL: `https://github.com/Aiacos/token-replacer-fa/releases/download/vX.Y.Z/token-replacer-fa-vX.Y.Z.zip`
+- ZIP download URL pattern: `https://github.com/Aiacos/token-replacer-fa/releases/download/vX.Y.Z/token-replacer-fa-vX.Y.Z.zip`
 
 **CI Pipeline:**
+- None detected (no `.github/workflows/` directory)
+- Manual release process via `build.sh` + `gh release create`
 
-- None detected (manual build + GitHub release)
-- Build process: `bash build.sh` (Linux/macOS) or `build.bat` (Windows)
-- Release command: `gh release create vX.Y.Z releases/token-replacer-fa-vX.Y.Z.zip module.json --title "..." --latest`
+## Environment Configuration
+
+**Required env vars:**
+- None at runtime (Foundry module, all config is world settings)
+
+**Secrets location:**
+- `.auto-claude/.env` present (dev tooling, not loaded by module)
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-
-- None detected (not a server-side application)
+- None
 
 **Outgoing:**
-
-- None detected (no external API calls beyond TVA/FA Nexus)
-
-## External Network Requirements
-
-**For Operation:**
-
-- jsDelivr CDN access (Fuse.js) - Required on first use
-- TVA cache file read (filesystem or Forge URLs) - Required
-- Optional: The Forge cloud storage access (via TVA integration)
-
-**For Updates:**
-
-- GitHub Releases API (for checking/downloading new versions) - Optional
-- Foundry module system auto-checks manifest URL periodically
-
-## Performance Considerations
-
-**TVA Cache Direct Access (Primary Path):**
-
-- Reads TVA's static cache file directly instead of API
-- Eliminates repeated API calls for every search operation
-- Cache file location: `TVA_CONFIG.staticCacheFile`
-- Significantly faster than `doImageSearch()` API fallback
-
-**Image Index Caching:**
-
-- Pre-built hierarchical category index reduces search time
-- Cached in localStorage/IndexedDB with automatic version invalidation
-- Web Worker processes large indices non-blocking
-- Falls back to main-thread with 10ms yields if Worker unavailable
-
-**Parallel Searching:**
-
-- Multiple creature types searched concurrently (batch size: 4)
-- SearchOrchestrator manages parallelization via Promise.all()
+- Fuse.js CDN fetch at runtime (`https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs`)
+- TVA cache file read (local Foundry file, not a network call in most setups)
+- Forge CDN asset URLs referenced in token image paths (served by `https://assets.forge-vtt.com`)
 
 ---
 
-_Integration audit: 2026-02-28_
+*Integration audit: 2026-05-27*

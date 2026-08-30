@@ -35,7 +35,15 @@ export default [
     },
     rules: {
       ...js.configs.recommended.rules,
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
       'no-useless-escape': 'warn',
       'no-useless-assignment': 'warn',
       'no-case-declarations': 'warn',
@@ -53,8 +61,64 @@ export default [
     },
     rules: {
       ...js.configs.recommended.rules,
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
       'no-useless-escape': 'warn',
+    },
+  },
+  // Build/CI tooling and the test suite: Node environment, not browser.
+  // Linting these matters — tools/ is release-critical code that only ever
+  // runs in CI, where a typo surfaces as a failed release rather than a crash.
+  {
+    files: ['tools/**/*.mjs', '*.config.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: globals.node,
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+    },
+  },
+  // Test suite: jsdom plus Node, with the Foundry globals writable because the
+  // mocks install them (`game = {...}`) rather than only reading them.
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.vitest,
+        ...Object.fromEntries(Object.keys(foundryGlobals).map((name) => [name, 'writable'])),
+      },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
     },
   },
   // Disable formatting rules that conflict with Prettier (MUST be last)

@@ -2,10 +2,101 @@
 
 All notable changes to Token Replacer - Forgotten Adventures are documented here.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Versioning follows [Semantic Versioning](https://semver.org/).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
----
+## [Unreleased]
+
+### Added
+
+- **Stop control for the background index build**: the first-time build can run for minutes with no way to interrupt it. Its notification is now clickable to stop, and reports plainly that searches will use a slower path until the index is rebuilt on the next reload. Works on both Foundry notification APIs — v13 returns a `Notification` with its own element and `remove()`, v12 only an id — and degrades to a plain, non-clickable message if neither can be resolved, because losing the control is acceptable and throwing during startup is not
+
+- **Automated release pipeline**: the `Release` workflow bumps the version, promotes the changelog, tags, builds, verifies and publishes the GitHub release, then announces it to the Foundry package registry (`tools/publish-foundry.mjs`) — no local steps
+- **Foundry compatibility watch**: a weekly workflow compares `compatibility.verified` against the newest published Foundry generation and opens a bump PR on its own
+- **Dependabot with auto-merge triage**: grouped weekly dependency updates; green patch/minor PRs merge automatically, majors are labelled `needs-review` (`tools/dependabot-triage.mjs`)
+- **`npm run validate`**: static validation of the manifest, version consistency, runtime asset paths (Web Worker and every `.hbs`), i18n key usage and translation parity — the failures that previously only appeared inside a live Foundry world
+- **`npm run check`**: single quality gate (lint → format → typecheck → validate → test) that CI runs verbatim, plus `npm run fix` for the mechanical repairs
+- **Package smoke test in CI**: the built ZIP is inspected to prove it carries every file the module loads at runtime, including `scripts/workers/IndexWorker.js`
+- **Coverage reporting** (`npm run test:coverage`) with the report uploaded as a CI artifact
+- **25 tests for the CI tooling itself** (`tests/tools/`), covering version bumping, changelog promotion, Dependabot triage and manifest validation
+- **`LICENSE`**: the MIT license file the README and CONTRIBUTING already linked to
+- **Constitution in `CLAUDE.md`**: eleven binding articles covering code quality, testing, UX consistency, performance, automated validation, SDK research, documentation, repository hygiene, CI/CD, subagent use and a shared documentation icon vocabulary
+
+### Changed
+
+- **Worker → main thread handoff is 3.25x faster and 4.3x smaller** (44.3 MB / 319ms → 10.2 MB / 98ms on a 50k-image index, identical search results): paths are now interned once in `index.pathList` and referenced by integer id from `allPaths`, `categories` and `termIndex`, instead of the same string being repeated as an `allPaths` key, in every category bucket, and once per search term. The clone cost is paid on the _main thread_ while deserializing, so it was cancelling out much of the benefit of building the index in a worker at all. The same reduction applies to what gets written to IndexedDB
+- **Categorization is ~1.9x faster** (35.6k → 66.2k paths/sec on a 50k-path benchmark, byte-identical results): terms are lowercased once per build instead of once per image — the old loop rebuilt all 444 lowercased terms for every path — and are bucketed by their opening two characters, so each path tests a handful of candidate terms instead of all 444
+- CI now runs on Node 20 and 22 and includes format, typecheck and manifest validation
+- ESLint covers `tools/` and `tests/` in addition to `scripts/`
+- README, CONTRIBUTING and CLAUDE.md chapters use the shared icon vocabulary; README gained status badges and a note on automatic updates
+- Dead CSS: `.token-replacer-fa-search-filter .result-count span` no longer matched anything once the result counter became a single localized sentence
+- `SPECIFICATIONS.md` moved to `docs/` and re-scoped to requirements, acceptance test cases and known issues (CLAUDE.md is authoritative for architecture)
+
+### Removed
+
+- `INDEX_VERSION` is now 15; cached indexes from earlier versions are discarded and rebuilt automatically on first use (the version check already handled this)
+
+- Dead i18n keys: `TOKEN_REPLACER_FA.title` (duplicate of `dialog.title`, which is what the window actually uses) and `settings.searchSources` (no such setting is registered)
+
+- Session artifacts left in the repository root: `TEST_SUMMARY.md`, `TESTING-REQUIRED.md`, `TEST-CACHING.md`, `MANUAL_TESTING_GUIDE.md` (a skeleton-loader checklist, not a general guide) and `console-test-script.js` — all describing work already shipped and covered by the suite
+- `fix-todos/`, `security-scan/` and `.auto-claude/` are no longer versioned (kept on disk, now gitignored)
+
+### Fixed
+
+- **English fallbacks in notifications never fired**: five call sites used `game.i18n.localize(key) || 'English'`, which cannot work — Foundry returns the key itself when it is missing, and the key is truthy, so a missing translation reached the user as a raw `TOKEN_REPLACER_FA.…` string while the English text sat unreachable. The same call also throws before `game.i18n` exists, which is exactly when an init-failure notification needs to speak. All now go through `i18nOrEnglish(key, english)`, which handles a missing key, a blank translation, an absent `game.i18n` and one that throws
+- **Two notifications were never translated at all**: the scene-control-button failure and the storage-full warning were plain English literals; the second was found by the new validator rule, not by hand
+- **Four worker teardown paths left it permanently disabled**: fixing this in `terminate()` did not fix its four siblings — the `buildFromTVA` failure path, the indexing timeout, the search fallback and the search timeout all nulled `worker` while leaving `_workerInitialized` true, so `_ensureWorker()` refused to build a replacement and the session ran everything on the main thread from then on, silently. All teardowns now go through a single `_teardownWorker()`, and a test fails if a fifth path appears
+- **Two `Try:` labels stayed hardcoded**: the localization pass updated one of three identical error notifications, leaving the init-hook and background-init failures rendering mixed-language text for Italian users
+- **Cancelling printed one "search failed" warning per creature type**: the cancellation propagates out of every search in the in-flight parallel batch, and `Promise.allSettled`'s rejection branch logged each one as a failure — the same mislabelling of a deliberate stop that the wrapping catches in `IndexService` had
+- **The Cancel button could not be heard by the Web Worker**: `handleIndexPaths` and the fuzzy-search loop ran synchronously, so the worker's event loop never got a chance to dispatch the `cancel` message — every `if (cancelled)` check inside them read a value that could not have changed, and the button sat on "Cancelling…" until the work finished on its own. Both loops now yield on a macrotask periodically (~11ms total per 50k-image build)
+- **Cancel destroyed the background index build**: the dialog cancelled `IndexService`, which it never awaits — the index is built in background by the `ready` hook. Cancelling it sped nothing up while leaving `isBuilt` false with nothing to retry it, so a cancel during first-time setup silently cost the category index for the whole session. The dialog now cancels only the search it actually waits on
+- **Cancel button on the first screen had no listener**: `_wireCancelButton()` ran only from `updateDialogContent()`, never after the initial `render()` — so during a directory scan, which issues no dialog updates, the visible Cancel button was inert. The dialog now reports its own renders
+- **A cancellation was relabelled as a build failure**: `buildFromTVA()` and `build()` wrap anything without an `errorType` into `index_build_failed`, stripping the `cancelled` marker one frame above where every caller checks it — so a deliberate stop was reported as a hard failure suggesting "rebuild cache / reload / contact support"
+- **A cancellation could be swallowed silently**: `processTokenReplacement`'s handler delegated to `_abortIfCancelled()`, which re-tests the flag, so an error carrying the marker while the flag was clear returned with no message and left the user on a frozen progress dialog
+- **`_cancelRequested` was write-only in `SearchOrchestrator`**: nothing read it and nothing reset it, so cancelling during a main-thread fuzzy search did nothing and the flag stayed latched for the session. It is now checked between search terms and between parallel batches, and cleared when a new search phase starts
+- **Release could be rejected after publishing**: `tools/publish-foundry.mjs` always sent `compatibility.maximum: ""` — not a valid version — to the Foundry Package Release API, in the last step of the pipeline, after the tag, ZIP and GitHub release were already out. The key is now omitted unless a maximum is actually set
+- **Fuzzy search used a stale index after a rescan**: `SearchOrchestrator` sends its search index to the Worker once, but the "already sent" flag was only cleared when the Worker failed, timed out or was terminated — never when the index itself changed. Because the orchestrator is a singleton, a rebuilt local index (new artwork, changed search paths) was silently fuzzy-searched against the copy from earlier in the session, with no error and no way to notice but the missing results. The Worker's index is now tracked by identity and re-sent when it differs
+- **Worker and main thread categorized images differently**: the Web Worker counted a term for every category it was listed under and broke ties by declaration order, while the main-thread fallback used a term→category `Map` that silently kept only the _last_ category for a shared term and broke ties by whichever term happened to match first. The same image library therefore produced a different index depending on whether the worker was available. Both paths now share one compiled categorizer, and a test fails if the two copies drift
+- **Four creature terms filed under the wrong type**: `bone devil` was listed as undead, `night hag` and `displacer beast` as fey, and `firbolg` as giant. Verified against the Monster Manual and corrected; `yuan-ti` legitimately stays under both humanoid and monstrosity, and a test now requires every shared term to be declared intentional
+- **Missing `SYNC` markers**: `loadFuse()`, `CDN_SEGMENTS` and `isExcludedPath()` in `Utils.js` carried no marker pointing at their worker copies, so the CDN path-filtering logic CLAUDE.md singles out as duplicated could be edited on one side only. All four pairs are now marked and the pairing is enforced by a test
+- **Cancel reached only one of the two workers**: `SearchOrchestrator` runs its own Web Worker for fuzzy search, separate from `IndexService`'s indexing worker, and carried the same three defects — `terminate()` left it permanently disabled, `cancelOperation()` was invisible to the main-thread fallback, and a cancellation was caught as a worker failure. Both workers are now cancelled together
+- **Cancel button did nothing**: `setCancelCallback()` was defined but never called, so `cancelCallback` was permanently `null` and every click on Cancel — shown during the two longest phases, TVA cache loading and category search — was silently ignored. It is now wired for the whole pre-replacement stretch and disarmed once tokens start changing, so an aborted run always leaves the scene untouched
+- **Cancelling ran the slow path anyway**: a user cancellation rejected the worker promise, which `build()` caught as a worker _failure_ — warning the user that the background worker had failed, permanently disabling the Web Worker for the session, and then running the slower main-thread indexing the user had just asked it to stop. Cancellation now carries a marker that `build()` re-throws instead of recovering from
+- **`terminate()` disabled the worker for the session**: it nulled `worker` without clearing `_workerInitialized`, so `_ensureWorker()` refused to build a replacement and every later run silently used the slow main-thread path
+- **Cancellation was invisible to the main-thread fallback**: `cancelOperation()` only messaged the worker, leaving the path most in need of an escape hatch uninterruptible. It now sets a flag that `indexPathsDirectly()` checks at each batch boundary
+- **Entire UI was English regardless of language**: all eight Handlebars templates carried inline English text and five user-visible strings were hardcoded in JS, so Italian users read an English interface even though `lang/it.json` was complete. Every string now resolves through the language files, and `npm run validate` fails on any literal text reintroduced into a template
+- **Promise.allSettled for parallel batches**: `SearchOrchestrator` parallel category search now uses `Promise.allSettled` instead of `Promise.all`, preventing one failed category from aborting the entire batch
+- **isProcessing race condition**: `finally` block is now the sole owner of `isProcessing` reset in `processTokenReplacement()`, preventing TOCTOU race with `onClose` callback
+- **Score fallback**: unscored fuzzy matches now default to score `0` instead of `0.8`, ensuring the selection dialog always appears for ambiguous results
+- **Worker double-post on Fuse.js failure**: removed redundant `complete` message in `IndexWorker.js` when `loadFuse()` already posted an `error` message
+- **Creature-type post-filter**: Worker search results now filtered by creature type after completion, preventing cross-category contamination
+- **StorageService cycle guard**: `_sanitizeData()` now uses `WeakSet` to detect circular references from IndexedDB structured clone, preventing stack overflow
+- **Silent failure logging**: added `console.warn` to 4 `IndexService` search catch blocks and `console.debug` to `StorageService.has()` and `UIManager.updateDialogContent()` — errors were previously invisible in production (only `_debugLog` which requires debug mode)
+- **Duplicate creature mapping**: removed duplicate `'sea hag'` entry in fey category that inflated match weight
+- **Worker stale exclusion patterns**: `compiledExcludedPatterns` and `compiledExcludedFolders` now reset on each `indexPaths` call, fixing silent pattern reuse across re-index operations
+- **Worker zombie on timeout**: `searchLocalIndexWithWorker()` timeout now calls `worker.terminate()` to prevent zombie workers receiving subsequent messages
+- **Worker null guard**: added `this.index` null check in Worker `complete` handler to prevent crash if build failed before message arrived
+- **HEAD request timeout**: TVA cache freshness check now uses `AbortSignal.timeout(3000)` to prevent 30-300s hang on misconfigured proxies
+
+### Security
+
+- Replaced `obj[prop]` with `Object.prototype.hasOwnProperty.call(obj, prop)` in Utils.js to prevent prototype pollution
+- Added `credentials: 'omit'` to HEAD fetch in `TVACacheService` cache freshness check
+- Replaced `error.stack` with `error.message` in user-facing error display to prevent information disclosure
+- Added post-load shape validation (`_validateFuseShape`) for Fuse.js CDN import in both `Utils.js` and `IndexWorker.js` — verifies constructor, `.search()` method, and array return type
+- Added `_sanitizeData()` recursive prototype key stripping and `_jsonReviver` for all IndexedDB/localStorage loads in `StorageService`
+
+### Changed
+
+- **LRU cache eviction**: `SearchOrchestrator` search cache now has a 200-entry cap with 25% batch eviction on overflow (was unbounded)
+- **LRU eviction in Utils.js**: `excludedPathCache` now evicts oldest 25% on overflow instead of full clear
+- **Worker timeout**: `searchLocalIndexWithWorker()` now has a 60-second timeout with proper cleanup to prevent indefinite hangs
+- **Pre-lowercase optimization**: `TVACacheService` now computes `_nameLower`/`_pathLower` once at parse time, eliminating O(n) string allocations per search on 50K+ entries
+- **QuotaExceeded notification**: `IndexService` now shows `ui.notifications.warn()` when IndexedDB storage quota is exceeded
+- Extracted `_buildSearchableCache()` helper in `TVACacheService` (DRY: eliminated duplicate filter+map chains)
+- Extracted `_attachImageDelegation()` helper in `UIManager` (DRY: replaced 3 duplicate 20-line event delegation blocks)
+- Added `SYNC:` markers to 4 duplicated functions in `IndexWorker.js` (`loadFuse`, `_validateFuseShape`, `CDN_SEGMENTS`, `isExcludedPath`) linking to their `Utils.js` counterparts
+- **saveToCache size logging**: replaced blocking `JSON.stringify` (100-500ms at 30K+ images) with O(1) entry count estimation
 
 ## [2.12.6] - 2026-04-24
 
@@ -37,10 +128,366 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [2.12.4] - 2025-07
+## [2.12.4] - 2026-03-07
 
-- Version sync and internal quality refactor milestone (v2.12 Quality Refactor).
+### Security
 
-## [2.12.3] - 2025-07
+- Removed hardcoded credentials from environment files
+- Added `.env` patterns to `.gitignore` to prevent credential leaks
+- Added dangerous protocol rejection (`javascript:`, `data:`, `vbscript:`) in `sanitizePath()`
+- Added prototype pollution key filtering (`__proto__`, `constructor`, `prototype`) in path extraction
+- Added origin validation and `credentials: 'omit'` to TVA cache fetch requests
+- Replaced inline event handlers (`onclick`, `onerror`) with `addEventListener` delegation for CSP compatibility
+- Added input validation for Worker message handler
+- Removed error stack traces from Worker `postMessage` responses
+- Added strict regex validation for build script variables to prevent injection
+- Added `console.warn` to all previously-silent `catch` blocks
+- Added 200-character limit on localStorage filter term to prevent abuse
 
-- Previous stable release.
+### Added
+
+- User-facing warnings when Fuse.js fails to load or token replacement fails
+- Security-focused tests for protocol rejection, prototype pollution, and cache origin validation (11 new tests)
+
+## [2.12.0] - 2026-03-06
+
+### Added
+
+- **Automated test suite**: 498 tests via Vitest + jsdom + fake-indexeddb covering all services
+- **GitHub Actions CI pipeline**: runs tests, lint, and type checking on every PR
+- **JSDoc type safety**: declaration merging for typed settings access, JSDoc annotations on all services
+- **Structured error handling**: `createModuleError()` pattern with error types, details, and recovery suggestions
+- **Worker lifecycle management**: lazy initialization via `_ensureWorker()`, clean termination on page unload, crash fallback with user notification
+
+### Changed
+
+- All 5 services now use constructor dependency injection with backward-compatible defaults
+- `TokenService` converted from static-only class to instance class with canvas DI
+- `IndexService` Worker creation changed from eager (constructor) to lazy (`_ensureWorker()`) via injected `workerFactory`
+- Error notifications now include recovery suggestions (e.g., "Try: Refresh the page")
+- `beforeunload` handler terminates Worker cleanly to prevent orphaned threads
+
+### Fixed
+
+- `SearchOrchestrator.searchLocalIndex` now has try-catch for Worker fallback (was missing)
+
+## [2.11.0] - 2026-02-25
+
+### Added
+
+- **ApplicationV2 dialog**: migrated from deprecated Foundry v1 Dialog API to `ApplicationV2` for v12-v13 compatibility
+- **Service decomposition**: `SearchService` split into `SearchOrchestrator` (search logic) and `TVACacheService` (cache management)
+- **SearchService facade**: thin facade delegating to specialized services
+
+### Changed
+
+- Dialog system uses `TokenReplacerDialog` extending `ApplicationV2` with `{ force: true }` for initial render
+- Dialog content updates via DOM manipulation (`updateContent`) instead of full re-render
+
+### Fixed
+
+- Dialog not appearing on Foundry v13 (required `{ force: true }` parameter)
+- Dialog not rendering when index searches returned 0 results
+- `termIndex` empty when loaded from IndexedDB cache (rebuild from `allPaths`)
+- Module crash when `_debugLog()` called before `registerSettings()` in init hook
+- UI freeze from uncapped results (capped at 200, added lazy image loading)
+
+## [2.10.0] - 2026-02-20
+
+### Added
+
+- **Handlebars templates**: extracted all inline HTML from `UIManager.js` into 8 `.hbs` template files with auto-escaping XSS protection
+- **Web Worker index building**: `IndexWorker.js` processes image categorization in background thread without blocking UI
+- **IndexedDB storage**: `StorageService` for persistent index caching beyond localStorage's 4.5MB limit
+- **Skeleton loaders**: loading placeholder animations for token images during search
+- **Search filter clear button**: one-click clear with filter term persistence in localStorage
+- **O(1) search term index**: hash table lookups via `termIndex` replacing linear scans
+- **Precompiled regex patterns**: `EXCLUDED_FILENAME_PATTERNS` compiled once at module load
+- **Category term map**: `buildTermCategoryMap()` for reverse lookups from search terms to categories
+- **i18n caching**: memoized localization lookups in both main app and UIManager
+- **Version sync automation**: `sync-version.sh` / `sync-version.bat` reads version from `module.json` and updates all files
+- **Build scripts**: `build.sh` / `build.bat` auto-detect module ID, version, and GitHub URL from `module.json`
+- **Path sanitization**: `sanitizePath()` utility function for user-controlled paths
+- **Debug mode setting**: toggleable debug logging via module settings
+- **Cancel buttons**: cancellation support in all progress dialogs
+- **ForgeBazaarService stub**: skeleton service for future Forge Bazaar direct API integration
+- **Error templates**: structured error display with recovery suggestions via `error.hbs`
+
+### Changed
+
+- `categorizeImage()` uses Map lookup instead of nested loops
+- `isExcludedPath()` uses precompiled RegExp array instead of runtime compilation
+- `search()` method uses O(1) `termIndex` lookups instead of linear array scan
+- `searchMultiple()` optimized to use `termIndex` directly for OR logic
+- TVA cache fallback chain extracted into focused methods (`_tryPreloadedCache`, `_tryGameSettings`, etc.)
+
+### Fixed
+
+- Non-blocking TVA cache load (fixed heavy UI freeze on startup)
+- TVA cache persisted in IndexedDB to avoid re-parsing on every startup
+- Worker index structure mismatch with main thread
+- CSS icon overlap in search filter
+- Word boundary pattern in `EXCLUDED_FILENAME_PATTERNS`
+
+## [2.9.0] - 2026-02-15
+
+### Added
+
+- Enhanced filtering: exclude environmental assets (maps, tiles, portraits) from token searches
+- Comprehensive FA library filtering for non-token assets
+- Category fallback: automatically falls back to broader category search when subtype returns no results
+
+### Fixed
+
+- Category fallback results now filtered by category terms
+
+## [2.8.0]
+
+### Added
+
+- **Direct TVA cache access**: fast path searching using TVA's static cache file directly
+- CDN path handling: properly filter CDN URL segments from folder exclusion checks
+
+### Changed
+
+- Searches complete much faster by reading TVA cache directly instead of using API
+
+## [2.7.0]
+
+### Changed
+
+- Improved parallelization and UI responsiveness during search
+- Better cache key handling for progress notifications
+- Index now stores all images for general search
+
+## [2.6.0]
+
+### Added
+
+- Hierarchical JSON index with configurable update frequency
+
+### Fixed
+
+- Index initialization issues
+- Improved index structure for faster lookups
+
+## [2.5.0]
+
+### Added
+
+- localStorage caching for faster subsequent searches
+- Extended folder exclusion filters
+- Subtype parsing from string format (e.g., "Humanoid (Tiefling)")
+
+### Changed
+
+- Improved TVA cache integration
+- Non-blocking index build
+
+## [2.4.0]
+
+### Added
+
+- Pre-built keyword index for O(1) search performance via hash table lookups
+- Asset folder exclusion from index
+
+## [2.3.0]
+
+### Changed
+
+- Removed custom IndexService, uses TVA `doImageSearch` directly
+
+### Fixed
+
+- TVA Map result parsing to extract all results
+
+## [2.2.0]
+
+### Added
+
+- Pre-built keyword index for O(1) searches
+- Direct `CACHED_IMAGES` access for faster performance
+
+## [2.1.0]
+
+### Changed
+
+- Subtype search now uses OR logic (shows all matching subtypes)
+- Removed quick search buttons for cleaner interface
+
+## [2.0.0]
+
+### Changed
+
+- **Major refactoring**: complete OOP architecture with modular services
+- Separate services for Token, Search, Index, Scan, and UI
+- O(1) Set lookups for improved performance
+- Better handling of various TVA result formats
+- Improved actor data parsing for creature type extraction
+
+## [1.5.0]
+
+### Added
+
+- AND logic filter for multiple search terms
+- Visual progress bar during category search
+- Debounced search filter input with delimiter support
+
+### Changed
+
+- Taller dialog that adapts to content
+
+## [1.4.0]
+
+### Added
+
+- Category browser dropdown when no fuzzy search matches found
+- Creature type detection with pre-selected dropdown
+- Multi-select in category browser with sequential/random assignment
+
+## [1.3.0]
+
+### Added
+
+- Multi-select variations for artwork assignment
+- Sequential and Random assignment modes
+- Visual checkmark indicators for selected artwork
+- Token count display showing affected tokens
+
+### Changed
+
+- Completely redesigned dialog layout with better sizing, scrolling, and visibility
+
+## [1.2.1]
+
+### Changed
+
+- If tokens are selected, only processes selected NPC tokens instead of all NPCs on the scene
+
+## [1.2.0]
+
+### Fixed
+
+- TVA result parsing: properly handles TVA's tuple format `[path, config]`
+- Text visibility for failed/skipped items (was black text on dark backgrounds)
+
+### Added
+
+- Comprehensive debug logging for TVA integration
+
+### Changed
+
+- Refactored CSS styles for better dialog layout and visual consistency
+
+## [1.1.0]
+
+### Added
+
+- **TVA cache integration**: skips manual directory scanning when Token Variant Art is available
+- "Use TVA Cache" setting (enabled by default)
+- "Refresh TVA Cache Before Search" setting
+- Uses TVA's `updateTokenImage()` API to apply custom token configurations
+
+### Changed
+
+- Improved search logic when TVA cache mode is enabled
+
+## [1.0.9]
+
+### Fixed
+
+- UI glitching from multiple dialog windows
+- Refactored to use single dialog throughout replacement process
+
+### Added
+
+- Inline selection buttons for match selection
+- Better user feedback when no tokens or matches found
+
+## [1.0.8]
+
+### Changed
+
+- Code cleanup and removal of unused variables
+- Added missing localization strings
+- Removed verbose debug logging
+
+## [1.0.7]
+
+### Fixed
+
+- TVA API path extraction (paths no longer show as numeric indices)
+- Dialog auto-sizing issues
+
+### Added
+
+- Result validation to filter invalid paths
+- Extensive debug logging for TVA responses
+- Missing localization strings
+
+## [1.0.6]
+
+### Changed
+
+- Made fallback full search optional (default: off)
+- Added "Fallback to Full Search" setting
+
+## [1.0.5]
+
+### Added
+
+- Category-based search optimization
+- Creature type filtering to relevant folders
+
+### Changed
+
+- Improved performance for large token libraries
+
+## [1.0.4]
+
+### Added
+
+- Parallel search for multiple creature types
+- Identical creatures share search results
+- Real-time progress display during processing
+
+## [1.0.3]
+
+### Fixed
+
+- Browser freezing during directory scan
+
+### Added
+
+- Yielding to prevent UI blocking
+- Throttled UI updates for better performance
+
+## [1.0.2]
+
+### Fixed
+
+- Multiple dialog windows appearing
+- Safe dialog closing mechanism
+
+## [1.0.1]
+
+### Fixed
+
+- Settings localization
+- Foundry v12/v13 compatibility for scene controls
+
+### Added
+
+- XSS protection
+
+## [1.0.0]
+
+### Added
+
+- Initial release
+- One-click NPC token art replacement
+- Fuzzy search via Fuse.js
+- FA Nexus and Forge Bazaar support via TVA
+- Category-based creature type matching
+- Interactive selection dialog with preview images
+- English and Italian localization

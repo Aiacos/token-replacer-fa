@@ -26,6 +26,12 @@ let FuseClass = null;
 let cancelled = false;
 
 /**
+ * Persisted search index — set once via 'setSearchIndex', reused across fuzzySearch calls.
+ * Avoids re-serializing the full index via structured clone on every search.
+ */
+let persistedSearchIndex = null;
+
+/**
  * Main message handler for the worker
  * Receives commands from the main thread and processes them
  */
@@ -35,7 +41,17 @@ self.addEventListener('message', (event) => {
   try {
     switch (command) {
       case 'indexPaths':
-        handleIndexPaths(data);
+        handleIndexPaths(data).catch((error) => {
+          self.postMessage({ type: 'error', message: error.message });
+        });
+        break;
+
+      case 'setSearchIndex':
+        persistedSearchIndex = data.index;
+        self.postMessage({
+          type: 'indexSet',
+          count: Array.isArray(data.index) ? data.index.length : 0,
+        });
         break;
 
       case 'fuzzySearch':
@@ -43,7 +59,6 @@ self.addEventListener('message', (event) => {
           self.postMessage({
             type: 'error',
             message: error.message,
-            stack: error.stack,
           });
         });
         break;
@@ -59,19 +74,35 @@ self.addEventListener('message', (event) => {
         break;
 
       default:
+        console.warn(`IndexWorker: unknown command "${command}"`);
         self.postMessage({
           type: 'error',
           message: `Unknown command: ${command}`,
         });
     }
   } catch (error) {
+    console.error('IndexWorker error:', error);
     self.postMessage({
       type: 'error',
       message: error.message,
-      stack: error.stack,
     });
   }
 });
+
+/**
+ * Hand the event loop back so queued messages — a cancel, above all — can be
+ * dispatched.
+ *
+ * A worker is single-threaded: while a synchronous loop runs, `postMessage` from
+ * the page sits in the queue and the `cancelled` flag can never flip, so every
+ * cancel check inside the loop reads a value that cannot have changed. Yielding
+ * on a macrotask (not a microtask, which drains before the message queue) is
+ * what makes those checks mean anything.
+ * @returns {Promise<void>}
+ */
+function yieldToMessages() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 /**
  * Handle the indexPaths command
@@ -83,11 +114,15 @@ self.addEventListener('message', (event) => {
  * @param {Array} data.excludedFolders - Folder names to exclude
  * @param {Array} data.excludedFilenameTerms - Filename terms to exclude
  */
-function handleIndexPaths(data) {
+async function handleIndexPaths(data) {
   const { paths, creatureTypeMappings, excludedFolders, excludedFilenameTerms } = data;
 
   // Reset cancellation flag at start of operation
   cancelled = false;
+
+  // Reset compiled exclusion caches so re-index with different settings works correctly
+  compiledExcludedPatterns = null;
+  compiledExcludedFolders = null;
 
   // Validate input
   if (!Array.isArray(paths)) {
@@ -103,12 +138,22 @@ function handleIndexPaths(data) {
     throw new Error('excludedFilenameTerms must be an array');
   }
 
+  // Compiled once per run: the mappings arrive fresh from the main thread each
+  // time, so this cannot be hoisted to module scope.
+  const compiledCategorizer = compileCategorizer(creatureTypeMappings);
+
   // Initialize empty index structure
   const categories = {};
   for (const category of Object.keys(creatureTypeMappings)) {
     categories[category] = {};
   }
-  const allPaths = {};
+  // Paths are interned in pathList and referenced by id everywhere else. Sending
+  // the strings back repeated across allPaths, categories and termIndex cost
+  // 39 MB of structured clone on a 50k library — deserialized on the main
+  // thread, which is exactly what this worker exists to keep free.
+  const pathList = [];
+  const allPaths = [];
+  const pathIds = new Map();
 
   // Send initial progress
   self.postMessage({
@@ -120,9 +165,13 @@ function handleIndexPaths(data) {
 
   let imagesFound = 0;
   const PROGRESS_BATCH = 1000;
+  // Yield rarely: the queue only has to drain often enough for a cancel to feel
+  // immediate, and each yield costs a macrotask round-trip.
+  const YIELD_EVERY = 5000;
 
   // Process each path
   for (let i = 0; i < paths.length; i++) {
+    if (i > 0 && i % YIELD_EVERY === 0) await yieldToMessages();
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;
@@ -143,7 +192,11 @@ function handleIndexPaths(data) {
     }
 
     // Skip if no path, already indexed, or excluded
-    if (!path || allPaths[path] || isExcludedPath(path, excludedFolders, excludedFilenameTerms)) {
+    if (
+      !path ||
+      pathIds.has(path) ||
+      isExcludedPath(path, excludedFolders, excludedFilenameTerms)
+    ) {
       continue;
     }
 
@@ -158,14 +211,17 @@ function handleIndexPaths(data) {
       'Unknown';
 
     // Try to categorize the image
-    const { category, subcategories } = categorizeImage(path, imageName, creatureTypeMappings);
+    const { category, subcategories } = categorizeImage(path, imageName, compiledCategorizer);
 
-    // ALWAYS add to allPaths (even if uncategorized) for general search
-    allPaths[path] = {
+    // ALWAYS index the path (even if uncategorized) for general search
+    const id = pathList.length;
+    pathList.push(path);
+    pathIds.set(path, id);
+    allPaths.push({
       name: imageName,
       category: category || null,
       subcategories: subcategories || [],
-    };
+    });
 
     imagesFound++;
 
@@ -181,14 +237,14 @@ function handleIndexPaths(data) {
         if (!categories[category][subcategory]) {
           categories[category][subcategory] = [];
         }
-        categories[category][subcategory].push({ path, name: imageName });
+        categories[category][subcategory].push(id);
       }
 
       // Also add to a "_all" subcategory for the category
       if (!categories[category]._all) {
         categories[category]._all = [];
       }
-      categories[category]._all.push({ path, name: imageName });
+      categories[category]._all.push(id);
     }
 
     // Report progress every 1000 items
@@ -203,23 +259,24 @@ function handleIndexPaths(data) {
   // Build termIndex from allPaths (O(1) search term lookups on main thread)
   // Uses same tokenization regex as IndexService.tokenizeSearchText() — keep in sync
   const termIndex = {};
-  for (const [path, data] of Object.entries(allPaths)) {
+  for (let id = 0; id < pathList.length; id++) {
+    if (id > 0 && id % YIELD_EVERY === 0) await yieldToMessages();
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;
     }
-    const searchText = `${path} ${data.name}`.toLowerCase();
-    const terms = searchText.split(/[\/\\\-_\s\.]+/).filter((t) => t.length > 0);
+    const searchText = `${pathList[id]} ${allPaths[id].name}`.toLowerCase();
+    const terms = searchText.split(/[/\\\-_\s.]+/).filter((t) => t.length > 0);
     for (const term of new Set(terms)) {
       if (!termIndex[term]) termIndex[term] = [];
-      termIndex[term].push(path);
+      termIndex[term].push(id);
     }
   }
 
   // Send completion message with results
   self.postMessage({
     type: 'complete',
-    result: { categories, allPaths, termIndex },
+    result: { categories, pathList, allPaths, termIndex },
     imagesFound,
     total: paths.length,
   });
@@ -243,6 +300,7 @@ function reportProgress(processed, total, imagesFound) {
 
 /**
  * Load Fuse.js library from CDN
+ * SYNC: Keep in sync with Utils.js loadFuse()
  * @returns {Promise<Function|null>} Fuse constructor or null
  */
 async function loadFuse() {
@@ -250,15 +308,44 @@ async function loadFuse() {
 
   try {
     const module = await import(FUSE_CDN);
-    FuseClass = module.default;
+    const Candidate = module.default;
+    if (!_validateFuseShape(Candidate)) {
+      console.error(
+        'IndexWorker: Fuse.js loaded but failed shape validation — possible CDN compromise'
+      );
+      self.postMessage({
+        type: 'error',
+        message: 'Fuse.js failed integrity validation after loading from CDN',
+      });
+      return null;
+    }
+    FuseClass = Candidate;
     return FuseClass;
   } catch (error) {
+    console.error('IndexWorker: Failed to load Fuse.js:', error);
     self.postMessage({
       type: 'error',
       message: `Failed to load Fuse.js: ${error.message}`,
-      stack: error.stack,
     });
     return null;
+  }
+}
+
+/**
+ * Validate that a loaded Fuse candidate has the expected constructor shape.
+ * SYNC: Keep in sync with Utils.js _validateFuseShape()
+ * @param {*} Candidate
+ * @returns {boolean}
+ */
+function _validateFuseShape(Candidate) {
+  try {
+    if (typeof Candidate !== 'function') return false;
+    const instance = new Candidate([{ name: 'test' }], { keys: ['name'] });
+    if (typeof instance.search !== 'function') return false;
+    const results = instance.search('test');
+    return Array.isArray(results);
+  } catch {
+    return false;
   }
 }
 
@@ -272,31 +359,28 @@ async function loadFuse() {
  * @param {Object} data.options - Fuse.js options (keys, threshold, etc.)
  */
 async function handleFuzzySearch(data) {
-  const { searchTerms, index, options } = data;
+  const { searchTerms, index: inlineIndex, options } = data;
 
   // Reset cancellation flag at start of operation
   cancelled = false;
+
+  // Use persisted index if available, otherwise fall back to inline index
+  const index = persistedSearchIndex || inlineIndex;
 
   // Validate input
   if (!Array.isArray(searchTerms)) {
     throw new Error('searchTerms must be an array');
   }
   if (!Array.isArray(index)) {
-    throw new Error('index must be an array');
+    throw new Error('index must be an array — send setSearchIndex or include index in data');
   }
   if (!options || typeof options !== 'object') {
     throw new Error('options must be an object');
   }
 
-  // Load Fuse.js
+  // Load Fuse.js — if loadFuse() fails, it already posts an 'error' message
   const Fuse = await loadFuse();
-  if (!Fuse) {
-    self.postMessage({
-      type: 'complete',
-      result: [],
-    });
-    return;
-  }
+  if (!Fuse) return;
 
   // Check for cancellation after async operation
   if (cancelled) {
@@ -320,6 +404,8 @@ async function handleFuzzySearch(data) {
 
   // Search for each term
   for (let i = 0; i < searchTerms.length; i++) {
+    // Each term is a full Fuse pass over the index, so yield on every one.
+    if (i > 0) await yieldToMessages();
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;
@@ -367,36 +453,125 @@ async function handleFuzzySearch(data) {
  * @param {Object} creatureTypeMappings - Creature category mappings
  * @returns {Object} { category, subcategories }
  */
-function categorizeImage(path, name, creatureTypeMappings) {
-  const searchText = `${path} ${name}`.toLowerCase();
-  let bestCategory = null;
-  let subcategories = [];
-  let maxMatches = 0;
+/**
+ * Compile CREATURE_TYPE_MAPPINGS into a structure `categorizeWith()` can search
+ * quickly and deterministically.
+ *
+ * Two things are precomputed. Terms are lowercased once instead of once per
+ * image — the naive loop re-lowercased all 444 terms for every path, which on a
+ * 50k library is 22 million throwaway strings. And terms are bucketed by their
+ * first two characters: a term of two or more characters can only occur in the
+ * search text if its opening bigram does, so scanning the text's own bigrams
+ * tests a handful of candidate terms instead of all 444. The result is
+ * identical, verified path-by-path against the naive loop.
+ *
+ * `categoryIndex` and `termIndex` preserve declaration order, which is what
+ * breaks ties — without them the winning category would depend on which bigram
+ * happened to be scanned first.
+ *
+ * SYNC: Keep in sync with IndexService.js compileCategorizer()
+ * @param {Object<string, string[]>} mappings - Category to search terms
+ * @returns {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}}
+ */
+function compileCategorizer(mappings) {
+  const categories = Object.keys(mappings);
+  const buckets = new Map();
+  const shortTerms = [];
 
-  for (const [category, terms] of Object.entries(creatureTypeMappings)) {
-    let matches = 0;
-    const matchedTerms = [];
-
-    for (const term of terms) {
-      if (searchText.includes(term.toLowerCase())) {
-        matches++;
-        matchedTerms.push(term);
+  categories.forEach((category, categoryIndex) => {
+    mappings[category].forEach((original, termIndex) => {
+      const lower = String(original).toLowerCase();
+      if (!lower) return;
+      const entry = { category, categoryIndex, original, termIndex, lower };
+      // A single character has no bigram to bucket on, so it is always tested.
+      if (lower.length < 2) {
+        shortTerms.push(entry);
+        return;
       }
-    }
+      const key = lower.slice(0, 2);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = [];
+        buckets.set(key, bucket);
+      }
+      bucket.push(entry);
+    });
+  });
 
-    if (matches > maxMatches) {
-      maxMatches = matches;
+  return { categories, buckets, shortTerms };
+}
+
+/**
+ * Pick the category whose terms appear most often in the given text.
+ *
+ * Ties go to the category declared first in CREATURE_TYPE_MAPPINGS, and matched
+ * terms come back in declaration order, so the worker and the main-thread
+ * fallback cannot disagree about where an image belongs.
+ *
+ * SYNC: Keep in sync with IndexService.js categorizeWith()
+ * @param {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}} compiled
+ * @param {string} searchText - Lowercased path and name
+ * @returns {{category: string|null, subcategories: string[]}}
+ */
+function categorizeWith(compiled, searchText) {
+  const { categories, buckets, shortTerms } = compiled;
+  const hits = new Map();
+
+  const consider = (entry) => {
+    if (!searchText.includes(entry.lower)) return;
+    let matched = hits.get(entry.category);
+    if (!matched) {
+      matched = [];
+      hits.set(entry.category, matched);
+    }
+    matched.push(entry);
+  };
+
+  const seenBigrams = new Set();
+  for (let i = 0; i < searchText.length - 1; i++) {
+    const key = searchText.slice(i, i + 2);
+    if (seenBigrams.has(key)) continue;
+    seenBigrams.add(key);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      for (const entry of bucket) consider(entry);
+    }
+  }
+  for (const entry of shortTerms) consider(entry);
+
+  let bestCategory = null;
+  let best = null;
+  let maxMatches = 0;
+  for (const category of categories) {
+    const matched = hits.get(category);
+    if (matched && matched.length > maxMatches) {
+      maxMatches = matched.length;
       bestCategory = category;
-      subcategories = matchedTerms;
+      best = matched;
     }
   }
 
-  return { category: bestCategory, subcategories };
+  if (!best) return { category: null, subcategories: [] };
+
+  best.sort((a, b) => a.termIndex - b.termIndex);
+  return { category: bestCategory, subcategories: best.map((entry) => entry.original) };
+}
+
+/**
+ * Categorize an image using the compiled categorizer for this run.
+ * @param {string} path - Image path
+ * @param {string} name - Image display name
+ * @param {Object} compiled - Result of compileCategorizer()
+ * @returns {{category: string|null, subcategories: string[]}}
+ */
+function categorizeImage(path, name, compiled) {
+  return categorizeWith(compiled, `${path} ${name}`.toLowerCase());
 }
 
 /**
  * CDN URL segments to skip when checking folder exclusions
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+ * SYNC: Keep in sync with Utils.js CDN_SEGMENTS
  */
 const CDN_SEGMENTS = new Set([
   'https:',
@@ -433,6 +608,7 @@ let compiledExcludedFolders = null;
  * Check if a path should be excluded from indexing
  * Checks both folder names and filename for environmental/prop terms
  *
+ * SYNC: Keep in sync with Utils.js isExcludedPath()
  * @param {string} path - Path to check
  * @param {Array} excludedFolders - Folder names to exclude
  * @param {Array} excludedFilenameTerms - Filename terms to exclude

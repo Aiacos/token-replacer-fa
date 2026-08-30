@@ -1,0 +1,407 @@
+#!/usr/bin/env node
+/**
+ * Validates module.json and every asset the module points at.
+ *
+ * Run locally with `npm run validate`; CI runs the same script so a broken
+ * manifest, a dangling template path or a missing i18n key can never reach a
+ * release. Reports every problem it finds, then exits non-zero if any of them
+ * is an error.
+ *
+ * Errors break the module at runtime. Warnings are drift worth knowing about
+ * (Foundry degrades gracefully: a missing translation falls back to English).
+ */
+import { readFileSync, existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
+import path from 'node:path';
+
+const ROOT = process.cwd();
+const I18N_NAMESPACE = 'TOKEN_REPLACER_FA';
+
+/**
+ * Key prefixes whose leaves are built at runtime (`errors.${errorType}`), so a
+ * static scan can never see them used. Defined-but-unused warnings are
+ * suppressed under these.
+ */
+const DYNAMIC_KEY_PREFIXES = [`${I18N_NAMESPACE}.errors.`, `${I18N_NAMESPACE}.recovery.`];
+
+const errors = [];
+const warnings = [];
+const fail = (message) => errors.push(message);
+const warn = (message) => warnings.push(message);
+
+// ── manifest ────────────────────────────────────────────────────────────────
+let manifest;
+try {
+  manifest = JSON.parse(readFileSync(path.join(ROOT, 'module.json'), 'utf8'));
+} catch (error) {
+  console.error(`module.json is not readable JSON: ${error.message}`);
+  process.exit(1);
+}
+
+for (const field of [
+  'id',
+  'title',
+  'version',
+  'compatibility',
+  'manifest',
+  'download',
+  'esmodules',
+]) {
+  if (!manifest[field]) fail(`module.json is missing required field "${field}"`);
+}
+
+if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(manifest.version ?? '')) {
+  fail(`version "${manifest.version}" is not semver`);
+}
+
+// ── compatibility ───────────────────────────────────────────────────────────
+const compatibility = manifest.compatibility ?? {};
+const generation = (value) => Number.parseInt(String(value ?? ''), 10);
+
+if (!compatibility.minimum) fail('compatibility.minimum is required');
+if (!compatibility.verified) fail('compatibility.verified is required');
+if (
+  compatibility.minimum &&
+  compatibility.verified &&
+  generation(compatibility.minimum) > generation(compatibility.verified)
+) {
+  fail(
+    `compatibility.minimum (${compatibility.minimum}) is newer than compatibility.verified (${compatibility.verified})`
+  );
+}
+
+// Setting a maximum locks the module out of every future Foundry generation,
+// which defeats the automatic-compatibility policy this project follows
+// (see .github/workflows/foundry-compat.yml).
+if (compatibility.maximum) {
+  fail(
+    `compatibility.maximum is set to "${compatibility.maximum}" — leave it unset so new Foundry generations are not blocked`
+  );
+}
+
+// ── version consistency across the repo ─────────────────────────────────────
+// build.sh runs sync-version.sh, but a hand-edited module.json committed
+// without a build leaves package.json and the JSDoc banner behind.
+if (existsSync(path.join(ROOT, 'package.json'))) {
+  const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  if (pkg.version !== manifest.version) {
+    fail(
+      `package.json says version ${pkg.version} but module.json says ${manifest.version} — run bash sync-version.sh`
+    );
+  }
+}
+
+// ── release URLs ────────────────────────────────────────────────────────────
+if (manifest.download && !manifest.download.includes(`v${manifest.version}`)) {
+  fail(`download URL does not reference v${manifest.version}: ${manifest.download}`);
+}
+if (manifest.manifest && !manifest.manifest.includes('releases/latest/download/module.json')) {
+  warn(
+    'manifest URL should point at releases/latest/download/module.json so Foundry can auto-update the module'
+  );
+}
+
+// ── referenced files exist ──────────────────────────────────────────────────
+const referenced = [
+  ...(manifest.esmodules ?? []),
+  ...(manifest.scripts ?? []),
+  ...(manifest.styles ?? []),
+  ...(manifest.languages ?? []).map((language) => language.path),
+];
+for (const file of referenced) {
+  if (!existsSync(path.join(ROOT, file))) fail(`module.json references a missing file: ${file}`);
+}
+
+// ── source collection ───────────────────────────────────────────────────────
+const collectFiles = async (directory, extensions) => {
+  const entries = await readdir(path.join(ROOT, directory), {
+    withFileTypes: true,
+    recursive: true,
+  });
+  return entries
+    .filter(
+      (entry) => entry.isFile() && extensions.some((extension) => entry.name.endsWith(extension))
+    )
+    .map((entry) => path.join(entry.parentPath ?? entry.path, entry.name));
+};
+
+const scriptFiles = await collectFiles('scripts', ['.js']);
+const templateFiles = await collectFiles('templates', ['.hbs', '.html']);
+
+// ── i18n keys used in source must exist ─────────────────────────────────────
+// Three shapes are in play:
+//   1. any fully-qualified string literal — `game.i18n.localize('NS.x')`, but
+//      also the bare `name:`/`hint:` strings handed to game.settings.register,
+//      which Foundry localizes for us and which no `localize(` pattern sees;
+//   2. the cached wrapper in main.js (`this.i18n('notifications.started')`),
+//      which prefixes the namespace itself;
+//   3. `{{localize "NS.x"}}` inside a Handlebars template.
+const QUALIFIED_KEY = new RegExp(`["'\`](${I18N_NAMESPACE}\\.[A-Za-z0-9_$.{}]+)["'\`]`, 'g');
+// The wrapper is also called with a computed key —
+// `i18n(capped ? 'ui.showingResultsCapped' : 'ui.showingResults', …)` — so a
+// pattern anchored to the opening paren misses one branch of every ternary.
+// Instead, treat any quoted literal whose first segment is a real top-level
+// section of lang/en.json as a key: precise enough not to over-match, and
+// blind to how the call is written.
+const NAMESPACE_SECTIONS = [
+  'button',
+  'settings',
+  'frequency',
+  'priority',
+  'dialog',
+  'notifications',
+  'errors',
+  'recovery',
+  'ui',
+];
+const WRAPPER_KEY = new RegExp(
+  `["'\`]((?:${NAMESPACE_SECTIONS.join('|')})\\.[A-Za-z0-9_$.{}]+)["'\`]`,
+  'g'
+);
+const TEMPLATE_KEY = new RegExp(`localize\\s+"(${I18N_NAMESPACE}\\.[^"]+)"`, 'g');
+
+const usedKeys = new Set();
+for (const file of scriptFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(QUALIFIED_KEY)) usedKeys.add(match[1]);
+  for (const match of source.matchAll(WRAPPER_KEY)) usedKeys.add(`${I18N_NAMESPACE}.${match[1]}`);
+}
+for (const file of templateFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(TEMPLATE_KEY)) usedKeys.add(match[1]);
+}
+
+// ── language files ──────────────────────────────────────────────────────────
+const flatten = (object, prefix = '') =>
+  Object.entries(object).reduce((accumulator, [key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      Object.assign(accumulator, flatten(value, `${prefix}${key}.`));
+    } else {
+      accumulator[`${prefix}${key}`] = value;
+    }
+    return accumulator;
+  }, {});
+
+const languageKeys = new Map();
+for (const language of manifest.languages ?? []) {
+  const file = path.join(ROOT, language.path);
+  if (!existsSync(file)) continue;
+  try {
+    languageKeys.set(
+      language.lang,
+      new Set(Object.keys(flatten(JSON.parse(readFileSync(file, 'utf8')))))
+    );
+  } catch (error) {
+    fail(`${language.path} is not valid JSON: ${error.message}`);
+  }
+}
+
+const englishKeys = languageKeys.get('en');
+if (englishKeys) {
+  for (const key of usedKeys) {
+    if (key.includes('${')) continue; // interpolated key — resolved at runtime
+    if (!englishKeys.has(key))
+      fail(`i18n key used in source but missing from lang/en.json: ${key}`);
+  }
+  for (const key of englishKeys) {
+    if (usedKeys.has(key)) continue;
+    if (DYNAMIC_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
+    warn(`i18n key defined but never used: ${key}`);
+  }
+}
+
+// ── translation parity ──────────────────────────────────────────────────────
+// A missing translation degrades gracefully in Foundry (the key falls back to
+// English), so this warns rather than fails — but silent drift is exactly how
+// a secondary language quietly falls dozens of keys behind.
+if (englishKeys) {
+  for (const [lang, keys] of languageKeys) {
+    if (lang === 'en') continue;
+    const missing = [...englishKeys].filter((key) => !keys.has(key));
+    const extra = [...keys].filter((key) => !englishKeys.has(key));
+    if (missing.length > 0) {
+      warn(
+        `lang/${lang}.json is missing ${missing.length} key(s): ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', ...' : ''}`
+      );
+    }
+    if (extra.length > 0) {
+      warn(
+        `lang/${lang}.json defines ${extra.length} key(s) that no longer exist in English: ${extra.slice(0, 5).join(', ')}`
+      );
+    }
+  }
+}
+
+// ── hardcoded user-visible text in notifications ────────────────────────────
+// The template check above only covers .hbs files, and the localization sweep
+// missed two of three identical `ui.notifications.error()` calls precisely
+// because nothing looked at JS. It could not look before: main.js was full of
+// English literals that were deliberate fallbacks for the window in which
+// game.i18n does not exist yet, so a literal-scanning rule would have fired
+// mostly on correct code and been switched off within a week.
+//
+// Those fallbacks now go through i18nOrEnglish(key, english), which declares
+// them. That is what makes this rule possible: any *other* English literal
+// reaching a notification is text nobody translated.
+const NOTIFICATION_CALL = /ui\.notifications\.(?:info|warn|error|notify)\s*\(/g;
+
+/**
+ * Extract the first argument of a call, given the offset just past its `(`.
+ * Walks the source tracking nesting and string state, so commas and parens
+ * inside nested calls, strings or template literals do not end the argument.
+ * @param {string} source - File contents
+ * @param {number} start - Index of the first character after the opening paren
+ * @returns {string} The argument text, or '' when the call is unbalanced
+ */
+const firstArgument = (source, start) => {
+  let depth = 0;
+  let quote = null;
+  for (let i = start; i < source.length; i++) {
+    const char = source[i];
+    if (quote) {
+      if (char === '\\') i++;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if ('([{'.includes(char)) depth++;
+    else if (')]}'.includes(char)) {
+      if (depth === 0) return source.slice(start, i);
+      depth--;
+    } else if (char === ',' && depth === 0) return source.slice(start, i);
+  }
+  return '';
+};
+
+/** Two or more consecutive words — enough to be a sentence, not an identifier. */
+const ENGLISH_PROSE = /[A-Za-z]{2,}\s+[A-Za-z]{2,}/;
+
+for (const file of scriptFiles) {
+  const source = readFileSync(file, 'utf8');
+  const relative = path.relative(ROOT, file);
+
+  for (const match of source.matchAll(NOTIFICATION_CALL)) {
+    const argument = firstArgument(source, match.index + match[0].length);
+    // A declared fallback is the one place an English literal belongs.
+    if (argument.includes('i18nOrEnglish(')) continue;
+
+    const literals = [
+      ...argument.matchAll(/'([^'\\]*(?:\\.[^'\\]*)*)'/g),
+      ...argument.matchAll(/`([^`\\]*(?:\\.[^`\\]*)*)`/g),
+    ].map((literal) => literal[1]);
+
+    for (const literal of literals) {
+      // i18n keys are dotted identifiers, never prose.
+      if (literal.startsWith('TOKEN_REPLACER_FA.')) continue;
+      const withoutInterpolation = literal.replace(/\$\{[^}]*\}/g, ' ');
+      if (ENGLISH_PROSE.test(withoutInterpolation)) {
+        fail(
+          `${relative} passes untranslated text to a notification: "${withoutInterpolation.trim().slice(0, 60)}" — use i18n(), or i18nOrEnglish() for a deliberate fallback`
+        );
+      }
+    }
+  }
+}
+
+// ── runtime asset paths referenced from source exist ────────────────────────
+// Covers both `renderTemplate('modules/${MODULE_ID}/templates/x.hbs')` and the
+// Web Worker URL, which is loaded by path and therefore invisible to the
+// bundler, the manifest and the linter alike — a rename here fails only at
+// runtime, in a user's world.
+const ASSET_PATH = /modules\/[^"'`\s)]+\.(?:hbs|html|js|css|json)/g;
+const packagedPaths = new Set();
+for (const file of scriptFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(ASSET_PATH)) {
+    const resolved = match[0].replace(/\$\{MODULE_ID\}/g, manifest.id);
+    if (resolved.includes('${')) continue;
+    // Other modules' assets are none of our business.
+    if (!resolved.startsWith(`modules/${manifest.id}/`)) continue;
+    const relative = resolved.slice(`modules/${manifest.id}/`.length);
+    packagedPaths.add(relative);
+    if (!existsSync(path.join(ROOT, relative))) {
+      fail(`${path.relative(ROOT, file)} references a missing asset: ${match[0]}`);
+    }
+  }
+}
+
+// ── every template on disk should actually be reachable ─────────────────────
+for (const file of templateFiles) {
+  const relative = path.relative(ROOT, file);
+  if (!packagedPaths.has(relative)) warn(`template is never rendered from source: ${relative}`);
+}
+
+// ── hardcoded user-visible text in templates ────────────────────────────────
+// Every template used to ship English text inline (">Total Tokens<",
+// ">Show Details<"), so an Italian user read an English dialog even though
+// lang/it.json was complete. Constitution Article III.1 forbids it, and only a
+// check keeps it forbidden: this is a `fail`, because the debt is paid off and
+// re-introducing it is a regression, not a backlog item.
+//
+// User-visible text reaches a template one of two ways: a {{placeholder}} the
+// create*HTML method fills with a localized string, or {{localize "KEY"}}.
+// Anything else is a literal, and a literal cannot be translated.
+const LOCALIZABLE_ATTRIBUTES = ['title', 'placeholder', 'alt', 'aria-label', 'label'];
+const WORD = /\p{L}{2,}/u;
+
+/**
+ * Report literal user-visible text left in a template.
+ * @param {string} source Template contents
+ * @param {string} file Path relative to the repo root, for the message
+ */
+const checkHardcodedText = (source, file) => {
+  // Drop everything a translator never sees: comments, expressions, and the
+  // tags themselves (class names and CSS are not user-visible text).
+  const withoutComments = source.replace(/\{\{!--[\s\S]*?--\}\}|<!--[\s\S]*?-->/g, '');
+
+  for (const match of withoutComments.matchAll(/>([^<]*)</g)) {
+    const text = match[1].replace(/\{\{[^}]*\}\}/g, ' ').replace(/&[a-z]+;/gi, ' ');
+    if (WORD.test(text)) {
+      fail(`${file} has hardcoded text: "${text.trim().replace(/\s+/g, ' ').slice(0, 60)}"`);
+    }
+  }
+
+  for (const match of withoutComments.matchAll(/([a-z-]+)\s*=\s*"([^"]*)"/gi)) {
+    const [, attribute, value] = match;
+    if (!LOCALIZABLE_ATTRIBUTES.includes(attribute.toLowerCase())) continue;
+    const text = value.replace(/\{\{[^}]*\}\}/g, ' ');
+    if (WORD.test(text)) {
+      fail(`${file} has a hardcoded ${attribute}: "${text.trim().slice(0, 60)}"`);
+    }
+  }
+};
+
+for (const file of templateFiles) {
+  checkHardcodedText(readFileSync(file, 'utf8'), path.relative(ROOT, file));
+}
+
+// ── handlebars partials referenced from templates exist ────────────────────
+const PARTIAL_PATTERN = /\{\{>\s*"?(modules\/[^"\s}]+)"?\s*\}\}/g;
+for (const file of templateFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(PARTIAL_PATTERN)) {
+    const relative = match[1].replace(`modules/${manifest.id}/`, '');
+    if (!existsSync(path.join(ROOT, relative))) {
+      fail(`${path.relative(ROOT, file)} references a missing partial: ${match[1]}`);
+    }
+  }
+}
+
+// ── report ──────────────────────────────────────────────────────────────────
+for (const message of warnings) console.warn(`::warning::${message}`);
+for (const message of errors) console.error(`::error::${message}`);
+
+if (errors.length > 0) {
+  console.error(`\n${errors.length} error(s) found in module.json validation`);
+  process.exit(1);
+}
+
+console.log(
+  `module.json OK — ${manifest.id} v${manifest.version} (Foundry ${compatibility.minimum}+, verified ${compatibility.verified})`
+);
+console.log(
+  `  ${referenced.length} manifest file(s), ${packagedPaths.size} runtime asset(s), ${usedKeys.size} i18n key(s) in use, ${warnings.length} warning(s)`
+);

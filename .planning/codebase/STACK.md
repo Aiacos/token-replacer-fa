@@ -1,158 +1,104 @@
 # Technology Stack
 
-**Analysis Date:** 2026-02-28
+**Analysis Date:** 2026-05-27
 
 ## Languages
 
 **Primary:**
-
-- JavaScript (ES6 modules) - All source code in `scripts/`, HTML in templates
-- Handlebars - UI templates in `templates/`
-- JSON - Configuration and localization files
+- JavaScript (ES2022) - All module source code under `scripts/`, Web Worker in `scripts/workers/`
 
 **Secondary:**
-
-- CSS - Styling in `styles/styles.css`
-- Shell Script - Build tooling (`build.sh`, `sync-version.sh`)
-- Batch Script - Windows build tooling (`build.bat`, `sync-version.bat`)
+- CSS - Module styles in `styles/styles.css`
+- Handlebars (`.hbs`) - UI templates in `templates/`
+- JSON - Localization (`lang/en.json`, `lang/it.json`), manifests (`module.json`)
 
 ## Runtime
 
 **Environment:**
+- Browser (Foundry VTT client) — no Node.js runtime at play time
+- ECMAScript modules (`"type": "module"` in `package.json`, `esmodules` in `module.json`)
+- Web Workers API used in `scripts/workers/IndexWorker.js` for non-blocking index builds
 
-- Foundry VTT v12-v13 (browser runtime)
-- Node.js (build scripts only, not runtime dependency)
-
-**Module System:**
-
-- ES6 modules (`esmodules` in `module.json`)
-- Entry point: `scripts/main.js`
+**Package Manager:**
+- npm
+- Lockfile: `package-lock.json` present
 
 ## Frameworks
 
 **Core:**
+- None — vanilla ES modules; Foundry VTT APIs (`Hooks`, `game`, `canvas`, `ui`, `Dialog`, `ApplicationV2`) are injected globals, not imported packages
 
-- Foundry VTT Framework (v12-13 APIs)
-  - Hooks system (init, ready, getSceneControlButtons)
-  - Settings API (game.settings.register/get)
-  - Dialog and UI systems
-  - Module/actor/token systems
-  - Game i18n localization
+**Testing:**
+- Vitest ^3.2.4 — test runner and assertion library
+- Config: `vitest.config.js`
+- Environment: jsdom ^28.1.0 (simulates browser DOM in Node)
+- IndexedDB simulation: fake-indexeddb ^6.2.5
 
-**UI:**
+**Build/Dev:**
+- No bundler — source files are shipped directly as ES modules
+- Build packaging: `build.sh` (Linux/macOS) and `build.bat` (Windows) shell scripts that ZIP the module
+- Version sync: `sync-version.sh` and `sync-version.bat` update version strings across files
 
-- Handlebars template engine - Precompiled and loaded via Foundry
-  - Templates in `templates/*.hbs`
-  - Auto-escaping for XSS protection
-  - Preloading in init hook for performance
+**Linting/Formatting:**
+- ESLint ^10.0.2 with `@eslint/js` — config in `eslint.config.js`
+  - Separate rule sets for `scripts/**/*.js` (browser + Foundry globals) and `scripts/workers/**/*.js` (worker globals, no `window`/`document`)
+- Prettier ^3.8.1 — config in `.prettierrc` (singleQuote, semi, tabWidth: 2, printWidth: 100)
+- eslint-config-prettier ^10.1.8 — disables ESLint formatting rules that conflict with Prettier
 
-**Search & Matching:**
-
-- Fuse.js 7.0.0 (CDN) - Fuzzy search library
-  - Loaded dynamically via jsDelivr CDN
-  - URL: `https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs`
-  - Fallback to window.Fuse if dynamic import fails
-
-**Worker Processing:**
-
-- Web Workers API - Background index building
-  - Worker script: `scripts/workers/IndexWorker.js`
-  - Prevents UI freezing during large index builds
-  - Full-speed processing without setTimeout yields
+**Type Checking:**
+- TypeScript ^5.9.3 — type-check only (`noEmit: true`), config in `jsconfig.json`
+- Types: `@league-of-foundry-developers/foundry-vtt-types` ^13.346.0-beta
 
 ## Key Dependencies
 
-**Critical (External APIs):**
+**Critical (runtime, loaded from CDN):**
+- Fuse.js 7.0.0 — fuzzy search library; loaded via dynamic `import()` from `https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs`
+  - CDN URL defined in `scripts/core/Constants.js` as `FUSE_CDN`
+  - Post-load shape validation in `scripts/core/Utils.js` (`_validateFuseShape`) guards against CDN compromise
+  - Fallback: checks `window.Fuse` if CDN import fails
+  - Duplicated in `scripts/workers/IndexWorker.js` (Web Workers cannot share ES module imports)
+  - devDependency `fuse.js` ^7.1.0 is installed locally for tests only
 
-- Token Variant Art (TVA) - `token-variants` module
-  - REQUIRED for token art replacement
-  - Provides cache file and API for image search
-  - Direct cache access: reads TVA's static cache file directly
-  - API methods: `cacheImages()`, `doImageSearch()`, `updateTokenImage()`
-  - TVA_CONFIG.staticCacheFile location
-
-**Optional (External APIs):**
-
-- FA Nexus - `fa-nexus` module
-  - Optional local Forgotten Adventures token library access
-  - Provides directory browsing for token assets
-
-- The Forge - `forge-vtt` module
-  - Optional, provides game.forge API
-  - No public Bazaar browsing API available (stub service)
-
-**Build Tools (Development only):**
-
-- jq - JSON command-line processor (used in build.sh if available)
-- git - Version control (implied for releases)
-- gh - GitHub CLI (used for releasing)
+**Development Only:**
+- `@league-of-foundry-developers/foundry-vtt-types` — Foundry VTT TypeScript type definitions
+- `fake-indexeddb` — in-memory IndexedDB polyfill for unit tests
+- `jsdom` — browser DOM simulation for Vitest
+- `globals` — ESLint global variable lists
 
 ## Configuration
 
-**Environment:**
-
-- No external .env file required
-- Settings stored in Foundry game.settings API
-  - Scope: 'world' (stored per-world in Foundry)
-  - Settings registered in init hook via `registerSettings()`
+**Runtime settings (Foundry world settings, registered in `scripts/main.js`):**
+- `fuzzyThreshold` — Number, default 0.1 (Fuse.js match threshold)
+- `searchPriority` — String: faNexus/forgeBazaar/both (default: both)
+- `autoReplace` — Boolean, default false
+- `confirmReplace` — Boolean, default true
+- `fallbackFullSearch` — Boolean, default false
+- `additionalPaths` — String (extra scan directories)
+- `useTVACache` — Boolean, default true
+- `refreshTVACache` — Boolean, default false
+- `indexUpdateFrequency` — String: daily/weekly/monthly/quarterly (default: weekly)
+- `debugMode` — Boolean, default false
 
 **Build:**
-
-- `module.json` - Foundry module manifest (single source of truth for version)
-- `build.sh` / `build.bat` - Creates distributable ZIP
-  - Auto-detects version from module.json
-  - Calls sync-version scripts before packaging
-- `sync-version.sh` / `sync-version.bat` - Keeps version in sync across files
-  - Updates CLAUDE.md, scripts/main.js JSDoc and console logs
-  - Runs automatically as step 1 of build process
-
-**Module Manifest:**
-
-- `module.json` contains:
-  - Module ID: `token-replacer-fa`
-  - Version (single source of truth)
-  - Foundry compatibility (min: 12, verified: 13)
-  - System compatibility (D&D 5e only)
-  - Module relationships (requires TVA, optional FA Nexus)
-  - GitHub repository and manifest URLs
-
-## Storage
-
-**Client-side Storage:**
-
-- localStorage - Caching layer for indices
-  - TVA cache cache: `tva-cache-v1`
-  - Token image index: `token-replacer-fa-index-v3`
-  - Bazaar service cache: `token-replacer-fa-bazaar-cache` (stub)
-  - Size limit: ~4.5MB per origin (triggers rebuild on page load if exceeded)
-
-- IndexedDB - Alternative persistent storage (via StorageService)
-  - Used for larger index caches
-  - Version: 3 (INDEX_VERSION constant)
+- `module.json` — single source of truth for version; `build.sh` reads it automatically
+- `jsconfig.json` — TypeScript config for type checking (targets ES2022, module ES2022, bundler resolution)
+- `eslint.config.js` — flat ESLint config (ESLint v9+ format)
+- `.prettierrc` — Prettier options (singleQuote: true, semi: true, tabWidth: 2, printWidth: 100)
 
 ## Platform Requirements
 
 **Development:**
-
-- Node.js (for build scripts)
-- bash/zsh or Windows Command Prompt
-- Git for version control
-- GitHub CLI (gh) for releases
+- Node.js (no `.nvmrc`; version unspecified)
+- npm for devDependency installation
+- Bash (Linux/macOS) or Windows CMD for build/sync scripts
 
 **Production:**
-
-- Foundry VTT v12 or v13 running in web browser
-- Token Variant Art module (required)
-- Modern browser with:
-  - ES6 module support
-  - Web Worker support (graceful fallback available)
-  - localStorage or IndexedDB support
-
-**System Compatibility:**
-
-- D&D 5e system only (creature type extraction is system-specific)
-- Requires actor/token objects with `system.details.type` and `system.details.subtype` fields
+- Foundry VTT v12 (minimum) or v13 (verified/supported)
+- D&D 5e system v3.0.0+
+- Token Variant Art (`token-variants`) module — required dependency
+- FA Nexus (`fa-nexus`) module — optional dependency
+- Modern browser with IndexedDB, Web Workers, and dynamic `import()` support
 
 ---
 
-_Stack analysis: 2026-02-28_
+*Stack analysis: 2026-05-27*

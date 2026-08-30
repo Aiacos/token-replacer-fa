@@ -50,6 +50,17 @@ if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
     exit 1
 fi
 
+# Validate extracted values (prevent injection via crafted module.json)
+if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+    echo -e "${RED}ERROR: Invalid version format: ${VERSION}${NC}"
+    exit 1
+fi
+
+if ! echo "$MODULE_ID" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+    echo -e "${RED}ERROR: Invalid module ID format: ${MODULE_ID}${NC}"
+    exit 1
+fi
+
 # Output file name
 OUTPUT_FILE="${MODULE_ID}-v${VERSION}.zip"
 

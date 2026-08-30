@@ -409,6 +409,53 @@ describe('TVACacheService', () => {
         errorType: 'tva_cache_empty',
       });
     });
+
+    it('rejects cross-origin cache file URL', async () => {
+      const mockStorage = createMockStorage();
+      const mockAPI = createMockTvaAPI({
+        TVA_CONFIG: { staticCache: true, staticCacheFile: 'https://evil.com/cache.json' },
+      });
+      const service = new TVACacheService({
+        getTvaAPI: () => mockAPI,
+        getSetting: vi.fn(),
+        storageService: mockStorage,
+      });
+      service.init();
+
+      await expect(service._loadTVACacheFromFile()).rejects.toMatchObject({
+        errorType: 'invalid_cache_path',
+      });
+    });
+
+    it('rejects protocol-relative cache file URL', async () => {
+      const mockStorage = createMockStorage();
+      const mockAPI = createMockTvaAPI({
+        TVA_CONFIG: { staticCache: true, staticCacheFile: '//evil.com/cache.json' },
+      });
+      const service = new TVACacheService({
+        getTvaAPI: () => mockAPI,
+        getSetting: vi.fn(),
+        storageService: mockStorage,
+      });
+      service.init();
+
+      await expect(service._loadTVACacheFromFile()).rejects.toMatchObject({
+        errorType: 'invalid_cache_path',
+      });
+    });
+
+    it('calls fetch with credentials omitted', async () => {
+      const mockStorage = createMockStorage();
+      const { service } = createInitializedService(mockStorage);
+
+      const cacheJson = { TestCategory: ['path/to/token.webp'] };
+      const fetchSpy = vi.fn(async () => createMockFetchResponse(cacheJson));
+      vi.stubGlobal('fetch', fetchSpy);
+
+      await service._loadTVACacheFromFile();
+
+      expect(fetchSpy).toHaveBeenCalledWith('data/tva-cache.json', { credentials: 'omit' });
+    });
   });
 
   // =========================================================================

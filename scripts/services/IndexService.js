@@ -18,11 +18,12 @@ import {
   createModuleError,
   createDebugLogger,
   createDefaultGetSetting,
+  i18nOrEnglish,
 } from '../core/Utils.js';
 import { storageService } from './StorageService.js';
 
 const CACHE_KEY = 'token-replacer-fa-index-v3';
-const INDEX_VERSION = 14; // v2.10.0: Added termIndex for O(1) search term lookups
+const INDEX_VERSION = 15; // v2.13.0: Paths interned in pathList; everything else holds ids
 
 // Update frequency in milliseconds
 const UPDATE_FREQUENCIES = {
@@ -44,10 +45,115 @@ const UPDATE_FREQUENCIES = {
  *     beast: { wolf: [...], bear: [...] },
  *     ...
  *   },
- *   allPaths: { "path": { name, category, subcategories: [] } },
- *   termIndex: { "term": ["path1", "path2", ...] }
+ *   pathList: ["path1", "path2", ...],
+ *   allPaths: [ { name, category, subcategories: [] }, ... ],   // parallel to pathList
+ *   termIndex: { "term": [0, 5, 12, ...] }                      // ids, not paths
  * }
  */
+/**
+ * Compile CREATURE_TYPE_MAPPINGS into a structure `categorizeWith()` can search
+ * quickly and deterministically.
+ *
+ * Two things are precomputed. Terms are lowercased once instead of once per
+ * image — the naive loop re-lowercased all 444 terms for every path, which on a
+ * 50k library is 22 million throwaway strings. And terms are bucketed by their
+ * first two characters: a term of two or more characters can only occur in the
+ * search text if its opening bigram does, so scanning the text's own bigrams
+ * tests a handful of candidate terms instead of all 444. The result is
+ * identical, verified path-by-path against the naive loop.
+ *
+ * `categoryIndex` and `termIndex` preserve declaration order, which is what
+ * breaks ties — without them the winning category would depend on which bigram
+ * happened to be scanned first.
+ *
+ * SYNC: Keep in sync with IndexWorker.js compileCategorizer()
+ * @param {Object<string, string[]>} mappings - Category to search terms
+ * @returns {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}}
+ */
+function compileCategorizer(mappings) {
+  const categories = Object.keys(mappings);
+  const buckets = new Map();
+  const shortTerms = [];
+
+  categories.forEach((category, categoryIndex) => {
+    mappings[category].forEach((original, termIndex) => {
+      const lower = String(original).toLowerCase();
+      if (!lower) return;
+      const entry = { category, categoryIndex, original, termIndex, lower };
+      // A single character has no bigram to bucket on, so it is always tested.
+      if (lower.length < 2) {
+        shortTerms.push(entry);
+        return;
+      }
+      const key = lower.slice(0, 2);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = [];
+        buckets.set(key, bucket);
+      }
+      bucket.push(entry);
+    });
+  });
+
+  return { categories, buckets, shortTerms };
+}
+
+/**
+ * Pick the category whose terms appear most often in the given text.
+ *
+ * Ties go to the category declared first in CREATURE_TYPE_MAPPINGS, and matched
+ * terms come back in declaration order, so the worker and the main-thread
+ * fallback cannot disagree about where an image belongs.
+ *
+ * SYNC: Keep in sync with IndexWorker.js categorizeWith()
+ * @param {{categories: string[], buckets: Map<string, Array>, shortTerms: Array}} compiled
+ * @param {string} searchText - Lowercased path and name
+ * @returns {{category: string|null, subcategories: string[]}}
+ */
+function categorizeWith(compiled, searchText) {
+  const { categories, buckets, shortTerms } = compiled;
+  const hits = new Map();
+
+  const consider = (entry) => {
+    if (!searchText.includes(entry.lower)) return;
+    let matched = hits.get(entry.category);
+    if (!matched) {
+      matched = [];
+      hits.set(entry.category, matched);
+    }
+    matched.push(entry);
+  };
+
+  const seenBigrams = new Set();
+  for (let i = 0; i < searchText.length - 1; i++) {
+    const key = searchText.slice(i, i + 2);
+    if (seenBigrams.has(key)) continue;
+    seenBigrams.add(key);
+    const bucket = buckets.get(key);
+    if (bucket) {
+      for (const entry of bucket) consider(entry);
+    }
+  }
+  for (const entry of shortTerms) consider(entry);
+
+  let bestCategory = null;
+  let best = null;
+  let maxMatches = 0;
+  for (const category of categories) {
+    const matched = hits.get(category);
+    if (matched && matched.length > maxMatches) {
+      maxMatches = matched.length;
+      bestCategory = category;
+      best = matched;
+    }
+  }
+
+  if (!best) return { category: null, subcategories: [] };
+
+  best.sort((a, b) => a.termIndex - b.termIndex);
+  return { category: bestCategory, subcategories: best.map((entry) => entry.original) };
+}
+
 export class IndexService {
   constructor(deps = {}) {
     const {
@@ -65,9 +171,12 @@ export class IndexService {
     this.index = null;
     this.isBuilt = false;
     this.buildPromise = null;
-    this.termCategoryMap = this.buildTermCategoryMap();
+    this.categorizer = compileCategorizer(CREATURE_TYPE_MAPPINGS);
     this.worker = null;
     this._workerInitialized = false;
+    // Set by cancelOperation(); distinguishes a user cancellation from a failure
+    // so build() does not "recover" from it by running the slow path anyway.
+    this._cancelRequested = false;
     // Shared utilities
     this._createError = createModuleError;
     this._debugLog = createDebugLogger('IndexService');
@@ -79,9 +188,10 @@ export class IndexService {
    */
   _ensureWorker() {
     if (this._workerInitialized) return;
-    this._workerInitialized = true;
     try {
       this.worker = this._workerFactory();
+      // Only mark initialized on success so a transient factory failure can retry
+      this._workerInitialized = true;
       console.log(`${MODULE_ID} | Web Worker initialized for background index building`);
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
@@ -90,45 +200,74 @@ export class IndexService {
   }
 
   /**
-   * Build reverse lookup Map from CREATURE_TYPE_MAPPINGS
-   * Maps each term to its category for O(1) lookups
-   * @private
-   * @returns {Map<string, Object>} Map of lowercase term → {category, originalTerm}
-   */
-  buildTermCategoryMap() {
-    const map = new Map();
-
-    for (const [category, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
-      for (const term of terms) {
-        const termLower = term.toLowerCase();
-        map.set(termLower, { category, originalTerm: term });
-      }
-    }
-
-    return map;
-  }
-
-  /**
    * Terminate the Web Worker and clean up resources
    * Should be called when the IndexService is no longer needed
    */
   terminate() {
     if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
+      this._teardownWorker();
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
   }
 
   /**
-   * Cancel the current worker operation
-   * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
+   * Drop the current worker so a later run can build a fresh one.
+   *
+   * Nulling `worker` without also clearing `_workerInitialized` leaves
+   * `_ensureWorker()` refusing to replace it, and the service then stays on the
+   * slow main-thread path for the rest of the session — silently, because every
+   * `if (this.worker)` branch simply takes the fallback. Every teardown goes
+   * through here so that pairing cannot come apart again.
+   *
+   * The trade is deliberate: a worker that fails on every build now costs one
+   * wasted spawn per build, instead of one transient failure costing the whole
+   * session its background indexing.
+   * @private
+   */
+  _teardownWorker() {
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Worker terminate() failed:`, error);
+      }
+    }
+    this.worker = null;
+    this._workerInitialized = false;
+  }
+
+  /**
+   * Cancel the current index build.
+   *
+   * Sends a cancel command to the worker and raises the flag the main-thread
+   * fallback checks.
+   *
+   * Called from the background-indexing notification, which is where the build
+   * is actually visible to the user. The replacement dialog deliberately does
+   * *not* call this: it never awaits build(), so cancelling there would free
+   * some CPU while leaving the session with no category index.
    */
   cancelOperation() {
+    // Set unconditionally: the main-thread fallback has no worker to message,
+    // and it is the path most in need of an escape hatch.
+    this._cancelRequested = true;
     if (this.worker) {
       this.worker.postMessage({ command: 'cancel' });
-      console.log(`${MODULE_ID} | Cancellation requested`);
     }
+    console.log(`${MODULE_ID} | Cancellation requested`);
+  }
+
+  /**
+   * Build the error thrown when an index build is cancelled.
+   * The `cancelled` marker is what stops build() from treating it as a worker
+   * failure and falling back to the slower main-thread path.
+   * @private
+   * @returns {Error} Cancellation error
+   */
+  _cancelledError() {
+    const error = /** @type {Error & { cancelled?: boolean }} */ (new Error('Operation cancelled'));
+    error.cancelled = true;
+    return error;
   }
 
   /**
@@ -139,7 +278,7 @@ export class IndexService {
     try {
       const setting = this._getSetting(MODULE_ID, 'indexUpdateFrequency');
       return UPDATE_FREQUENCIES[setting] || UPDATE_FREQUENCIES.weekly;
-    } catch (e) {
+    } catch (_e) {
       return UPDATE_FREQUENCIES.weekly;
     }
   }
@@ -169,35 +308,7 @@ export class IndexService {
       return { category: null, subcategories: [] };
     }
 
-    const searchText = `${path} ${name || ''}`.toLowerCase();
-    const categoryMatches = new Map(); // category -> {count, terms}
-
-    // Single loop through all terms using the pre-built map
-    for (const [termLower, { category, originalTerm }] of this.termCategoryMap.entries()) {
-      if (searchText.includes(termLower)) {
-        if (!categoryMatches.has(category)) {
-          categoryMatches.set(category, { count: 0, terms: [] });
-        }
-        const match = categoryMatches.get(category);
-        match.count++;
-        match.terms.push(originalTerm);
-      }
-    }
-
-    // Find category with most matches
-    let bestCategory = null;
-    let subcategories = [];
-    let maxMatches = 0;
-
-    for (const [category, { count, terms }] of categoryMatches.entries()) {
-      if (count > maxMatches) {
-        maxMatches = count;
-        bestCategory = category;
-        subcategories = terms;
-      }
-    }
-
-    return { category: bestCategory, subcategories };
+    return categorizeWith(this.categorizer, `${path} ${name || ''}`.toLowerCase());
   }
 
   /**
@@ -213,7 +324,7 @@ export class IndexService {
     // Keep regex in sync with IndexWorker.js termIndex builder
     const terms = text
       .toLowerCase()
-      .split(/[\/\\\-_\s\.]+/)
+      .split(/[/\\\-_\s.]+/)
       .filter((term) => term.length > 0);
 
     // Return unique terms
@@ -248,7 +359,8 @@ export class IndexService {
       }
 
       this.index = data;
-      const imageCount = Object.keys(data.allPaths || {}).length;
+      this._rebuildPathIds();
+      const imageCount = data.pathList?.length ?? 0;
       this._debugLog(`Loaded index from cache: ${imageCount} images`);
       console.log(`${MODULE_ID} | Loaded index from cache: ${imageCount} images`);
 
@@ -257,13 +369,14 @@ export class IndexService {
       if (imageCount > 0 && termIndexSize === 0) {
         console.log(`${MODULE_ID} | Rebuilding termIndex from cached allPaths...`);
         this.index.termIndex = {};
-        for (const [path, pathData] of Object.entries(this.index.allPaths)) {
-          const searchTerms = this.tokenizeSearchText(`${path} ${pathData.name}`);
+        for (let id = 0; id < this.index.pathList.length; id++) {
+          const path = this.index.pathList[id];
+          const searchTerms = this.tokenizeSearchText(`${path} ${this.index.allPaths[id].name}`);
           for (const term of searchTerms) {
             if (!this.index.termIndex[term]) {
               this.index.termIndex[term] = [];
             }
-            this.index.termIndex[term].push(path);
+            this.index.termIndex[term].push(id);
           }
         }
         const rebuiltSize = Object.keys(this.index.termIndex).length;
@@ -282,7 +395,7 @@ export class IndexService {
       try {
         await this._storageService.remove(CACHE_KEY);
       } catch (e) {
-        // Ignore errors during cleanup
+        console.warn(`${MODULE_ID} | Cache cleanup failed:`, e);
       }
       return false;
     }
@@ -301,12 +414,16 @@ export class IndexService {
 
       this._debugLog('Attempting to save index to localStorage');
 
-      const json = JSON.stringify(this.index);
-      const sizeKB = (json.length / 1024).toFixed(0);
+      // Estimate size from entry counts to avoid blocking JSON.stringify on large indexes
+      const pathCount = this.index.pathList?.length ?? 0;
+      const catCount = this.index.categories ? Object.keys(this.index.categories).length : 0;
+      const approxKB = Math.round(pathCount * 0.2 + catCount * 0.5);
 
       await this._storageService.save(CACHE_KEY, this.index);
-      this._debugLog(`Saved index to cache: ${sizeKB}KB`);
-      console.log(`${MODULE_ID} | Saved index to cache (${sizeKB}KB)`);
+      this._debugLog(
+        `Saved index to cache: ~${approxKB}KB (${pathCount} paths, ${catCount} categories)`
+      );
+      console.log(`${MODULE_ID} | Saved index to cache (~${approxKB}KB, ${pathCount} paths)`);
       return true;
     } catch (error) {
       this._debugLog('Failed to save cache:', error);
@@ -314,7 +431,14 @@ export class IndexService {
       // Check if it's a QuotaExceededError (localStorage full)
       if (error.name === 'QuotaExceededError' || error.code === 22) {
         console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
-        // This is expected for large indices, not a critical error
+        if (typeof ui !== 'undefined' && ui.notifications) {
+          ui.notifications.warn(
+            i18nOrEnglish(
+              'notifications.storageFull',
+              'Token Replacer FA: browser storage is full, so the index will be rebuilt every session.'
+            )
+          );
+        }
       } else {
         console.warn(`${MODULE_ID} | Failed to save cache:`, error);
       }
@@ -337,9 +461,39 @@ export class IndexService {
       timestamp: Date.now(),
       lastUpdate: Date.now(),
       categories,
-      allPaths: {},
+      // Paths are interned here once and referenced by index everywhere else.
+      // Repeating the strings cost 39 MB of structured clone on a 50k library —
+      // paid on the main thread, which is what the Web Worker exists to spare.
+      pathList: [],
+      allPaths: [],
       termIndex: {},
     };
+  }
+
+  /**
+   * Rebuild the path -> id lookup used to skip already-indexed paths.
+   * Derived state: it is never serialized, because it is exactly as large as
+   * pathList and trivially recomputed.
+   * @private
+   */
+  _rebuildPathIds() {
+    this._pathIds = new Map();
+    const pathList = this.index?.pathList ?? [];
+    for (let id = 0; id < pathList.length; id++) this._pathIds.set(pathList[id], id);
+  }
+
+  /**
+   * Turn a path id into a search result.
+   * @private
+   * @param {number} id - Index into pathList
+   * @param {Object} [extra={}] - Extra fields merged into the result
+   * @returns {Object|null} Result object, or null when the id is dangling
+   */
+  _resultForId(id, extra = {}) {
+    const path = this.index?.pathList?.[id];
+    const data = this.index?.allPaths?.[id];
+    if (path === undefined || !data) return null;
+    return { path, name: data.name, source: 'index', category: data.category, ...extra };
   }
 
   /**
@@ -357,13 +511,17 @@ export class IndexService {
     }
 
     // Validate index exists
-    if (!this.index || !this.index.allPaths || !this.index.termIndex) {
+    if (!this.index || !this.index.pathList || !this.index.allPaths || !this.index.termIndex) {
       this._debugLog('Index not initialized, cannot add image');
       return false;
     }
 
+    if (!this._pathIds || this._pathIds.size !== this.index.pathList.length) {
+      this._rebuildPathIds();
+    }
+
     // Skip if already indexed or excluded folder
-    if (this.index.allPaths[path] || isExcludedPath(path)) return false;
+    if (this._pathIds.has(path) || isExcludedPath(path)) return false;
 
     try {
       // Extract name from path if not provided
@@ -379,12 +537,15 @@ export class IndexService {
       // Try to categorize the image
       const { category, subcategories } = this.categorizeImage(path, imageName);
 
-      // ALWAYS add to allPaths (even if uncategorized) for general search
-      this.index.allPaths[path] = {
+      // ALWAYS index the path (even if uncategorized) for general search
+      const id = this.index.pathList.length;
+      this.index.pathList.push(path);
+      this._pathIds.set(path, id);
+      this.index.allPaths.push({
         name: imageName,
         category: category || null,
         subcategories: subcategories || [],
-      };
+      });
 
       // Populate termIndex for O(1) search term lookups
       const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
@@ -392,7 +553,7 @@ export class IndexService {
         if (!this.index.termIndex[term]) {
           this.index.termIndex[term] = [];
         }
-        this.index.termIndex[term].push(path);
+        this.index.termIndex[term].push(id);
       }
 
       // If categorized, also add to category structure for fast category lookups
@@ -407,14 +568,14 @@ export class IndexService {
           if (!this.index.categories[category][subcat]) {
             this.index.categories[category][subcat] = [];
           }
-          this.index.categories[category][subcat].push({ path, name: imageName });
+          this.index.categories[category][subcat].push(id);
         }
 
         // Also add to a "_all" subcategory for the category
         if (!this.index.categories[category]._all) {
           this.index.categories[category]._all = [];
         }
-        this.index.categories[category]._all.push({ path, name: imageName });
+        this.index.categories[category]._all.push(id);
       }
 
       return true;
@@ -594,7 +755,7 @@ export class IndexService {
           allPaths = this.extractPathsFromTVACache(data);
         }
       } catch (e) {
-        // Setting doesn't exist
+        console.warn(`${MODULE_ID} | Setting "${name}" not accessible:`, e);
       }
     }
 
@@ -680,7 +841,7 @@ export class IndexService {
     console.log(`${MODULE_ID} | Building index from TVA cache...`);
 
     // Try to read TVA cache directly (much faster than doImageSearch)
-    let allPaths = [];
+    let allPaths = []; // eslint-disable-line no-useless-assignment -- defensive default for catch fallthrough
 
     try {
       // Method 0 (FASTEST): Use pre-loaded cache passed from TVACacheService
@@ -731,14 +892,20 @@ export class IndexService {
           try {
             return await this.indexPathsWithWorker(allPaths, onProgress);
           } catch (error) {
+            // A cancellation is not a failure: falling back here would disable
+            // the worker for the session and then run the slow path the user
+            // just asked to stop.
+            if (error?.cancelled) throw error;
             // Worker failed, fallback to direct indexing
             this._debugLog('Worker indexing failed, falling back to direct indexing:', error);
             console.warn(`${MODULE_ID} | Worker failed, falling back to direct indexing:`, error);
-            this.worker = null; // Disable worker for future attempts
+            this._teardownWorker();
             try {
               ui.notifications.warn(
-                game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
-                  'Token Replacer FA: Background worker failed, using slower method.',
+                i18nOrEnglish(
+                  'notifications.workerFallback',
+                  'Token Replacer FA: Background worker failed, using slower method.'
+                ),
                 { permanent: false }
               );
             } catch {
@@ -766,6 +933,11 @@ export class IndexService {
       console.log(`${MODULE_ID} | Falling back to broad search...`);
       return await this.buildFromTVASearch(onProgress);
     } catch (error) {
+      // A cancellation carries no errorType, so wrapping it here would relabel
+      // a deliberate stop as an index-build failure and strip the marker every
+      // caller uses to tell the two apart.
+      if (error?.cancelled) throw error;
+
       this._debugLog('Error during TVA index build:', error);
 
       // Re-throw structured errors
@@ -924,10 +1096,42 @@ export class IndexService {
 
     this._debugLog(`Starting worker-based indexing for ${paths.length} paths`);
 
+    // Timeout: 120s for indexing, scales with dataset size but caps to prevent infinite hang
+    const WORKER_BUILD_TIMEOUT_MS = 120_000;
+
     return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        if (this.worker) {
+          this.worker.removeEventListener('message', messageHandler);
+          this.worker.removeEventListener('error', errorHandler);
+        }
+      };
+
+      // Timeout: terminate stalled worker so build() can fall back to indexPathsDirectly()
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        this._debugLog(`Worker build timed out after ${WORKER_BUILD_TIMEOUT_MS / 1000}s`);
+        console.warn(
+          `${MODULE_ID} | Worker build timed out after ${WORKER_BUILD_TIMEOUT_MS / 1000}s, terminating`
+        );
+        this._teardownWorker();
+        reject(
+          this._createError(
+            'worker_failed',
+            'Worker build timed out — falling back to direct indexing',
+            ['disable_worker', 'reload_module']
+          )
+        );
+      }, WORKER_BUILD_TIMEOUT_MS);
+
       // Create a unique message handler for this indexing operation
       const messageHandler = (event) => {
-        const { type, processed, total, imagesFound, result, message, stack } = event.data;
+        const { type, processed, total, imagesFound, result, message } = event.data;
 
         switch (type) {
           case 'progress':
@@ -939,14 +1143,20 @@ export class IndexService {
             break;
 
           case 'complete':
+            if (settled) return;
+            settled = true;
+            cleanup();
+            // Guard against stale complete from a previous build after index was reset
+            if (!this.index) {
+              resolve(0);
+              break;
+            }
             // Merge worker results into the index (termIndex now built by Worker)
             this.index.categories = result.categories;
+            this.index.pathList = result.pathList || [];
             this.index.allPaths = result.allPaths;
             this.index.termIndex = result.termIndex || {};
-
-            // Clean up handlers
-            this.worker.removeEventListener('message', messageHandler);
-            this.worker.removeEventListener('error', errorHandler);
+            this._rebuildPathIds();
 
             this._debugLog(`Worker completed: ${imagesFound} images from ${total} paths`);
             console.log(
@@ -956,18 +1166,18 @@ export class IndexService {
             break;
 
           case 'cancelled':
-            // Clean up on cancellation
-            this.worker.removeEventListener('message', messageHandler);
-            this.worker.removeEventListener('error', errorHandler);
+            if (settled) return;
+            settled = true;
+            cleanup();
             console.log(`${MODULE_ID} | Operation cancelled by user`);
-            reject(new Error('Operation cancelled'));
+            reject(this._cancelledError());
             break;
 
-          case 'error':
-            // Clean up and reject on error
-            this.worker.removeEventListener('message', messageHandler);
-            this.worker.removeEventListener('error', errorHandler);
-            this._debugLog(`Worker error: ${message}`, stack);
+          case 'error': {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            this._debugLog(`Worker error: ${message}`);
             console.error(`${MODULE_ID} | Worker error:`, message);
 
             // Create structured error
@@ -978,6 +1188,7 @@ export class IndexService {
             );
             reject(error);
             break;
+          }
 
           default:
             // Ignore unknown message types (e.g., 'pong' from ping)
@@ -990,8 +1201,9 @@ export class IndexService {
 
       // Add error handler for worker errors
       const errorHandler = (error) => {
-        this.worker.removeEventListener('message', messageHandler);
-        this.worker.removeEventListener('error', errorHandler);
+        if (settled) return;
+        settled = true;
+        cleanup();
         this._debugLog('Worker error event:', error);
         console.error(`${MODULE_ID} | Worker error event:`, error);
 
@@ -1017,8 +1229,9 @@ export class IndexService {
           },
         });
       } catch (error) {
-        this.worker.removeEventListener('message', messageHandler);
-        this.worker.removeEventListener('error', errorHandler);
+        if (settled) return;
+        settled = true;
+        cleanup();
         this._debugLog('Failed to post message to worker:', error);
 
         const structuredError = this._createError(
@@ -1103,6 +1316,12 @@ export class IndexService {
 
         // Yield to main thread
         await new Promise((r) => setTimeout(r, 10));
+
+        // Checked after the yield so a cancel that arrives mid-batch is seen
+        if (this._cancelRequested) {
+          console.log(`${MODULE_ID} | Direct indexing cancelled at ${processed}/${totalPaths}`);
+          throw this._cancelledError();
+        }
       }
 
       // Final performance summary
@@ -1120,6 +1339,7 @@ export class IndexService {
 
       return imagesFound;
     } catch (error) {
+      if (error?.cancelled) throw error;
       this._debugLog('Error during direct indexing:', error);
       throw this._createError(
         'index_build_failed',
@@ -1231,14 +1451,14 @@ export class IndexService {
 
       processed += batch.length;
       if (onProgress && (processed % 50 === 0 || processed === totalTerms)) {
-        onProgress(processed, totalTerms, Object.keys(this.index.allPaths).length);
+        onProgress(processed, totalTerms, this.index.pathList.length);
       }
       await new Promise((r) => setTimeout(r, 50));
     }
 
     // Final performance summary
     const totalTime = performance.now() - startTime;
-    const totalImages = Object.keys(this.index.allPaths).length;
+    const totalImages = this.index.pathList.length;
     if (totalImages > 0) {
       const avgTimePerImage = totalTime / totalImages;
       const throughput = ((totalImages / totalTime) * 1000).toFixed(0);
@@ -1298,6 +1518,9 @@ export class IndexService {
       return this.buildPromise;
     }
 
+    // A cancel from a previous run must not abort this one before it starts.
+    this._cancelRequested = false;
+
     this.buildPromise = (async () => {
       const startTime = performance.now();
       this._debugLog(`Starting index build (forceRebuild: ${forceRebuild})`);
@@ -1324,8 +1547,8 @@ export class IndexService {
         // Build from TVA (pass pre-loaded cache if available)
         await this.buildFromTVA(onProgress, tvaCacheImages);
 
-        // Use actual count from allPaths
-        const totalImages = Object.keys(this.index.allPaths).length;
+        // Use actual count from pathList
+        const totalImages = this.index.pathList.length;
 
         if (totalImages > 0) {
           this.index.lastUpdate = Date.now();
@@ -1354,6 +1577,12 @@ export class IndexService {
           ['rebuild_cache', 'check_paths', 'check_console']
         );
       } catch (error) {
+        // Same as buildFromTVA: a cancellation must reach the caller intact.
+        if (error?.cancelled) {
+          this.isBuilt = false;
+          throw error;
+        }
+
         this._debugLog('Index build failed:', error);
         this.isBuilt = false;
 
@@ -1407,16 +1636,14 @@ export class IndexService {
       }
 
       // Return all images in this category
-      const results = categoryData._all.map((item) => ({
-        path: item.path,
-        name: item.name,
-        source: 'index',
-        category: categoryLower,
-      }));
+      const results = categoryData._all
+        .map((id) => this._resultForId(id, { category: categoryLower }))
+        .filter(Boolean);
 
       this._debugLog(`Found ${results.length} results for category: ${categoryLower}`);
       return results;
     } catch (error) {
+      console.warn(`${MODULE_ID} | Error searching by category (${category}):`, error);
       this._debugLog(`Error searching by category (${category}):`, error);
       return [];
     }
@@ -1458,13 +1685,9 @@ export class IndexService {
 
       // Direct subcategory match
       if (categoryData[subcatLower]) {
-        const results = categoryData[subcatLower].map((item) => ({
-          path: item.path,
-          name: item.name,
-          source: 'index',
-          category: categoryLower,
-          subcategory: subcatLower,
-        }));
+        const results = categoryData[subcatLower]
+          .map((id) => this._resultForId(id, { category: categoryLower, subcategory: subcatLower }))
+          .filter(Boolean);
         this._debugLog(
           `Found ${results.length} results for subcategory: ${categoryLower}/${subcatLower}`
         );
@@ -1473,22 +1696,19 @@ export class IndexService {
 
       // Partial match in subcategory names
       const results = [];
-      const seenPaths = new Set();
+      const seenIds = new Set();
 
-      for (const [subcat, items] of Object.entries(categoryData)) {
+      for (const [subcat, ids] of Object.entries(categoryData)) {
         if (subcat === '_all') continue;
         if (subcat.includes(subcatLower) || subcatLower.includes(subcat)) {
-          for (const item of items) {
-            if (!seenPaths.has(item.path)) {
-              seenPaths.add(item.path);
-              results.push({
-                path: item.path,
-                name: item.name,
-                source: 'index',
-                category: categoryLower,
-                subcategory: subcat,
-              });
-            }
+          for (const id of ids) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+            const result = this._resultForId(id, {
+              category: categoryLower,
+              subcategory: subcat,
+            });
+            if (result) results.push(result);
           }
         }
       }
@@ -1498,6 +1718,10 @@ export class IndexService {
       );
       return results;
     } catch (error) {
+      console.warn(
+        `${MODULE_ID} | Error searching by subcategory (${category}/${subcategory}):`,
+        error
+      );
       this._debugLog(`Error searching by subcategory (${category}/${subcategory}):`, error);
       return [];
     }
@@ -1524,28 +1748,20 @@ export class IndexService {
     try {
       const termLower = term.toLowerCase();
       const tokens = this.tokenizeSearchText(termLower);
-      const seenPaths = new Set();
+      const seenIds = new Set();
       const results = [];
 
       this._debugLog(`Searching for term: "${term}" (tokens: ${tokens.join(', ')})`);
 
       // O(1) lookup in termIndex for each token
       for (const token of tokens) {
-        const paths = this.index.termIndex[token];
-        if (paths) {
-          for (const path of paths) {
-            if (!seenPaths.has(path)) {
-              seenPaths.add(path);
-              const data = this.index.allPaths[path];
-              if (data) {
-                results.push({
-                  path,
-                  name: data.name,
-                  source: 'index',
-                  category: data.category,
-                });
-              }
-            }
+        const ids = this.index.termIndex[token];
+        if (ids) {
+          for (const id of ids) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+            const result = this._resultForId(id);
+            if (result) results.push(result);
           }
         }
       }
@@ -1553,6 +1769,7 @@ export class IndexService {
       this._debugLog(`Found ${results.length} results for term: "${term}"`);
       return results;
     } catch (error) {
+      console.warn(`${MODULE_ID} | Error searching for term (${term}):`, error);
       this._debugLog(`Error searching for term (${term}):`, error);
       return [];
     }
@@ -1577,7 +1794,7 @@ export class IndexService {
     }
 
     try {
-      const seenPaths = new Set();
+      const seenIds = new Set();
       const results = [];
 
       // Tokenize all terms once and collect unique tokens
@@ -1597,21 +1814,13 @@ export class IndexService {
 
       // O(1) lookup in termIndex for each unique token
       for (const token of allTokens) {
-        const paths = this.index.termIndex[token];
-        if (paths) {
-          for (const path of paths) {
-            if (!seenPaths.has(path)) {
-              seenPaths.add(path);
-              const data = this.index.allPaths[path];
-              if (data) {
-                results.push({
-                  path,
-                  name: data.name,
-                  source: 'index',
-                  category: data.category,
-                });
-              }
-            }
+        const ids = this.index.termIndex[token];
+        if (ids) {
+          for (const id of ids) {
+            if (seenIds.has(id)) continue;
+            seenIds.add(id);
+            const result = this._resultForId(id);
+            if (result) results.push(result);
           }
         }
       }
@@ -1619,6 +1828,7 @@ export class IndexService {
       this._debugLog(`Found ${results.length} results for multiple terms`);
       return results;
     } catch (error) {
+      console.warn(`${MODULE_ID} | Error searching multiple terms:`, error);
       this._debugLog('Error searching multiple terms:', error);
       return [];
     }
@@ -1640,7 +1850,7 @@ export class IndexService {
       }
     }
 
-    const totalImages = Object.keys(this.index?.allPaths || {}).length;
+    const totalImages = this.index?.pathList?.length ?? 0;
 
     return {
       isBuilt: this.isBuilt,

@@ -23,6 +23,7 @@ import {
   createDebugLogger,
   createDefaultGetSetting,
   createModuleError,
+  i18nOrEnglish,
 } from '../core/Utils.js';
 import { indexService } from './IndexService.js';
 
@@ -40,6 +41,7 @@ export class SearchOrchestrator {
       workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
     } = deps;
 
+    /** @type {Map<string, Array>} Search result cache with max 200 entries */
     this.searchCache = new Map();
     this._tvaCacheService = injectedTVACache ?? null;
     this._forgeBazaarService = injectedForgeBazaar ?? null;
@@ -48,6 +50,14 @@ export class SearchOrchestrator {
     this._workerFactory = workerFactory;
     this.worker = null;
     this._workerInitialized = false;
+    // The index the Worker currently holds, tracked by identity. A boolean
+    // "already sent" flag was never cleared when the index itself changed, so a
+    // rebuilt local index — new artwork, changed search paths — was silently
+    // searched against the copy from earlier in the session.
+    this._workerIndex = null;
+    // Distinguishes a user cancellation from a worker failure, so a cancelled
+    // search is not "recovered" by running the slow main-thread path anyway.
+    this._cancelRequested = false;
     this._debugLog = createDebugLogger('SearchOrchestrator');
   }
 
@@ -57,9 +67,10 @@ export class SearchOrchestrator {
    */
   _ensureWorker() {
     if (this._workerInitialized) return;
-    this._workerInitialized = true;
     try {
       this.worker = this._workerFactory();
+      // Only mark initialized on success so a transient factory failure can retry
+      this._workerInitialized = true;
       this._debugLog('Web Worker initialized for background search operations');
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
@@ -81,8 +92,30 @@ export class SearchOrchestrator {
    * Clear the search cache
    * @returns {void}
    */
+  /** @private Maximum search cache entries before eviction */
+  static MAX_SEARCH_CACHE = 200;
+
   clearCache() {
     this.searchCache.clear();
+  }
+
+  /**
+   * Set a cache entry, evicting oldest entries if cache exceeds max size
+   * @private
+   */
+  _cacheSet(key, value) {
+    // Delete first so re-insertion moves key to end (most recent)
+    this.searchCache.delete(key);
+    this.searchCache.set(key, value);
+    if (this.searchCache.size > SearchOrchestrator.MAX_SEARCH_CACHE) {
+      // Map iterates in insertion order — delete oldest 25%
+      const toDelete = Math.floor(SearchOrchestrator.MAX_SEARCH_CACHE * 0.25);
+      let count = 0;
+      for (const k of this.searchCache.keys()) {
+        if (count++ >= toDelete) break;
+        this.searchCache.delete(k);
+      }
+    }
   }
 
   /**
@@ -92,10 +125,34 @@ export class SearchOrchestrator {
    */
   terminate() {
     if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
+      this._teardownWorker();
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
+  }
+
+  /**
+   * Drop the current worker so a later search can build a fresh one.
+   *
+   * Nulling `worker` without also clearing `_workerInitialized` leaves
+   * `_ensureWorker()` refusing to replace it, and the orchestrator then runs
+   * every later fuzzy search on the main thread — silently. Every teardown goes
+   * through here so that pairing cannot come apart again.
+   *
+   * `_workerIndex` is cleared too: a fresh worker holds no search index, so the
+   * next search has to send it again.
+   * @private
+   */
+  _teardownWorker() {
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Worker terminate() failed:`, error);
+      }
+    }
+    this.worker = null;
+    this._workerIndex = null;
+    this._workerInitialized = false;
   }
 
   /**
@@ -104,10 +161,25 @@ export class SearchOrchestrator {
    * @returns {void}
    */
   cancelOperation() {
+    // Set unconditionally: the main-thread fallback has no worker to message.
+    this._cancelRequested = true;
     if (this.worker) {
       this.worker.postMessage({ command: 'cancel' });
-      console.log(`${MODULE_ID} | Cancellation requested`);
     }
+    console.log(`${MODULE_ID} | Cancellation requested`);
+  }
+
+  /**
+   * Build the error thrown when a search is cancelled.
+   * The `cancelled` marker is what stops the caller from treating it as a
+   * worker failure and falling back to the slower main-thread path.
+   * @private
+   * @returns {Error} Cancellation error
+   */
+  _cancelledError() {
+    const error = /** @type {Error & { cancelled?: boolean }} */ (new Error('Operation cancelled'));
+    error.cancelled = true;
+    return error;
   }
 
   /**
@@ -271,13 +343,18 @@ export class SearchOrchestrator {
       try {
         return await this.searchLocalIndexWithWorker(searchTerms, index, creatureType, onProgress);
       } catch (error) {
+        // A cancellation is not a failure: falling back here would disable the
+        // worker for the session and run the search the user asked to stop.
+        if (error?.cancelled) throw error;
         // Worker failed, fallback to direct search on main thread
         console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
-        this.worker = null;
+        this._teardownWorker();
         try {
           ui.notifications.warn(
-            game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
-              'Token Replacer FA: Background worker failed, using slower method.',
+            i18nOrEnglish(
+              'notifications.workerFallback',
+              'Token Replacer FA: Background worker failed, using slower method.'
+            ),
             { permanent: false }
           );
         } catch {
@@ -302,7 +379,10 @@ export class SearchOrchestrator {
     if (!index || index.length === 0) return [];
 
     const Fuse = await loadFuse();
-    if (!Fuse) return [];
+    if (!Fuse) {
+      console.warn(`${MODULE_ID} | Fuse.js unavailable — search skipped. Results will be empty.`);
+      return [];
+    }
 
     const results = [];
     const seenPaths = new Set(); // Use Set for O(1) duplicate check
@@ -319,6 +399,12 @@ export class SearchOrchestrator {
     const fuse = new Fuse(index, fuseOptions);
 
     for (const term of searchTerms) {
+      // Each term is a full pass over the index; stopping between terms is the
+      // only interruption point this path has.
+      if (this._cancelRequested) {
+        this._debugLog('Direct fuzzy search cancelled by user');
+        throw this._cancelledError();
+      }
       const searchResults = fuse.search(term);
       for (const result of searchResults) {
         const item = result.item;
@@ -362,14 +448,16 @@ export class SearchOrchestrator {
     if (!index || index.length === 0) return [];
 
     return new Promise((resolve, reject) => {
+      let timeoutId;
       const cleanup = () => {
+        clearTimeout(timeoutId);
         this.worker.removeEventListener('message', messageHandler);
         this.worker.removeEventListener('error', errorHandler);
       };
 
       // Create a unique message handler for this search operation
       const messageHandler = (event) => {
-        const { type, result, current, total, term, message, stack } = event.data;
+        const { type, result, current, total, term: _term, message, stack: _stack } = event.data;
 
         switch (type) {
           case 'progress':
@@ -378,17 +466,31 @@ export class SearchOrchestrator {
             }
             break;
 
-          case 'complete':
+          case 'complete': {
             cleanup();
-            const results = result || [];
+            let results = result || [];
+            // Post-filter by creature type on main thread (Worker doesn't have category logic)
+            if (creatureType && results.length > 0) {
+              const before = results.length;
+              results = results.filter(
+                (item) =>
+                  !item.category || this.folderMatchesCreatureType(item.category, creatureType)
+              );
+              if (results.length < before) {
+                console.log(
+                  `${MODULE_ID} | Worker results filtered by "${creatureType}": ${before} → ${results.length}`
+                );
+              }
+            }
             console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
             resolve(results);
             break;
+          }
 
           case 'cancelled':
             cleanup();
             console.log(`${MODULE_ID} | Search operation cancelled by user`);
-            reject(new Error('Operation cancelled'));
+            reject(this._cancelledError());
             break;
 
           case 'error':
@@ -427,12 +529,32 @@ export class SearchOrchestrator {
       // Get fuzzy threshold setting
       const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
 
-      // Post the search task to the worker
+      // 60s timeout to prevent Promise hanging if Worker stalls
+      timeoutId = setTimeout(() => {
+        cleanup();
+        // Terminate zombie worker to prevent out-of-order results on subsequent calls
+        this._teardownWorker();
+        reject(
+          createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
+            'reload_module',
+            'check_console',
+          ])
+        );
+      }, 60000);
+
+      // Send the index only when the Worker is not already holding this exact
+      // one. Identity, not a boolean: buildLocalTokenIndex() returns a fresh
+      // array whenever the library is rescanned, and the Worker must see it.
+      if (this._workerIndex !== index) {
+        this.worker.postMessage({ command: 'setSearchIndex', data: { index } });
+        this._workerIndex = index;
+      }
+
       this.worker.postMessage({
         command: 'fuzzySearch',
         data: {
           searchTerms: searchTerms,
-          index: index,
+          // index omitted — Worker uses persisted copy from setSearchIndex
           options: {
             keys: ['name', 'fileName', 'category'],
             threshold: threshold,
@@ -579,6 +701,36 @@ export class SearchOrchestrator {
       }
 
       console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
+
+      // A built index can be stale (e.g. a pack was added after the last build), returning 0
+      // results for a category that the raw cache still covers. Fall through to the TVA direct
+      // cache — one cheap read — rather than letting the index's emptiness be authoritative.
+      // (Intentionally not cascading to SLOW per-term API search; the cache read is enough.)
+      if (results.length === 0 && this._tvaCacheService?.tvaCacheLoaded) {
+        console.log(`${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`);
+        if (progressCallback) {
+          progressCallback({ current: 0, total: 1, term: 'TVA cache fallback', resultsFound: 0 });
+        }
+
+        const fallbackResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
+        for (const result of fallbackResults) {
+          if (!seenPaths.has(result.path)) {
+            seenPaths.add(result.path);
+            results.push(result);
+          }
+        }
+
+        if (progressCallback) {
+          progressCallback({
+            current: 1,
+            total: 1,
+            term: 'TVA cache fallback',
+            resultsFound: results.length,
+          });
+        }
+
+        console.log(`${MODULE_ID} | TVA cache fallback found ${results.length} results`);
+      }
     }
     // Priority: forgeBazaar - Try ForgeBazaarService first
     else if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {
@@ -811,7 +963,11 @@ export class SearchOrchestrator {
 
     const cacheKey = getCreatureCacheKey(creatureInfo);
     if (useCache && this.searchCache.has(cacheKey)) {
-      return this.searchCache.get(cacheKey);
+      const cached = this.searchCache.get(cacheKey);
+      // Promote to most-recent position for LRU ordering
+      this.searchCache.delete(cacheKey);
+      this.searchCache.set(cacheKey, cached);
+      return cached;
     }
 
     const priority = this._getSetting(MODULE_ID, 'searchPriority');
@@ -1018,7 +1174,7 @@ export class SearchOrchestrator {
         `${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`
       );
 
-      this.searchCache.set(cacheKey, results);
+      this._cacheSet(cacheKey, results);
       return results;
     }
 
@@ -1117,7 +1273,7 @@ export class SearchOrchestrator {
       return (a.score || 0.5) - (b.score || 0.5);
     });
 
-    this.searchCache.set(cacheKey, validResults);
+    this._cacheSet(cacheKey, validResults);
     return validResults;
   }
 
@@ -1133,7 +1289,17 @@ export class SearchOrchestrator {
     const totalGroups = groupArray.length;
     const results = new Map();
 
+    // A cancel from a previous run must not abort this one before it starts.
+    this._cancelRequested = false;
+
     for (let i = 0; i < groupArray.length; i += PARALLEL_BATCH_SIZE) {
+      // Batch boundaries are where this phase can stop: the searches inside a
+      // batch run concurrently and are awaited together.
+      if (this._cancelRequested) {
+        this._debugLog(`Parallel search cancelled after ${results.size} creature type(s)`);
+        break;
+      }
+
       const batch = groupArray.slice(i, i + PARALLEL_BATCH_SIZE);
 
       if (progressCallback) {
@@ -1142,7 +1308,7 @@ export class SearchOrchestrator {
           type: 'batch',
           completed: completed,
           total: totalGroups,
-          currentBatch: batch.map(([key, group]) => group.creatureInfo.actorName),
+          currentBatch: batch.map(([_key, group]) => group.creatureInfo.actorName),
         });
       }
 
@@ -1151,14 +1317,28 @@ export class SearchOrchestrator {
         return { key, searchResults, group };
       });
 
-      const batchResults = await Promise.all(batchPromises);
+      const settledResults = await Promise.allSettled(batchPromises);
 
-      for (const { key, searchResults, group } of batchResults) {
-        results.set(key, {
-          matches: searchResults,
-          tokens: group.tokens,
-          creatureInfo: group.creatureInfo,
-        });
+      for (const result of settledResults) {
+        if (result.status === 'fulfilled') {
+          const { key, searchResults, group } = result.value;
+          results.set(key, {
+            matches: searchResults,
+            tokens: group.tokens,
+            creatureInfo: group.creatureInfo,
+          });
+        } else if (result.reason?.cancelled) {
+          // The cancellation propagates out of every search in the in-flight
+          // batch, so without this a deliberate stop prints one "search failed"
+          // warning per creature type — the same mislabelling the wrapping
+          // catches in IndexService had.
+          this._debugLog('Batch search stopped by cancellation');
+        } else {
+          console.warn(
+            `${MODULE_ID} | Batch search failed for one group:`,
+            result.reason?.message || result.reason
+          );
+        }
       }
     }
 

@@ -6,6 +6,7 @@
 export const MODULE_ID = 'token-replacer-fa';
 export const MODULE_TITLE = 'Token Replacer - Forgotten Adventures';
 export const FUSE_CDN = 'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs';
+export const FALLBACK_IMAGE = 'icons/svg/mystery-man.svg';
 
 /**
  * Performance tuning constants
@@ -576,7 +577,6 @@ export const CREATURE_TYPE_MAPPINGS = {
     'revenant',
     'death knight',
     'bodak',
-    'bone devil',
     'crawling claw',
     'flameskull',
     'will-o-wisp',
@@ -699,12 +699,10 @@ export const CREATURE_TYPE_MAPPINGS = {
     'hag',
     'green hag',
     'sea hag',
-    'night hag',
     'annis hag',
     'bheur hag',
     'eladrin',
     'blink dog',
-    'displacer beast',
     'quickling',
     'redcap',
     'meenlock',
@@ -712,7 +710,6 @@ export const CREATURE_TYPE_MAPPINGS = {
     'darkling',
     'korred',
     'nereid',
-    'sea hag',
   ],
   celestial: [
     'angel',
@@ -837,7 +834,6 @@ export const CREATURE_TYPE_MAPPINGS = {
     'cloud giant',
     'storm giant',
     'fomorian',
-    'firbolg',
     'oni',
     'half-ogre',
     'verbeeg',

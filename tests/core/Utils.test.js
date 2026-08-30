@@ -214,6 +214,29 @@ describe('sanitizePath', () => {
     sanitizePath('/etc/passwd');
     expect(warnSpy).toHaveBeenCalled();
   });
+
+  it('rejects javascript: protocol', () => {
+    expect(sanitizePath('javascript:alert(1)')).toBeNull();
+  });
+
+  it('rejects data: protocol', () => {
+    expect(sanitizePath('data:text/html,<script>alert(1)</script>')).toBeNull();
+  });
+
+  it('rejects vbscript: protocol', () => {
+    expect(sanitizePath('vbscript:MsgBox("XSS")')).toBeNull();
+  });
+
+  it('rejects dangerous protocols case-insensitively', () => {
+    expect(sanitizePath('JAVASCRIPT:alert(1)')).toBeNull();
+    expect(sanitizePath('Data:text/html,test')).toBeNull();
+    expect(sanitizePath('VbScript:run')).toBeNull();
+  });
+
+  it('calls console.warn for rejected protocol paths', () => {
+    sanitizePath('javascript:alert(1)');
+    expect(warnSpy).toHaveBeenCalled();
+  });
 });
 
 // =========================================================================
@@ -482,6 +505,25 @@ describe('extractPathFromObject', () => {
   it('returns null for empty object', () => {
     expect(extractPathFromObject({})).toBeNull();
   });
+
+  it('ignores __proto__ key (prototype pollution guard)', () => {
+    const obj = Object.create(null);
+    obj.__proto__ = { path: 'evil.png' };
+    obj.safe = 'not-a-path';
+    expect(extractPathFromObject(obj)).toBeNull();
+  });
+
+  it('ignores constructor key (prototype pollution guard)', () => {
+    const obj = Object.create(null);
+    obj.constructor = { path: 'evil.png' };
+    expect(extractPathFromObject(obj)).toBeNull();
+  });
+
+  it('ignores prototype key (prototype pollution guard)', () => {
+    const obj = Object.create(null);
+    obj.prototype = { path: 'evil.png' };
+    expect(extractPathFromObject(obj)).toBeNull();
+  });
 });
 
 // =========================================================================
@@ -702,7 +744,11 @@ describe('loadFuse', () => {
   });
 
   it('returns Fuse constructor from CDN on success', async () => {
-    const mockFuse = class MockFuse {};
+    const mockFuse = class MockFuse {
+      search() {
+        return [];
+      }
+    };
     vi.doMock('https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs', () => ({
       default: mockFuse,
     }));
@@ -715,7 +761,11 @@ describe('loadFuse', () => {
     vi.doMock('https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs', () => {
       throw new Error('Network error');
     });
-    const mockFuse = class WindowFuse {};
+    const mockFuse = class WindowFuse {
+      search() {
+        return [];
+      }
+    };
     window.Fuse = mockFuse;
     const { loadFuse } = await import('../../scripts/core/Utils.js');
     const result = await loadFuse();
@@ -733,7 +783,11 @@ describe('loadFuse', () => {
   });
 
   it('caches result and returns same reference on subsequent calls', async () => {
-    const mockFuse = class MockFuse {};
+    const mockFuse = class MockFuse {
+      search() {
+        return [];
+      }
+    };
     vi.doMock('https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.mjs', () => ({
       default: mockFuse,
     }));

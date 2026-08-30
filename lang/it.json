@@ -1,6 +1,5 @@
 {
   "TOKEN_REPLACER_FA": {
-    "title": "Token Replacer - Forgotten Adventures",
     "button": {
       "title": "Sostituisci Token Art",
       "tooltip": "Cerca e sostituisce i token NPC con l'art di Forgotten Adventures"
@@ -25,10 +24,6 @@
       "fallbackFullSearch": {
         "name": "Fallback Ricerca Completa",
         "hint": "Se non trova match nella categoria del tipo creatura, cerca nell'intero indice. Default: Spento"
-      },
-      "searchSources": {
-        "name": "Fonti di Ricerca",
-        "hint": "Seleziona quali fonti cercare per la token art"
       },
       "additionalPaths": {
         "name": "Percorsi Aggiuntivi",
@@ -105,7 +100,12 @@
       "processingError": "Token Replacer FA ha riscontrato un errore: {error}. Controlla la console per dettagli.",
       "initFailed": "Token Replacer FA: Inizializzazione fallita. {error}",
       "backgroundFailed": "Token Replacer FA: Configurazione in background fallita. {error}",
-      "workerFallback": "Token Replacer FA: Worker in background fallito, utilizzo del metodo più lento."
+      "workerFallback": "Token Replacer FA: Worker in background fallito, utilizzo del metodo più lento.",
+      "replaceFailed": "{count} token hanno trovato art ma la sostituzione dell'immagine è fallita. Controlla la console per dettagli.",
+      "indexingStoppable": "Creazione dell'indice delle immagini in background — clicca questo messaggio per fermarla.",
+      "indexingStopped": "Creazione dell'indice interrotta. La ricerca dei token userà un percorso più lento finché l'indice non verrà ricostruito al prossimo ricaricamento.",
+      "controlButtonFailed": "Token Replacer FA: impossibile aggiungere il pulsante ai controlli scena. Controlla la console per i dettagli.",
+      "storageFull": "Token Replacer FA: lo spazio di archiviazione del browser è pieno, quindi l'indice verrà ricostruito a ogni sessione."
     },
     "errors": {
       "tva_missing": "Il modulo Token Variant Art non è installato o abilitato",
@@ -139,6 +139,51 @@
       "clear_storage": "Cancella il localStorage del browser o disabilita il caching dell'indice nelle impostazioni",
       "disable_worker": "Se il problema persiste, il modulo utilizzerà l'indicizzazione sul thread principale",
       "contact_support": "Se il problema continua, segnala questo problema su GitHub con i log della console"
+    },
+    "ui": {
+      "showDetails": "Mostra dettagli",
+      "howToFix": "Come risolvere:",
+      "filterPlaceholder": "Filtra (es. nano monaco)...",
+      "showingResults": "Mostrati {visible} di {total} risultati",
+      "showingResultsCapped": "Mostrati {visible} di {total} risultati — usa il filtro per restringere",
+      "selectedCount": "{count} selezionati",
+      "variantAssignment": "Assegnazione varianti:",
+      "modeSequential": "Sequenziale",
+      "modeRandom": "Casuale",
+      "multiSelectHint": "Clicca per selezionare più varianti",
+      "apply": "Applica",
+      "tokenCount": "{count} token",
+      "creatureTypePlaceholder": "Cerca tipo di creatura o nome...",
+      "parallelSearchTitle": "Ricerca parallela in corso...",
+      "uniqueCreatures": "Creature uniche",
+      "totalTokens": "Token totali",
+      "creatureTypesSearched": "{completed} / {total} tipi di creatura cercati",
+      "currentlySearching": "Ricerca in corso (parallela):",
+      "sharedResultsInfo": "Le creature identiche condividono i risultati di ricerca per velocizzare l'elaborazione",
+      "replacedLabel": "Sostituiti",
+      "noMatchLabel": "Nessuna corrispondenza",
+      "skippedLabel": "Saltati",
+      "progressStatus": "{current} / {total} - {status}",
+      "scanningArtwork": "Scansione delle immagini dei token...",
+      "directories": "Cartelle",
+      "imagesFound": "Immagini trovate",
+      "currentDirectory": "Cartella corrente:",
+      "filesCount": "{count} file",
+      "subdirectoriesCount": "{count} sottocartelle",
+      "searchingCategory": "Ricerca immagini per {category}...",
+      "searchingTerm": "Ricerca:",
+      "termsProgress": "{current} / {total} termini",
+      "resultsFoundCount": "{count} risultati trovati",
+      "refreshingCache": "Aggiornamento della cache TVA...",
+      "refreshingCacheHint": "Con librerie di immagini grandi può richiedere un po' di tempo",
+      "tvaCacheInfo": "Sfrutta l'indice di immagini già pronto di TVA per una ricerca più veloce",
+      "usingTvaCache": "Uso della cache di Token Variant Art...",
+      "loadingTvaCache": "Caricamento della cache TVA...",
+      "initializing": "Inizializzazione...",
+      "cancelling": "Annullamento...",
+      "cancelled": "Indicizzazione annullata — nessun token è stato modificato",
+      "cancelFailed": "Impossibile annullare l'operazione",
+      "tryThis": "Prova:"
     }
   }
 }

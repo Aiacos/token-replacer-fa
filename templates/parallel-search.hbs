@@ -1,17 +1,17 @@
 <div class='token-replacer-fa-scan-progress'>
   <div class='scan-status'>
     <i class='fas fa-bolt'></i>
-    <span>Parallel Search in Progress...</span>
+    <span>{{titleLabel}}</span>
   </div>
 
   <div class='scan-stats'>
     <div class='stat-item'>
       <div class='stat-value'>{{uniqueTypes}}</div>
-      <div class='stat-label'>Unique Creatures</div>
+      <div class='stat-label'>{{uniqueCreaturesLabel}}</div>
     </div>
     <div class='stat-item'>
       <div class='stat-value'>{{totalTokens}}</div>
-      <div class='stat-label'>Total Tokens</div>
+      <div class='stat-label'>{{totalTokensLabel}}</div>
     </div>
   </div>
 
@@ -19,12 +19,12 @@
     <div class='progress-bar'>
       <div class='progress-fill' style='width: {{percent}}%'></div>
     </div>
-    <div class='progress-text'>{{completed}} / {{total}} creature types searched</div>
+    <div class='progress-text'>{{progressLabel}}</div>
   </div>
 
   {{#if hasBatch}}
     <div class='scan-current'>
-      <div class='current-label'>Currently searching (parallel):</div>
+      <div class='current-label'>{{currentlySearchingLabel}}</div>
       <div class='parallel-batch'>
         {{#each currentBatch}}
           <span class='batch-item'>
@@ -38,6 +38,13 @@
 
   <div class='optimization-info'>
     <i class='fas fa-info-circle'></i>
-    <span>Identical creatures share search results for faster processing</span>
+    <span>{{sharedResultsLabel}}</span>
+  </div>
+
+  <div class='token-replacer-fa-progress-buttons'>
+    <button type='button' class='cancel-btn' data-action='cancel'>
+      <i class='fas fa-times'></i>
+      {{cancelLabel}}
+    </button>
   </div>
 </div>

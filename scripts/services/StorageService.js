@@ -66,7 +66,12 @@ export class StorageService {
     this.dbPromise = new Promise((resolve, reject) => {
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
+      // Grace period before giving up on a blocked open (another tab holds an older version)
+      const BLOCKED_TIMEOUT_MS = 10_000;
+      let blockedTimeoutId = null;
+
       request.onerror = () => {
+        clearTimeout(blockedTimeoutId);
         const error = request.error;
         console.error(`${MODULE_ID} | Failed to open IndexedDB:`, error);
         this.dbPromise = null;
@@ -74,6 +79,7 @@ export class StorageService {
       };
 
       request.onsuccess = () => {
+        clearTimeout(blockedTimeoutId);
         this.db = request.result;
         console.log(`${MODULE_ID} | IndexedDB connection opened successfully`);
 
@@ -98,16 +104,40 @@ export class StorageService {
       request.onupgradeneeded = (event) => {
         /** @type {IDBDatabase} */
         const db = /** @type {IDBRequest} */ (event.target).result;
+        const oldVersion = event.oldVersion || 0;
 
-        // Create object store if it doesn't exist
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
+        console.log(`${MODULE_ID} | IndexedDB upgrade: v${oldVersion} → v${DB_VERSION}`);
+
+        // Incremental migrations — each case falls through to apply all needed upgrades
+        // eslint-disable-next-line default-case
+        switch (oldVersion) {
+          case 0:
+            // Fresh install: create the object store
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+              console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
+            }
+            break;
+          // Future migrations: add cases here with fallthrough
+          // case 1:
+          //   // v1 → v2: add indexes, transform data, etc.
+          //   // falls through to case 2 if needed
         }
       };
 
       request.onblocked = () => {
         console.warn(`${MODULE_ID} | IndexedDB open request blocked - close other tabs or wait`);
+        // The block may clear if the other tab closes (onsuccess then fires). Reject only if
+        // it persists past the grace period so callers don't hang forever in multi-tab setups.
+        if (blockedTimeoutId) return;
+        blockedTimeoutId = setTimeout(() => {
+          this.dbPromise = null;
+          reject(
+            new Error(
+              `${MODULE_ID} | IndexedDB open blocked for ${BLOCKED_TIMEOUT_MS / 1000}s — close other Foundry tabs and reload`
+            )
+          );
+        }, BLOCKED_TIMEOUT_MS);
       };
     });
 
@@ -165,8 +195,11 @@ export class StorageService {
         });
 
         return count > 0;
-      } catch (error) {
-        // Fall through to localStorage
+      } catch (_error) {
+        console.debug(
+          `${MODULE_ID} | IndexedDB has() failed, falling back to localStorage:`,
+          _error
+        );
       }
     }
 
@@ -197,7 +230,7 @@ export class StorageService {
         };
 
         // Put data into object store
-        const request = objectStore.put(record);
+        objectStore.put(record);
 
         await new Promise((resolve, reject) => {
           transaction.oncomplete = () => {
@@ -249,8 +282,10 @@ export class StorageService {
 
   /**
    * Load data from storage (IndexedDB or localStorage fallback)
+   * Data is sanitized on load: __proto__/constructor keys are stripped from JSON,
+   * and the result is validated against an expected shape if provided.
    * @param {string} key - Storage key (used as record ID)
-   * @returns {Promise<*>} Stored data, or null if not found
+   * @returns {Promise<*>} Stored data, or null if not found/invalid
    */
   async load(key) {
     // IndexedDB path
@@ -285,7 +320,7 @@ export class StorageService {
 
         if (record) {
           console.log(`${MODULE_ID} | Loaded from IndexedDB: ${key}`);
-          return record.data;
+          return StorageService._sanitizeData(record.data);
         }
 
         console.log(`${MODULE_ID} | No data found in IndexedDB: ${key}`);
@@ -304,15 +339,64 @@ export class StorageService {
         return null;
       }
 
-      const record = JSON.parse(json);
+      const record = JSON.parse(json, StorageService._jsonReviver);
       console.log(
         `${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`
       );
-      return record.data;
+      return StorageService._sanitizeData(record.data);
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to load from localStorage:`, error);
       return null;
     }
+  }
+
+  /**
+   * JSON.parse reviver that strips prototype-polluting keys from parsed objects.
+   * Prevents __proto__ and constructor.prototype injection from tampered localStorage data.
+   * @param {string} key - JSON key being parsed
+   * @param {*} value - Parsed value
+   * @returns {*} The value, or undefined to strip the key
+   */
+  static _jsonReviver(key, value) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      return undefined;
+    }
+    return value;
+  }
+
+  /**
+   * Sanitize data loaded from storage by stripping prototype-polluting keys.
+   * Applied to IndexedDB data (which bypasses JSON.parse reviver).
+   * Optimized: skips arrays of primitives (strings, numbers) since they can't
+   * carry __proto__ pollution. Only recurses into objects and arrays-of-objects.
+   * @param {*} data - Data to sanitize
+   * @param {WeakSet} [seen] - Cycle detection set (internal, do not pass)
+   * @returns {*} Sanitized data
+   */
+  static _sanitizeData(data, seen = new WeakSet()) {
+    if (data === null || data === undefined || typeof data !== 'object') {
+      return data;
+    }
+
+    if (seen.has(data)) return data;
+    seen.add(data);
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) return data;
+      // Check if ANY element is an object (not just data[0]) to avoid bypassing mixed arrays
+      const hasObjects = data.some((item) => item !== null && typeof item === 'object');
+      if (!hasObjects) return data;
+      return data.map((item) => StorageService._sanitizeData(item, seen));
+    }
+
+    const cleaned = {};
+    for (const key of Object.keys(data)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+        continue;
+      }
+      cleaned[key] = StorageService._sanitizeData(data[key], seen);
+    }
+    return cleaned;
   }
 
   /**
@@ -502,8 +586,8 @@ export class StorageService {
         return false;
       }
 
-      // Parse JSON wrapper {data, timestamp}
-      const record = JSON.parse(json);
+      // Parse JSON wrapper {data, timestamp} — strip prototype-polluting keys
+      const record = JSON.parse(json, StorageService._jsonReviver);
       if (!record || !record.data) {
         console.warn(
           `${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`

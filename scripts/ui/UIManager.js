@@ -6,7 +6,12 @@
  * @module ui/UIManager
  */
 
-import { MODULE_ID, CREATURE_TYPE_MAPPINGS, MAX_DISPLAY_RESULTS } from '../core/Constants.js';
+import {
+  MODULE_ID,
+  CREATURE_TYPE_MAPPINGS,
+  MAX_DISPLAY_RESULTS,
+  FALLBACK_IMAGE,
+} from '../core/Constants.js';
 import {
   escapeHtml,
   parseFilterTerms,
@@ -87,7 +92,8 @@ function saveFilterTerm(filterTerm) {
  */
 function loadFilterTerm() {
   try {
-    return localStorage.getItem(FILTER_CACHE_KEY) || '';
+    const term = localStorage.getItem(FILTER_CACHE_KEY) || '';
+    return term.length <= 200 ? term : term.slice(0, 200);
   } catch (error) {
     console.warn(`${MODULE_ID} | Failed to load filter term:`, error);
     return '';
@@ -106,6 +112,21 @@ function clearFilterTerm() {
 }
 
 /**
+ * Localized "Showing X of Y results" label.
+ *
+ * The counts used to live in two bare <span>s that JS rewrote individually,
+ * which left the surrounding words untranslatable — word order differs between
+ * languages, so the sentence has to be formatted as a whole.
+ * @param {number} visible - Results currently rendered
+ * @param {number} total - Results matching the filter
+ * @param {boolean} capped - Whether the render cap truncated the list
+ * @returns {string} Localized label
+ */
+function resultCountLabel(visible, total, capped = false) {
+  return i18n(capped ? 'ui.showingResultsCapped' : 'ui.showingResults', { visible, total });
+}
+
+/**
  * TokenReplacerDialog - ApplicationV2-based dialog for Token Replacer FA
  * Replaces deprecated V1 Dialog API with modern ApplicationV2
  * Compatible with Foundry VTT v12-v13
@@ -120,6 +141,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
     super(options);
     this._dialogContent = options.content || '';
     this._onCloseCallback = options.onClose;
+    this._onRenderCallback = options.onRender;
   }
 
   static DEFAULT_OPTIONS = {
@@ -141,7 +163,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @param {Object} options - Render options
    * @returns {Promise<Object>} Context data for template
    */
-  async _prepareContext(options) {
+  async _prepareContext(_options) {
     return { content: this._dialogContent };
   }
 
@@ -152,7 +174,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @param {Object} options - Rendering options
    * @returns {Promise<HTMLElement>} Rendered DOM element
    */
-  async _renderHTML(context, options) {
+  async _renderHTML(context, _options) {
     const wrapper = document.createElement('div');
     wrapper.classList.add('dialog-content');
     wrapper.innerHTML = context.content;
@@ -166,13 +188,27 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
    * @param {HTMLElement} content - The application's content element
    * @param {Object} options - Rendering options
    */
-  _replaceHTML(result, content, options) {
+  _replaceHTML(result, content, _options) {
     const existing = content.querySelector('.dialog-content');
     if (existing) {
       existing.replaceWith(result);
     } else {
       content.appendChild(result);
     }
+  }
+
+  /**
+   * Actions performed after the dialog is rendered.
+   *
+   * The initial render draws content that was never passed through
+   * updateDialogContent(), so anything that wires listeners to that content has
+   * to run from here too — otherwise the first screen's buttons are inert.
+   * @param {Object} context - Render context
+   * @param {Object} options - Render options
+   */
+  async _onRender(context, options) {
+    await super._onRender(context, options);
+    this._onRenderCallback?.();
   }
 
   /**
@@ -227,6 +263,36 @@ export class UIManager {
   }
 
   /**
+   * Attach image load/error event delegation to a container element
+   * Handles skeleton loader reveal on load and fallback image on error
+   * @param {HTMLElement} container - Container to attach listeners to
+   * @param {AbortSignal} signal - AbortController signal for cleanup
+   * @private
+   */
+  _attachImageDelegation(container, signal) {
+    container.addEventListener(
+      'load',
+      (e) => {
+        if (e.target.tagName === 'IMG') {
+          e.target.parentElement?.classList.add('loaded');
+        }
+      },
+      { signal, capture: true }
+    );
+
+    container.addEventListener(
+      'error',
+      (e) => {
+        if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
+          e.target.dataset.fallback = '1';
+          e.target.src = FALLBACK_IMAGE;
+        }
+      },
+      { signal, capture: true }
+    );
+  }
+
+  /**
    * Create scan progress HTML
    * @param {string} currentDir - Current directory being scanned
    * @param {number} dirsScanned - Number of directories scanned
@@ -256,6 +322,13 @@ export class UIManager {
       subDirs,
       currentFile,
       showDirInfo: filesInDir > 0,
+      scanningLabel: i18n('ui.scanningArtwork'),
+      directoriesLabel: i18n('ui.directories'),
+      imagesFoundLabel: i18n('ui.imagesFound'),
+      currentDirectoryLabel: i18n('ui.currentDirectory'),
+      filesLabel: i18n('ui.filesCount', { count: filesInDir }),
+      subdirectoriesLabel: i18n('ui.subdirectoriesCount', { count: subDirs }),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -279,6 +352,13 @@ export class UIManager {
       totalTokens,
       currentBatch,
       hasBatch: currentBatch.length > 0,
+      titleLabel: i18n('ui.parallelSearchTitle'),
+      uniqueCreaturesLabel: i18n('ui.uniqueCreatures'),
+      totalTokensLabel: i18n('ui.totalTokens'),
+      progressLabel: i18n('ui.creatureTypesSearched', { completed, total }),
+      currentlySearchingLabel: i18n('ui.currentlySearching'),
+      sharedResultsLabel: i18n('ui.sharedResultsInfo'),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -332,6 +412,16 @@ export class UIManager {
       matches: transformedMatches,
       skipLabel: i18n('dialog.skip'),
       savedFilterTerm,
+      tokenCountLabel: i18n('ui.tokenCount', { count: tokenCount }),
+      filterPlaceholder: i18n('ui.filterPlaceholder'),
+      clearFilterLabel: i18n('dialog.clearFilter'),
+      resultCountLabel: resultCountLabel(displayMatches.length, totalCount, isCapped),
+      variantAssignmentLabel: i18n('ui.variantAssignment'),
+      sequentialLabel: i18n('ui.modeSequential'),
+      randomLabel: i18n('ui.modeRandom'),
+      multiSelectHintLabel: i18n('ui.multiSelectHint'),
+      selectionCountLabel: i18n('ui.selectedCount', { count: 1 }),
+      applyLabel: i18n('ui.apply'),
     });
   }
 
@@ -369,6 +459,16 @@ export class UIManager {
       creatureTypes,
       skipLabel: i18n('dialog.skip'),
       savedFilterTerm,
+      tokenCountLabel: i18n('ui.tokenCount', { count: tokenCount }),
+      creatureTypePlaceholder: i18n('ui.creatureTypePlaceholder'),
+      filterPlaceholder: i18n('ui.filterPlaceholder'),
+      clearFilterLabel: i18n('dialog.clearFilter'),
+      emptyResultCountLabel: resultCountLabel(0, 0, false),
+      variantAssignmentLabel: i18n('ui.variantAssignment'),
+      sequentialLabel: i18n('ui.modeSequential'),
+      randomLabel: i18n('ui.modeRandom'),
+      emptySelectionCountLabel: i18n('ui.selectedCount', { count: 0 }),
+      applyLabel: i18n('ui.apply'),
     });
   }
 
@@ -389,6 +489,11 @@ export class UIManager {
       total,
       term: term || '',
       resultsFound,
+      headerLabel: i18n('ui.searchingCategory', { category: categoryType }),
+      searchingTermLabel: i18n('ui.searchingTerm'),
+      termsProgressLabel: i18n('ui.termsProgress', { current, total }),
+      resultsFoundLabel: i18n('ui.resultsFoundCount', { count: resultsFound }),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -432,6 +537,10 @@ export class UIManager {
       skippedCount,
       hasResults: results.length > 0,
       results: transformedResults,
+      progressLabel: i18n('ui.progressStatus', { current, total, status }),
+      replacedLabel: i18n('ui.replacedLabel'),
+      noMatchLabel: i18n('ui.noMatchLabel'),
+      skippedLabel: i18n('ui.skippedLabel'),
     });
   }
 
@@ -443,10 +552,14 @@ export class UIManager {
    */
   async createTVACacheHTML(refreshing = false, customMessage = null) {
     const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
-    const statusMessage = customMessage || 'Using Token Variant Art cache...';
+    const statusMessage = customMessage || i18n('ui.usingTvaCache');
     return await renderModuleTemplate(templatePath, {
       refreshing,
       statusMessage,
+      refreshingLabel: i18n('ui.refreshingCache'),
+      refreshingHintLabel: i18n('ui.refreshingCacheHint'),
+      tvaCacheInfoLabel: i18n('ui.tvaCacheInfo'),
+      cancelLabel: i18n('dialog.cancel'),
     });
   }
 
@@ -471,6 +584,8 @@ export class UIManager {
       message: data.message,
       details: data.details,
       recoverySuggestions: data.recoverySuggestions,
+      showDetailsLabel: i18n('ui.showDetails'),
+      howToFixLabel: i18n('ui.howToFix'),
     });
   }
 
@@ -484,6 +599,8 @@ export class UIManager {
    * @param {Function} updateSelectionCount - Callback to update selection count display
    */
   _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
+    // Note: innerHTML rebuild is mitigated by 150ms debounce and MAX_DISPLAY_RESULTS cap.
+    // CSS visibility toggling would avoid image re-downloads but adds complexity for limited gain.
     gridEl.innerHTML = matches
       .map((match, idx) => {
         const safeMatchName = escapeHtml(match.name);
@@ -495,7 +612,7 @@ export class UIManager {
         return `
         <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
           <div class="skeleton-loader skeleton-72">
-            <img src="${safePath}" alt="${safeMatchName}" loading="lazy" onerror="this.src='icons/svg/mystery-man.svg'" onload="this.parentElement.classList.add('loaded')">
+            <img src="${safePath}" alt="${safeMatchName}" loading="lazy">
           </div>
           <div class="match-name">${safeMatchName}</div>
           <div class="match-score">${scoreDisplay}</div>
@@ -510,6 +627,8 @@ export class UIManager {
     if (gridEl._delegateAbort) gridEl._delegateAbort.abort();
     const ac = new AbortController();
     gridEl._delegateAbort = ac;
+
+    this._attachImageDelegation(gridEl, ac.signal);
 
     gridEl.addEventListener(
       'click',
@@ -565,6 +684,13 @@ export class UIManager {
         return;
       }
 
+      // AbortController for cleanup — abort on dialog close
+      if (container._dialogAbort) container._dialogAbort.abort();
+      const ac = new AbortController();
+      container._dialogAbort = ac;
+
+      this._attachImageDelegation(container, ac.signal);
+
       let assignmentMode = 'sequential';
       const matchGrid = container.querySelector('.token-replacer-fa-match-select');
       const multiSelectEnabled = matchGrid?.dataset.multiselect === 'true';
@@ -573,14 +699,14 @@ export class UIManager {
         const selectedCount = container.querySelectorAll('.match-option.selected').length;
         const countEl = container.querySelector('.selection-count');
         if (countEl) {
-          countEl.textContent = `${selectedCount} selected`;
+          countEl.textContent = i18n('ui.selectedCount', { count: selectedCount });
         }
       };
 
       // Setup search filter
       const searchInput = container.querySelector('.search-filter-input');
       const searchClearBtn = container.querySelector('.search-clear-btn');
-      const visibleCountEl = container.querySelector('.visible-count');
+      const resultCountEl = container.querySelector('.result-count');
       if (searchInput) {
         let debounceTimer = null;
 
@@ -611,7 +737,6 @@ export class UIManager {
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             const filterTerms = parseFilterTerms(searchInput.value);
-            const totalCountEl = container.querySelector('.total-count');
 
             // Filter the FULL dataset in memory, not just rendered DOM
             const fullData = this._currentMatches || [];
@@ -635,8 +760,13 @@ export class UIManager {
             );
 
             // Update counts
-            if (visibleCountEl) visibleCountEl.textContent = display.length;
-            if (totalCountEl) totalCountEl.textContent = filtered.length;
+            if (resultCountEl) {
+              resultCountEl.textContent = resultCountLabel(
+                display.length,
+                filtered.length,
+                filtered.length > MAX_DISPLAY_RESULTS
+              );
+            }
           }, 150);
         });
 
@@ -720,6 +850,13 @@ export class UIManager {
         return;
       }
 
+      // AbortController for cleanup — abort on dialog close
+      if (container._dialogAbort) container._dialogAbort.abort();
+      const ac = new AbortController();
+      container._dialogAbort = ac;
+
+      this._attachImageDelegation(container, ac.signal);
+
       let assignmentMode = 'sequential';
       const multiSelectEnabled = tokenCount > 1;
 
@@ -737,7 +874,7 @@ export class UIManager {
         const selectedCount = container.querySelectorAll('.match-option.selected').length;
         const countEl = container.querySelector('.selection-count');
         if (countEl) {
-          countEl.textContent = `${selectedCount} selected`;
+          countEl.textContent = i18n('ui.selectedCount', { count: selectedCount });
         }
         if (selectBtn) {
           selectBtn.disabled = selectedCount === 0;
@@ -762,8 +899,7 @@ export class UIManager {
         if (loadingEl) loadingEl.style.display = 'none';
 
         const categoryFilter = container.querySelector('.category-filter');
-        const categoryVisibleCount = container.querySelector('.category-visible-count');
-        const categoryTotalCount = container.querySelector('.category-total-count');
+        const categoryResultCount = container.querySelector('.category-result-count');
         const categorySearchInput = container.querySelector('.category-search-filter-input');
 
         // Store full dataset for filtering
@@ -786,8 +922,13 @@ export class UIManager {
 
         if (categoryFilter) {
           categoryFilter.style.display = 'block';
-          if (categoryVisibleCount) categoryVisibleCount.textContent = displayItems.length;
-          if (categoryTotalCount) categoryTotalCount.textContent = results.length;
+          if (categoryResultCount) {
+            categoryResultCount.textContent = resultCountLabel(
+              displayItems.length,
+              results.length,
+              results.length > MAX_DISPLAY_RESULTS
+            );
+          }
           if (categorySearchInput) categorySearchInput.value = '';
         }
 
@@ -828,37 +969,47 @@ export class UIManager {
             categorySearchInput.dispatchEvent(new Event('input'));
           }
 
-          categorySearchInput.addEventListener('input', () => {
-            toggleClearButton();
-            saveFilterTerm(categorySearchInput.value);
+          // Tie to the dialog's AbortController so re-renders don't stack duplicate listeners
+          categorySearchInput.addEventListener(
+            'input',
+            () => {
+              toggleClearButton();
+              saveFilterTerm(categorySearchInput.value);
 
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-              const filterTerms = parseFilterTerms(categorySearchInput.value);
+              clearTimeout(debounceTimer);
+              debounceTimer = setTimeout(() => {
+                const filterTerms = parseFilterTerms(categorySearchInput.value);
 
-              // Filter the FULL dataset, not just rendered DOM elements
-              const filtered =
-                filterTerms.length > 0
-                  ? fullCategoryResults.filter((m) =>
-                      matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
-                    )
-                  : fullCategoryResults;
+                // Filter the FULL dataset, not just rendered DOM elements
+                const filtered =
+                  filterTerms.length > 0
+                    ? fullCategoryResults.filter((m) =>
+                        matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
+                      )
+                    : fullCategoryResults;
 
-              const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
+                const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
-              // Re-render grid with filtered results
-              this._renderMatchGrid(
-                display,
-                matchGrid,
-                multiSelectEnabled,
-                resolve,
-                updateSelectionCount
-              );
+                // Re-render grid with filtered results
+                this._renderMatchGrid(
+                  display,
+                  matchGrid,
+                  multiSelectEnabled,
+                  resolve,
+                  updateSelectionCount
+                );
 
-              if (categoryVisibleCount) categoryVisibleCount.textContent = display.length;
-              if (categoryTotalCount) categoryTotalCount.textContent = filtered.length;
-            }, 150);
-          });
+                if (categoryResultCount) {
+                  categoryResultCount.textContent = resultCountLabel(
+                    display.length,
+                    filtered.length,
+                    filtered.length > MAX_DISPLAY_RESULTS
+                  );
+                }
+              }, 150);
+            },
+            { signal: ac.signal }
+          );
 
           if (categoryClearBtn) {
             categoryClearBtn.addEventListener('click', () => {
@@ -970,6 +1121,7 @@ export class UIManager {
 
     this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
+      onRender: () => this._wireCancelButton(),
       onClose: () => {
         // Resolve any pending selection Promise so processTokenReplacement doesn't hang
         if (this._pendingResolve) {
@@ -1013,8 +1165,8 @@ export class UIManager {
     try {
       this.mainDialog.updateContent(content);
       this._wireCancelButton();
-    } catch (e) {
-      // Dialog might be in transition
+    } catch (_e) {
+      console.debug(`${MODULE_ID} | Dialog content update failed (may be in transition):`, _e);
     }
   }
 
@@ -1039,14 +1191,14 @@ export class UIManager {
       if (this.cancelCallback) {
         console.log(`${MODULE_ID} | Cancel button clicked`);
         cancelBtn.disabled = true;
-        cancelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelling...';
+        cancelBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(i18n('ui.cancelling'))}`;
 
         try {
           await this.cancelCallback();
-          this.updateDialogContent(await this.createErrorHTML('Operation cancelled by user'));
+          this.updateDialogContent(await this.createErrorHTML(i18n('ui.cancelled')));
         } catch (e) {
           console.error(`${MODULE_ID} | Error during cancellation:`, e);
-          this.updateDialogContent(await this.createErrorHTML('Error cancelling operation'));
+          this.updateDialogContent(await this.createErrorHTML(i18n('ui.cancelFailed')));
         }
 
         this.cancelCallback = null;
@@ -1082,7 +1234,7 @@ export class UIManager {
     if (this.mainDialog) {
       try {
         await this.mainDialog.close();
-      } catch (e) {
+      } catch (_e) {
         // Dialog might already be closed
       }
       this.mainDialog = null;

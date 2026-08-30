@@ -25,6 +25,9 @@ const EXCLUDED_FILENAME_PATTERNS = EXCLUDED_FILENAME_TERMS.map(
 
 /**
  * Load Fuse.js library from CDN
+ * On failure, FuseClass stays null so subsequent calls retry the import.
+ * Note: browsers may cache failed dynamic import() — this is not controllable in userland.
+ * SYNC: Keep in sync with IndexWorker.js loadFuse()
  * @returns {Promise<Function|null>} Fuse constructor or null
  */
 export async function loadFuse() {
@@ -32,12 +35,19 @@ export async function loadFuse() {
 
   try {
     const module = await import(FUSE_CDN);
-    FuseClass = module.default;
+    const Candidate = module.default;
+    if (!_validateFuseShape(Candidate)) {
+      console.error(
+        'token-replacer-fa | Fuse.js loaded but failed shape validation — possible CDN compromise'
+      );
+      return null;
+    }
+    FuseClass = Candidate;
     return FuseClass;
   } catch (error) {
     console.error('token-replacer-fa | Failed to load Fuse.js:', error);
     try {
-      if (window.Fuse) {
+      if (window.Fuse && _validateFuseShape(window.Fuse)) {
         FuseClass = window.Fuse;
         return FuseClass;
       }
@@ -46,6 +56,64 @@ export async function loadFuse() {
     }
     return null;
   }
+}
+
+/**
+ * Validate that a loaded Fuse candidate has the expected constructor shape.
+ * Catches CDN compromise that replaces Fuse.js with arbitrary code.
+ * SYNC: Keep in sync with IndexWorker.js _validateFuseShape()
+ * @param {*} Candidate - The loaded Fuse constructor
+ * @returns {boolean} True if the candidate looks like Fuse.js
+ */
+function _validateFuseShape(Candidate) {
+  try {
+    if (typeof Candidate !== 'function') return false;
+    const instance = new Candidate([{ name: 'test' }], { keys: ['name'] });
+    if (typeof instance.search !== 'function') return false;
+    const results = instance.search('test');
+    return Array.isArray(results);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Localize a key, falling back to a declared English string.
+ *
+ * This exists so a fallback is *declared* rather than improvised. The idiom it
+ * replaces — `game.i18n.localize(key) || 'English'` — never fired: Foundry
+ * returns the key itself for a missing key, which is truthy, so a missing
+ * translation reached the user as a raw `TOKEN_REPLACER_FA.…` string while the
+ * English text sat there unreachable. It also throws outright when called
+ * before `game.i18n` exists, which is exactly when an init-failure notification
+ * needs to say something.
+ *
+ * Marking these call sites is also what lets `npm run validate` fail on every
+ * *other* English literal handed to `ui.notifications.*`: a deliberate fallback
+ * is now distinguishable from one that was simply never translated.
+ *
+ * @param {string} key - Key without the TOKEN_REPLACER_FA prefix
+ * @param {string} english - Text to use when localization cannot answer
+ * @param {Object<string, string|number>} [data={}] - {placeholder} values
+ * @returns {string} Localized text, or the English fallback
+ */
+export function i18nOrEnglish(key, english, data = {}) {
+  const full = `TOKEN_REPLACER_FA.${key}`;
+  let text = english;
+
+  try {
+    const localized = game?.i18n?.localize?.(full);
+    // A missing key comes back as the key itself; an empty string is a blank
+    // translation. Neither is something to show a user.
+    if (localized && localized !== full && localized.trim() !== '') text = localized;
+  } catch (error) {
+    console.debug(`token-replacer-fa | Localization unavailable for ${full}:`, error);
+  }
+
+  for (const [placeholder, value] of Object.entries(data)) {
+    text = text.replaceAll(`{${placeholder}}`, String(value));
+  }
+  return text;
 }
 
 /**
@@ -75,6 +143,12 @@ export function sanitizePath(path) {
   // Trim whitespace
   const trimmed = path.trim();
   if (!trimmed) return null;
+
+  // Reject dangerous URI protocols (javascript:, data:, vbscript:)
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) {
+    console.warn('token-replacer-fa | Rejected path with dangerous protocol:', path);
+    return null;
+  }
 
   // Check for null bytes (could be used to bypass validation)
   if (trimmed.includes('\0')) {
@@ -163,7 +237,7 @@ export function parseSubtypeTerms(subtype) {
   // Split by common delimiters and clean up
   return subtype
     .toLowerCase()
-    .split(/[,;\/&]+/)
+    .split(/[,;&/]+/)
     .map((term) => term.trim())
     .filter((term) => term.length > 0 && !GENERIC_SUBTYPE_INDICATORS.includes(term));
 }
@@ -274,7 +348,7 @@ export function extractPathFromObject(obj, depth = 0) {
     val.startsWith('http') || val.startsWith('forge://') || val.includes('/') || val.includes('.');
 
   for (const prop of pathProps) {
-    if (obj[prop] && typeof obj[prop] === 'string') {
+    if (Object.prototype.hasOwnProperty.call(obj, prop) && typeof obj[prop] === 'string') {
       const val = obj[prop];
       if (isValidPath(val)) {
         return val;
@@ -285,7 +359,10 @@ export function extractPathFromObject(obj, depth = 0) {
   // Check nested .data property (TVA format)
   if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
     for (const prop of pathProps) {
-      if (obj.data[prop] && typeof obj.data[prop] === 'string') {
+      if (
+        Object.prototype.hasOwnProperty.call(obj.data, prop) &&
+        typeof obj.data[prop] === 'string'
+      ) {
         const val = obj.data[prop];
         if (isValidPath(val)) {
           return val;
@@ -296,7 +373,8 @@ export function extractPathFromObject(obj, depth = 0) {
 
   // Check nested objects (general case, depth-limited)
   for (const key of Object.keys(obj)) {
-    if (key === 'data') continue; // Already checked above
+    if (key === 'data' || key === '__proto__' || key === 'constructor' || key === 'prototype')
+      continue;
     const val = obj[key];
     if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
       const nestedPath = extractPathFromObject(val, depth + 1);
@@ -337,6 +415,7 @@ export function extractNameFromTVAResult(item, imagePath) {
 /**
  * CDN URL segments to skip when checking folder exclusions
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
+ * SYNC: Keep in sync with IndexWorker.js CDN_SEGMENTS
  */
 const CDN_SEGMENTS = new Set([
   'https:',
@@ -371,10 +450,25 @@ export function clearExcludedPathCache() {
   excludedPathCache.clear();
 }
 
+/** Evict oldest 25% of cache entries when full */
+function _evictCacheIfFull() {
+  if (excludedPathCache.size < MAX_CACHE_SIZE) return;
+  const toDelete = Math.floor(MAX_CACHE_SIZE * 0.25);
+  let count = 0;
+  for (const k of excludedPathCache.keys()) {
+    if (count++ >= toDelete) break;
+    excludedPathCache.delete(k);
+  }
+}
+
 /**
  * Check if a path should be excluded from token search
  * Checks both folder names and filename for environmental/prop terms
  * Results are memoized for performance (50K+ calls per search)
+ *
+ * The worker copy takes the excluded folders and terms as arguments because it
+ * cannot import Constants.js — the signatures differ, the filtering must not.
+ * SYNC: Keep in sync with IndexWorker.js isExcludedPath()
  * @param {string} path - Image path to check
  * @returns {boolean} True if path should be excluded
  */
@@ -392,7 +486,7 @@ export function isExcludedPath(path) {
 
   // Check folder names against exclusion Set (O(1) per segment instead of O(N) array scan)
   if (folderSegments.some((segment) => EXCLUDED_FOLDERS_SET.has(segment))) {
-    if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
+    _evictCacheIfFull();
     excludedPathCache.set(path, true);
     return true;
   }
@@ -409,7 +503,7 @@ export function isExcludedPath(path) {
   // Match as word boundary: "cliff_entrance" matches "cliff", but "clifford" doesn't
   const result = EXCLUDED_FILENAME_PATTERNS.some((pattern) => pattern.test(filenameClean));
 
-  if (excludedPathCache.size >= MAX_CACHE_SIZE) excludedPathCache.clear();
+  _evictCacheIfFull();
   excludedPathCache.set(path, result);
   return result;
 }

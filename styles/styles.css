@@ -294,11 +294,6 @@
   text-align: right;
 }
 
-.token-replacer-fa-search-filter .result-count span {
-  color: #4ade80;
-  font-weight: 500;
-}
-
 /* ============================================
    MATCH SELECTION GRID
    ============================================ */
@@ -1098,4 +1093,21 @@
 .token-replacer-fa-dialog * {
   scrollbar-width: thin;
   scrollbar-color: #444 #1a1a1a;
+}
+
+/* ============================================
+   Stoppable background-index notification
+   ============================================ */
+
+.notification.token-replacer-fa-stoppable {
+  cursor: pointer;
+}
+
+.notification.token-replacer-fa-stoppable:hover {
+  filter: brightness(1.15);
+}
+
+.notification.token-replacer-fa-stoppable:focus-visible {
+  outline: 2px solid #4ade80;
+  outline-offset: 2px;
 }

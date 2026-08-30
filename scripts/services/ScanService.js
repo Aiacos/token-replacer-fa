@@ -52,7 +52,7 @@ export class ScanService {
           }
         }
       } catch (e) {
-        // Path doesn't exist, skip
+        console.warn(`${MODULE_ID} | Path check failed for "${path}":`, e);
       }
     }
 
@@ -155,10 +155,10 @@ export class ScanService {
 
   /**
    * Build local token index from configured paths
-   * @param {Object} progressDialog - Optional progress dialog
+   * @param {Object} _progressDialog - Optional progress dialog
    * @returns {Promise<Array>} Image index array
    */
-  async buildLocalTokenIndex(progressDialog = null) {
+  async buildLocalTokenIndex(_progressDialog = null) {
     console.log(`${MODULE_ID} | Building local token index...`);
 
     const paths = await this.discoverTokenPaths();
@@ -169,12 +169,10 @@ export class ScanService {
 
     const allImages = [];
     let dirsScanned = 0;
-    let filesFound = 0;
 
     const progressCallback = (info) => {
       if (info.currentDir) {
         dirsScanned++;
-        filesFound += info.filesFound || 0;
       }
     };
 
@@ -269,7 +267,7 @@ export class ScanService {
             }
           }
         } catch (e) {
-          // Continue with next search
+          console.warn(`${MODULE_ID} | TVA search failed for term:`, e);
         }
 
         await yieldToMain(50);

@@ -1,24 +1,31 @@
 {
   "name": "token-replacer-fa",
   "version": "2.12.6",
-  "private": true,
-  "type": "module",
-  "description": "Foundry VTT module — Token artwork replacement with Forgotten Adventures tokens",
   "foundry": {
     "minimum": "13",
     "verified": "14"
   },
+  "private": true,
+  "type": "module",
+  "description": "Foundry VTT module — Token artwork replacement with Forgotten Adventures tokens",
   "scripts": {
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "lint": "eslint scripts/",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint scripts/ tools/ tests/",
+    "lint:fix": "eslint scripts/ tools/ tests/ --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit --project jsconfig.json"
+    "typecheck": "tsc --noEmit --project jsconfig.json",
+    "validate": "node tools/validate-manifest.mjs",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run validate && npm test",
+    "fix": "npm run format && npm run lint:fix",
+    "build": "bash build.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@league-of-foundry-developers/foundry-vtt-types": "^13.346.0-beta.20250812191140",
+    "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "fake-indexeddb": "^6.2.5",
