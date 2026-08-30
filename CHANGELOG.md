@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Automated release pipeline**: the `Release` workflow bumps the version, promotes the changelog, tags, builds, verifies and publishes the GitHub release, then announces it to the Foundry package registry (`tools/publish-foundry.mjs`) — no local steps
+- **Foundry compatibility watch**: a weekly workflow compares `compatibility.verified` against the newest published Foundry generation and opens a bump PR on its own
+- **Dependabot with auto-merge triage**: grouped weekly dependency updates; green patch/minor PRs merge automatically, majors are labelled `needs-review` (`tools/dependabot-triage.mjs`)
+- **`npm run validate`**: static validation of the manifest, version consistency, runtime asset paths (Web Worker and every `.hbs`), i18n key usage and translation parity — the failures that previously only appeared inside a live Foundry world
+- **`npm run check`**: single quality gate (lint → format → typecheck → validate → test) that CI runs verbatim, plus `npm run fix` for the mechanical repairs
+- **Package smoke test in CI**: the built ZIP is inspected to prove it carries every file the module loads at runtime, including `scripts/workers/IndexWorker.js`
+- **Coverage reporting** (`npm run test:coverage`) with the report uploaded as a CI artifact
+- **25 tests for the CI tooling itself** (`tests/tools/`), covering version bumping, changelog promotion, Dependabot triage and manifest validation
+- **`LICENSE`**: the MIT license file the README and CONTRIBUTING already linked to
+- **Constitution in `CLAUDE.md`**: eleven binding articles covering code quality, testing, UX consistency, performance, automated validation, SDK research, documentation, repository hygiene, CI/CD, subagent use and a shared documentation icon vocabulary
+
+### Changed
+
+- CI now runs on Node 20 and 22 and includes format, typecheck and manifest validation
+- ESLint covers `tools/` and `tests/` in addition to `scripts/`
+- README, CONTRIBUTING and CLAUDE.md chapters use the shared icon vocabulary; README gained status badges and a note on automatic updates
+- `SPECIFICATIONS.md` moved to `docs/` and re-scoped to requirements, acceptance test cases and known issues (CLAUDE.md is authoritative for architecture)
+
+### Removed
+
+- Session artifacts left in the repository root: `TEST_SUMMARY.md`, `TESTING-REQUIRED.md`, `TEST-CACHING.md`, `MANUAL_TESTING_GUIDE.md` (a skeleton-loader checklist, not a general guide) and `console-test-script.js` — all describing work already shipped and covered by the suite
+- `fix-todos/`, `security-scan/` and `.auto-claude/` are no longer versioned (kept on disk, now gitignored)
+
 ### Fixed
 
 - **Promise.allSettled for parallel batches**: `SearchOrchestrator` parallel category search now uses `Promise.allSettled` instead of `Promise.all`, preventing one failed category from aborting the entire batch

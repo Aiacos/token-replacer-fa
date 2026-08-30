@@ -3,8 +3,11 @@
 ## Specifications & Requirements Document
 
 **Module ID:** `token-replacer-fa`
-**Version:** 2.10.0
-**Last Updated:** 2026-01-10
+
+> Requirements, feature inventory and manual acceptance test cases. `CLAUDE.md`
+> is authoritative for architecture and `README.md` for user-facing behaviour;
+> where they disagree with this document, they win. Sections 5 (Test Cases),
+> 9 (Known Issues) and 10 (Future Improvements) are the parts kept current.
 
 ---
 
