@@ -51,7 +51,17 @@ function buildPayload(manifest, dryRun = false) {
 async function main() {
   const token = process.env.FOUNDRY_PACKAGE_TOKEN;
   if (!token) {
-    console.log('FOUNDRY_PACKAGE_TOKEN is not set — skipping registry publish');
+    // A ::warning:: annotation, not a plain log: skipping this step means the
+    // release exists on GitHub but Foundry never hears about it, so nobody is
+    // offered the update through the registry or The Forge. That was invisible
+    // for two releases because it only ever printed an ordinary log line.
+    console.log(
+      '::warning title=Release not announced to Foundry::FOUNDRY_PACKAGE_TOKEN is not set. ' +
+        'The GitHub release is published, but the Foundry package registry still advertises the ' +
+        'previous version, so users will not be offered this update from inside Foundry. ' +
+        'Submit the package on foundryvtt.com, then add its admin token as the ' +
+        'FOUNDRY_PACKAGE_TOKEN repository secret.'
+    );
     return;
   }
 
