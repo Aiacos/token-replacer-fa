@@ -214,8 +214,15 @@ export class IndexService {
   }
 
   /**
-   * Cancel the current worker operation
-   * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
+   * Cancel the current index build.
+   *
+   * Sends a cancel command to the worker and raises the flag the main-thread
+   * fallback checks. Note that **no UI currently calls this**: the replacement
+   * dialog deliberately does not, because it never awaits build() — the index is
+   * built in background from the `ready` hook, so cancelling it there would free
+   * some CPU while leaving the session with no category index and nothing to
+   * rebuild it. Exposing a "stop indexing" control is an open design decision;
+   * until then this is reachable only from the console and from tests.
    */
   cancelOperation() {
     // Set unconditionally: the main-thread fallback has no worker to message,

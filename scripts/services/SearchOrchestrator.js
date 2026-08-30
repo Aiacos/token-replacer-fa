@@ -1309,6 +1309,12 @@ export class SearchOrchestrator {
             tokens: group.tokens,
             creatureInfo: group.creatureInfo,
           });
+        } else if (result.reason?.cancelled) {
+          // The cancellation propagates out of every search in the in-flight
+          // batch, so without this a deliberate stop prints one "search failed"
+          // warning per creature type — the same mislabelling the wrapping
+          // catches in IndexService had.
+          this._debugLog('Batch search stopped by cancellation');
         } else {
           console.warn(
             `${MODULE_ID} | Batch search failed for one group:`,

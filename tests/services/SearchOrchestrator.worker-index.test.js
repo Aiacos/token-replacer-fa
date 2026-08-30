@@ -147,3 +147,58 @@ describe('search cancellation', () => {
     expect(orchestrator._cancelRequested).toBe(false);
   });
 });
+
+describe('cancellation is not reported as a failure', () => {
+  it('does not warn once per creature type when the user cancels', async () => {
+    const orchestrator = new SearchOrchestrator({
+      workerFactory: () => createWorker(),
+      getSetting: vi.fn(() => 0.3),
+    });
+
+    const groups = new Map(
+      Array.from({ length: 8 }, (_, i) => [
+        `creature-${i}`,
+        { creatureInfo: { actorName: `Creature ${i}`, type: 'beast' }, tokens: [] },
+      ])
+    );
+
+    // Every search in the in-flight batch rejects with the cancellation, so an
+    // unguarded allSettled loop prints one "search failed" warning per group.
+    orchestrator.searchTokenArt = vi.fn(async () => {
+      orchestrator.cancelOperation();
+      throw orchestrator._cancelledError();
+    });
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await orchestrator.parallelSearchCreatures(groups, []);
+    const failureWarnings = warn.mock.calls.filter(([message]) =>
+      String(message).includes('Batch search failed')
+    );
+    warn.mockRestore();
+
+    expect(failureWarnings).toEqual([]);
+  });
+
+  it('still warns for a genuine search failure', async () => {
+    const orchestrator = new SearchOrchestrator({
+      workerFactory: () => createWorker(),
+      getSetting: vi.fn(() => 0.3),
+    });
+
+    const groups = new Map([
+      ['wolf', { creatureInfo: { actorName: 'Wolf', type: 'beast' }, tokens: [] }],
+    ]);
+    orchestrator.searchTokenArt = vi.fn(async () => {
+      throw new Error('index exploded');
+    });
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await orchestrator.parallelSearchCreatures(groups, []);
+    const failureWarnings = warn.mock.calls.filter(([message]) =>
+      String(message).includes('Batch search failed')
+    );
+    warn.mockRestore();
+
+    expect(failureWarnings.length).toBe(1);
+  });
+});
