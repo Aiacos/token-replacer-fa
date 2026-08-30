@@ -41,7 +41,9 @@ self.addEventListener('message', (event) => {
   try {
     switch (command) {
       case 'indexPaths':
-        handleIndexPaths(data);
+        handleIndexPaths(data).catch((error) => {
+          self.postMessage({ type: 'error', message: error.message });
+        });
         break;
 
       case 'setSearchIndex':
@@ -88,6 +90,21 @@ self.addEventListener('message', (event) => {
 });
 
 /**
+ * Hand the event loop back so queued messages — a cancel, above all — can be
+ * dispatched.
+ *
+ * A worker is single-threaded: while a synchronous loop runs, `postMessage` from
+ * the page sits in the queue and the `cancelled` flag can never flip, so every
+ * cancel check inside the loop reads a value that cannot have changed. Yielding
+ * on a macrotask (not a microtask, which drains before the message queue) is
+ * what makes those checks mean anything.
+ * @returns {Promise<void>}
+ */
+function yieldToMessages() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
  * Handle the indexPaths command
  * Processes an array of image paths and builds a categorized index
  *
@@ -97,7 +114,7 @@ self.addEventListener('message', (event) => {
  * @param {Array} data.excludedFolders - Folder names to exclude
  * @param {Array} data.excludedFilenameTerms - Filename terms to exclude
  */
-function handleIndexPaths(data) {
+async function handleIndexPaths(data) {
   const { paths, creatureTypeMappings, excludedFolders, excludedFilenameTerms } = data;
 
   // Reset cancellation flag at start of operation
@@ -148,9 +165,13 @@ function handleIndexPaths(data) {
 
   let imagesFound = 0;
   const PROGRESS_BATCH = 1000;
+  // Yield rarely: the queue only has to drain often enough for a cancel to feel
+  // immediate, and each yield costs a macrotask round-trip.
+  const YIELD_EVERY = 5000;
 
   // Process each path
   for (let i = 0; i < paths.length; i++) {
+    if (i > 0 && i % YIELD_EVERY === 0) await yieldToMessages();
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;
@@ -239,6 +260,7 @@ function handleIndexPaths(data) {
   // Uses same tokenization regex as IndexService.tokenizeSearchText() — keep in sync
   const termIndex = {};
   for (let id = 0; id < pathList.length; id++) {
+    if (id > 0 && id % YIELD_EVERY === 0) await yieldToMessages();
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;
@@ -382,6 +404,8 @@ async function handleFuzzySearch(data) {
 
   // Search for each term
   for (let i = 0; i < searchTerms.length; i++) {
+    // Each term is a full Fuse pass over the index, so yield on every one.
+    if (i > 0) await yieldToMessages();
     if (cancelled) {
       self.postMessage({ type: 'cancelled' });
       return;

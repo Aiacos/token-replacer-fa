@@ -100,3 +100,50 @@ describe('setSearchIndex freshness', () => {
     expect(indexSends()).toBe(2);
   });
 });
+
+describe('search cancellation', () => {
+  it('stops parallelSearchCreatures at the next batch boundary', async () => {
+    const orchestrator = new SearchOrchestrator({
+      workerFactory: () => createWorker(),
+      getSetting: vi.fn(() => 0.3),
+    });
+
+    const groups = new Map(
+      Array.from({ length: 40 }, (_, i) => [
+        `creature-${i}`,
+        { creatureInfo: { actorName: `Creature ${i}`, type: 'beast' }, tokens: [] },
+      ])
+    );
+
+    orchestrator.searchTokenArt = vi.fn(async () => {
+      // Cancel as soon as the first batch starts working.
+      orchestrator.cancelOperation();
+      return [];
+    });
+
+    const results = await orchestrator.parallelSearchCreatures(groups, []);
+
+    // The batch in flight finishes; the rest are never started.
+    expect(results.size).toBeGreaterThan(0);
+    expect(results.size).toBeLessThan(groups.size);
+  });
+
+  it('clears a stale cancel before a new search phase', async () => {
+    const orchestrator = new SearchOrchestrator({
+      workerFactory: () => createWorker(),
+      getSetting: vi.fn(() => 0.3),
+    });
+    orchestrator.searchTokenArt = vi.fn(async () => []);
+
+    // A cancel left over from a previous run must not abort the next one.
+    orchestrator.cancelOperation();
+    const groups = new Map([
+      ['wolf', { creatureInfo: { actorName: 'Wolf', type: 'beast' }, tokens: [] }],
+    ]);
+
+    const results = await orchestrator.parallelSearchCreatures(groups, []);
+
+    expect(results.size).toBe(1);
+    expect(orchestrator._cancelRequested).toBe(false);
+  });
+});

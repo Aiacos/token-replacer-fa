@@ -141,6 +141,7 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
     super(options);
     this._dialogContent = options.content || '';
     this._onCloseCallback = options.onClose;
+    this._onRenderCallback = options.onRender;
   }
 
   static DEFAULT_OPTIONS = {
@@ -194,6 +195,20 @@ class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
     } else {
       content.appendChild(result);
     }
+  }
+
+  /**
+   * Actions performed after the dialog is rendered.
+   *
+   * The initial render draws content that was never passed through
+   * updateDialogContent(), so anything that wires listeners to that content has
+   * to run from here too — otherwise the first screen's buttons are inert.
+   * @param {Object} context - Render context
+   * @param {Object} options - Render options
+   */
+  async _onRender(context, options) {
+    await super._onRender(context, options);
+    this._onRenderCallback?.();
   }
 
   /**
@@ -1106,6 +1121,7 @@ export class UIManager {
 
     this.mainDialog = new TokenReplacerDialog({
       content: initialContent,
+      onRender: () => this._wireCancelButton(),
       onClose: () => {
         // Resolve any pending selection Promise so processTokenReplacement doesn't hang
         if (this._pendingResolve) {

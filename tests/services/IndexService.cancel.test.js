@@ -138,3 +138,48 @@ describe('SearchOrchestrator cancellation', () => {
     expect(orchestrator.worker).toBe(worker);
   });
 });
+
+describe('the cancellation marker survives the wrapping catches', () => {
+  it('build() re-throws a cancellation instead of relabelling it', async () => {
+    const { service } = createService();
+    // buildFromTVA and build() both wrap anything without an errorType into an
+    // index_build_failed error, which used to strip the marker one frame above
+    // where every caller checks for it.
+    service.loadFromCache = vi.fn(async () => false);
+    service.buildFromTVA = vi.fn(async () => {
+      throw service._cancelledError();
+    });
+
+    await expect(service.build()).rejects.toMatchObject({ cancelled: true });
+  });
+
+  it('build() still wraps a genuine failure', async () => {
+    const { service } = createService();
+    service.loadFromCache = vi.fn(async () => false);
+    service.buildFromTVA = vi.fn(async () => {
+      throw new Error('TVA exploded');
+    });
+
+    await expect(service.build()).rejects.toMatchObject({ errorType: 'index_build_failed' });
+  });
+});
+
+describe('worker cancellation is observable', () => {
+  it('yields inside the indexing loops so a cancel message can be dispatched', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync('scripts/workers/IndexWorker.js', 'utf8');
+
+    // A worker is single-threaded: a synchronous loop holds the event loop, the
+    // cancel message never gets dispatched, and every `if (cancelled)` inside
+    // reads a value that cannot have changed. The awaits are what make the
+    // checks mean anything, so they are the thing worth pinning.
+    expect(source).toMatch(/async function handleIndexPaths\(/);
+    expect(source).toMatch(/function yieldToMessages\(\)/);
+
+    const indexingLoop = source.slice(
+      source.indexOf('async function handleIndexPaths('),
+      source.indexOf('function reportProgress(')
+    );
+    expect(indexingLoop).toMatch(/await yieldToMessages\(\)/);
+  });
+});

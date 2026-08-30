@@ -898,6 +898,11 @@ export class IndexService {
       console.log(`${MODULE_ID} | Falling back to broad search...`);
       return await this.buildFromTVASearch(onProgress);
     } catch (error) {
+      // A cancellation carries no errorType, so wrapping it here would relabel
+      // a deliberate stop as an index-build failure and strip the marker every
+      // caller uses to tell the two apart.
+      if (error?.cancelled) throw error;
+
       this._debugLog('Error during TVA index build:', error);
 
       // Re-throw structured errors
@@ -1544,6 +1549,12 @@ export class IndexService {
           ['rebuild_cache', 'check_paths', 'check_console']
         );
       } catch (error) {
+        // Same as buildFromTVA: a cancellation must reach the caller intact.
+        if (error?.cancelled) {
+          this.isBuilt = false;
+          throw error;
+        }
+
         this._debugLog('Index build failed:', error);
         this.isBuilt = false;
 

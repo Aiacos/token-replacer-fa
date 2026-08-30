@@ -377,6 +377,12 @@ export class SearchOrchestrator {
     const fuse = new Fuse(index, fuseOptions);
 
     for (const term of searchTerms) {
+      // Each term is a full pass over the index; stopping between terms is the
+      // only interruption point this path has.
+      if (this._cancelRequested) {
+        this._debugLog('Direct fuzzy search cancelled by user');
+        throw this._cancelledError();
+      }
       const searchResults = fuse.search(term);
       for (const result of searchResults) {
         const item = result.item;
@@ -1265,7 +1271,17 @@ export class SearchOrchestrator {
     const totalGroups = groupArray.length;
     const results = new Map();
 
+    // A cancel from a previous run must not abort this one before it starts.
+    this._cancelRequested = false;
+
     for (let i = 0; i < groupArray.length; i += PARALLEL_BATCH_SIZE) {
+      // Batch boundaries are where this phase can stop: the searches inside a
+      // batch run concurrently and are awaited together.
+      if (this._cancelRequested) {
+        this._debugLog(`Parallel search cancelled after ${results.size} creature type(s)`);
+        break;
+      }
+
       const batch = groupArray.slice(i, i + PARALLEL_BATCH_SIZE);
 
       if (progressCallback) {

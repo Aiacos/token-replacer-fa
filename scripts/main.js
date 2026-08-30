@@ -383,9 +383,10 @@ export class TokenReplacerApp {
       // the flag stops the pipeline at the next phase boundary.
       uiManager.setCancelCallback(() => {
         this.cancelRequested = true;
-        // Two separate workers run this phase: one builds the index, the other
-        // runs fuzzy search. Cancelling only the first leaves the second going.
-        indexService.cancelOperation();
+        // Only the search is cancelled here. The category index is built in the
+        // background by the `ready` hook and is never awaited by this dialog, so
+        // cancelling it would speed nothing up while destroying a build nothing
+        // ever retries. The flag stops the run at the next phase boundary.
         searchOrchestrator.cancelOperation();
         this._debugLog('Cancellation requested by user');
       });
@@ -745,6 +746,10 @@ export class TokenReplacerApp {
       // A cancellation reaches here when it interrupts an in-flight index build;
       // it is an outcome, not a failure, so report it as such.
       if (error?.cancelled || this.cancelRequested) {
+        // _abortIfCancelled() re-tests the flag, so an error that carries the
+        // marker while the flag is clear would return silently and leave the
+        // user staring at a frozen progress dialog.
+        this.cancelRequested = true;
         await this._abortIfCancelled();
         return;
       }
