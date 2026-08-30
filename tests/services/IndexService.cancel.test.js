@@ -9,6 +9,7 @@
  * @module tests/services/IndexService.cancel
  */
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { IndexService } from '../../scripts/services/IndexService.js';
 
 /**
@@ -181,5 +182,53 @@ describe('worker cancellation is observable', () => {
       source.indexOf('function reportProgress(')
     );
     expect(indexingLoop).toMatch(/await yieldToMessages\(\)/);
+  });
+});
+
+describe('worker teardown always allows a replacement', () => {
+  it('rebuilds after a failed worker build, not just after terminate()', async () => {
+    const { service, worker } = createService();
+    service._ensureWorker();
+    expect(service.worker).toBe(worker);
+
+    // A transient worker failure — a Fuse.js CDN blip, say — used to null the
+    // worker while leaving _workerInitialized true, so _ensureWorker() refused
+    // to replace it and the whole session fell back to the main thread.
+    service.indexPathsWithWorker = vi.fn(async () => {
+      throw new Error('worker exploded');
+    });
+    service._teardownWorker();
+
+    service._ensureWorker();
+    expect(service.worker).toBe(worker);
+    expect(service._workerInitialized).toBe(true);
+  });
+
+  it('survives a terminate() that throws', () => {
+    const { service, worker } = createService();
+    service._ensureWorker();
+    worker.terminate.mockImplementation(() => {
+      throw new Error('already dead');
+    });
+
+    expect(() => service._teardownWorker()).not.toThrow();
+    expect(service.worker).toBeNull();
+    expect(service._workerInitialized).toBe(false);
+  });
+
+  it('leaves no path that nulls the worker without clearing the flag', () => {
+    const source = readFileSync('scripts/services/IndexService.js', 'utf8');
+    const orchestrator = readFileSync('scripts/services/SearchOrchestrator.js', 'utf8');
+
+    // Only three assignments are legitimate per file: the constructor, the
+    // _ensureWorker() catch (which deliberately leaves the flag false so a
+    // transient factory failure can retry), and _teardownWorker() itself.
+    for (const [name, text] of [
+      ['IndexService', source],
+      ['SearchOrchestrator', orchestrator],
+    ]) {
+      const assignments = text.match(/this\.worker = null/g) ?? [];
+      expect(assignments.length, `${name} gained a teardown path outside the helper`).toBe(3);
+    }
   });
 });

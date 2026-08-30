@@ -204,13 +204,35 @@ export class IndexService {
    */
   terminate() {
     if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-      // Allow _ensureWorker() to build a fresh one: without this the service
-      // silently stays on the slow main-thread path for the rest of the session.
-      this._workerInitialized = false;
+      this._teardownWorker();
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
+  }
+
+  /**
+   * Drop the current worker so a later run can build a fresh one.
+   *
+   * Nulling `worker` without also clearing `_workerInitialized` leaves
+   * `_ensureWorker()` refusing to replace it, and the service then stays on the
+   * slow main-thread path for the rest of the session — silently, because every
+   * `if (this.worker)` branch simply takes the fallback. Every teardown goes
+   * through here so that pairing cannot come apart again.
+   *
+   * The trade is deliberate: a worker that fails on every build now costs one
+   * wasted spawn per build, instead of one transient failure costing the whole
+   * session its background indexing.
+   * @private
+   */
+  _teardownWorker() {
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Worker terminate() failed:`, error);
+      }
+    }
+    this.worker = null;
+    this._workerInitialized = false;
   }
 
   /**
@@ -873,7 +895,7 @@ export class IndexService {
             // Worker failed, fallback to direct indexing
             this._debugLog('Worker indexing failed, falling back to direct indexing:', error);
             console.warn(`${MODULE_ID} | Worker failed, falling back to direct indexing:`, error);
-            this.worker = null; // Disable worker for future attempts
+            this._teardownWorker();
             try {
               ui.notifications.warn(
                 game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
@@ -1091,14 +1113,7 @@ export class IndexService {
         console.warn(
           `${MODULE_ID} | Worker build timed out after ${WORKER_BUILD_TIMEOUT_MS / 1000}s, terminating`
         );
-        if (this.worker) {
-          // Atomic teardown: null the reference even if terminate() throws
-          try {
-            this.worker.terminate();
-          } finally {
-            this.worker = null;
-          }
-        }
+        this._teardownWorker();
         reject(
           this._createError(
             'worker_failed',

@@ -124,14 +124,34 @@ export class SearchOrchestrator {
    */
   terminate() {
     if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-      this._workerIndex = null;
-      // Allow _ensureWorker() to build a fresh one: without this the orchestrator
-      // silently stays on the slow main-thread path for the rest of the session.
-      this._workerInitialized = false;
+      this._teardownWorker();
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
+  }
+
+  /**
+   * Drop the current worker so a later search can build a fresh one.
+   *
+   * Nulling `worker` without also clearing `_workerInitialized` leaves
+   * `_ensureWorker()` refusing to replace it, and the orchestrator then runs
+   * every later fuzzy search on the main thread — silently. Every teardown goes
+   * through here so that pairing cannot come apart again.
+   *
+   * `_workerIndex` is cleared too: a fresh worker holds no search index, so the
+   * next search has to send it again.
+   * @private
+   */
+  _teardownWorker() {
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Worker terminate() failed:`, error);
+      }
+    }
+    this.worker = null;
+    this._workerIndex = null;
+    this._workerInitialized = false;
   }
 
   /**
@@ -327,8 +347,7 @@ export class SearchOrchestrator {
         if (error?.cancelled) throw error;
         // Worker failed, fallback to direct search on main thread
         console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
-        this.worker = null;
-        this._workerIndex = null;
+        this._teardownWorker();
         try {
           ui.notifications.warn(
             game.i18n.localize('TOKEN_REPLACER_FA.notifications.workerFallback') ||
@@ -511,11 +530,7 @@ export class SearchOrchestrator {
       timeoutId = setTimeout(() => {
         cleanup();
         // Terminate zombie worker to prevent out-of-order results on subsequent calls
-        if (this.worker) {
-          this.worker.terminate();
-          this.worker = null;
-          this._workerIndex = null;
-        }
+        this._teardownWorker();
         reject(
           createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
             'reload_module',

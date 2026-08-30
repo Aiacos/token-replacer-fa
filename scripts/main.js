@@ -917,8 +917,11 @@ Hooks.once('init', async () => {
           .localize('TOKEN_REPLACER_FA.notifications.initFailed')
           .replace('{error}', error.message || String(error))
       : `Token Replacer FA: Initialization failed. ${error.message || String(error)}`;
+    // Same guard as `msg` above: when i18n is not ready the whole notification
+    // falls back to English, so the label has to follow it rather than throw.
+    const tryLabel = game.i18n ? tokenReplacerApp.i18n('ui.tryThis') : 'Try:';
     if (error.recoverySuggestions?.length > 0) {
-      ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, {
+      ui.notifications.error(`${msg} ${tryLabel} ${error.recoverySuggestions.join('. ')}`, {
         permanent: true,
       });
     } else {
@@ -1073,7 +1076,8 @@ Hooks.once('ready', async () => {
           error: error.message || String(error),
         });
         if (error.recoverySuggestions?.length > 0) {
-          ui.notifications.error(`${msg} Try: ${error.recoverySuggestions.join('. ')}`, {
+          const tryLabel = tokenReplacerApp.i18n('ui.tryThis');
+          ui.notifications.error(`${msg} ${tryLabel} ${error.recoverySuggestions.join('. ')}`, {
             permanent: true,
           });
         } else {
