@@ -5,18 +5,30 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
-import { Scheduler } from '../core/Scheduler.js';
-import { pathFilter } from '../core/PathFilter.js';
+import { pathFilter as defaultPathFilter } from '../core/PathFilter.js';
 import { ModuleError } from '../core/ModuleError.js';
 import { Settings } from '../core/Settings.js';
 import { DebugLogger } from '../core/DebugLogger.js';
+import { Scheduler } from '../core/Scheduler.js';
 import { storageService } from './StorageService.js';
+import { TvaCacheParser } from './tva/TvaCacheParser.js';
+import { TvaCacheRepository } from './tva/TvaCacheRepository.js';
+import { CategoryCache } from './tva/CategoryCache.js';
 
-const TVA_CACHE_KEY = 'tva-cache-v1';
+/** Images processed between yields while building the searchable cache. */
+const CHUNK_SIZE = 5000;
 
 /**
- * TVACacheService - Direct access to TVA's static cache for maximum performance
- * Loads TVA cache file directly and provides fast search methods
+ * Direct access to TVA's static cache file: much faster than TVA's
+ * `doImageSearch`, which runs Fuse over every image per query.
+ *
+ * Owns the loaded state (`tvaCacheImages`, `tvaCacheSearchable`,
+ * `tvaCacheByCategory`) and the load lifecycle: concurrent loads share one
+ * promise, and a reload waits for a load in flight before replacing its data.
+ * Parsing, persistence and the category pre-cache are delegated.
+ *
+ * @pattern Facade — one entry point over TvaCacheParser (file format),
+ * TvaCacheRepository (persistence) and CategoryCache (category lookup).
  */
 export class TVACacheService {
   /**
@@ -24,17 +36,30 @@ export class TVACacheService {
    * @param {function(): Object|null} [deps.getTvaAPI] - Returns TVA API object (default: reads from game.modules)
    * @param {function(string, string): *} [deps.getSetting] - Settings accessor (default: game.settings.get)
    * @param {Object} [deps.storageService] - Storage service instance (default: imported singleton)
+   * @param {{isExcluded: function(string): boolean, clearCache: function(): void}} [deps.pathFilter] - Excluded-path filter (default: shared singleton)
+   * @param {TvaCacheParser} [deps.parser] - TVA cache file parser
+   * @param {CategoryCache} [deps.categoryCache] - Category pre-cache
+   * @param {TvaCacheRepository} [deps.repository] - Persistence of the parsed cache (default: over storageService)
    */
   constructor(deps = {}) {
     const {
       getTvaAPI = () => game.modules.get('token-variants')?.api,
       getSetting = Settings.defaultGetter(),
       storageService: injectedStorage = storageService,
+      pathFilter = defaultPathFilter,
+      parser = new TvaCacheParser(),
+      categoryCache = new CategoryCache(),
     } = deps;
 
     this._getTvaAPI = getTvaAPI;
     this._getSetting = getSetting;
     this._storageService = injectedStorage;
+    this._pathFilter = pathFilter;
+    this._parser = parser;
+    this._categoryCache = categoryCache;
+    this._logger = new DebugLogger('TVACacheService');
+    this._repository =
+      deps.repository ?? new TvaCacheRepository({ storage: injectedStorage, logger: this._logger });
 
     this.tvaAPI = null;
     this.hasTVA = false;
@@ -42,9 +67,7 @@ export class TVACacheService {
     this.tvaCacheImages = [];
     this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
-    this._categoryCache = {};
     this._loadPromise = null; // Promise deduplication for concurrent loads
-    this._logger = new DebugLogger('TVACacheService');
   }
 
   /**
@@ -60,54 +83,28 @@ export class TVACacheService {
 
   /**
    * Build searchable cache from raw images: filter excluded paths, add lowercase fields
-   * in-place (no object duplication), and pre-build category search cache.
+   * in-place (no object duplication), and pre-build the category lookup.
    * Yields to main thread every CHUNK_SIZE items to avoid blocking UI on large datasets.
    * @private
    * @returns {Promise<void>}
    */
   async _buildSearchableCache() {
-    const CHUNK_SIZE = 5000;
     const images = this.tvaCacheImages;
     const result = [];
 
-    // Add lowercase fields in-place and filter excluded paths
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
       img._nameLower = (img.name || '').toLowerCase();
       img._pathLower = (img.path || '').toLowerCase();
-      if (!pathFilter.isExcluded(img.path)) {
+      if (!this._pathFilter.isExcluded(img.path)) {
         result.push(img);
       }
-      // Yield to main thread between chunks for large datasets
       if (i > 0 && i % CHUNK_SIZE === 0) {
-        await new Promise((r) => setTimeout(r, 0));
+        await Scheduler.yieldToMain(0);
       }
     }
     this.tvaCacheSearchable = result;
-
-    // Pre-build category search cache: categoryType → results[]
-    // This converts O(images × terms) per search to O(1) lookup
-    this._categoryCache = {};
-    for (const [categoryType, terms] of Object.entries(CREATURE_TYPE_MAPPINGS)) {
-      const termsLower = terms.map((t) => t.toLowerCase());
-      const categoryResults = [];
-      const seenPaths = new Set();
-
-      for (const img of result) {
-        if (seenPaths.has(img.path)) continue;
-        const meaningfulPath = img._pathLower.split('/').slice(-4).join('/');
-        const matches = termsLower.some(
-          (termLower) => img._nameLower.includes(termLower) || meaningfulPath.includes(termLower)
-        );
-        if (matches) {
-          seenPaths.add(img.path);
-          categoryResults.push(img);
-        }
-      }
-      if (categoryResults.length > 0) {
-        this._categoryCache[categoryType.toLowerCase()] = categoryResults;
-      }
-    }
+    this._categoryCache.build(result);
   }
 
   /**
@@ -213,10 +210,10 @@ export class TVACacheService {
       }
 
       // Try restoring from IndexedDB first (skips fetch + parse entirely)
-      const cached = await this._tryRestoreFromIndexedDB(staticCacheFile);
+      const cached = await this._repository.restore(staticCacheFile);
       if (cached) {
-        this.tvaCacheByCategory = cached.tvaCacheByCategory;
-        this.tvaCacheImages = cached.tvaCacheImages;
+        this.tvaCacheByCategory = cached.byCategory;
+        this.tvaCacheImages = cached.images;
         await this._buildSearchableCache();
         this.tvaCacheLoaded = true;
         const categories = Object.keys(this.tvaCacheByCategory).length;
@@ -290,41 +287,13 @@ export class TVACacheService {
         );
       }
 
-      this.tvaCacheByCategory = {};
-      this.tvaCacheImages = [];
-
-      // Parse the cache file (same logic as TVA's _readCacheFromFile)
-      // Yields every 5000 images to prevent main thread freeze with large caches
-      let parseCount = 0;
-      for (const category in json) {
-        // Skip non-array entries (metadata keys like "version", "timestamp")
-        if (!Array.isArray(json[category])) continue;
-
-        this.tvaCacheByCategory[category] = [];
-
-        for (const img of json[category]) {
-          let imageObj;
-
-          if (Array.isArray(img)) {
-            if (img.length === 3) {
-              imageObj = { path: img[0], name: img[1], tags: img[2], category };
-            } else {
-              imageObj = { path: img[0], name: img[1], category };
-            }
-          } else {
-            // Just a path string - extract name from filename
-            const fileName =
-              img
-                .split('/')
-                .pop()
-                ?.replace(/\.[^/.]+$/, '') || '';
-            imageObj = { path: img, name: fileName, category };
-          }
-
-          this.tvaCacheByCategory[category].push(imageObj);
-          this.tvaCacheImages.push(imageObj);
-          if (++parseCount % 5000 === 0) await Scheduler.yieldToMain(0);
-        }
+      const parsed = await this._parser.parse(json);
+      this.tvaCacheByCategory = parsed.byCategory;
+      this.tvaCacheImages = parsed.images;
+      if (parsed.skipped > 0) {
+        console.warn(
+          `${MODULE_ID} | Skipped ${parsed.skipped} malformed entries in the TVA cache file`
+        );
       }
 
       // Check if cache is empty
@@ -347,8 +316,12 @@ export class TVACacheService {
         `${MODULE_ID} | TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
       );
 
-      // Save to IndexedDB for next startup (fire-and-forget)
-      this._persistToIndexedDB(staticCacheFile, lastModified, contentLength);
+      // Save for next startup (fire-and-forget: the repository never rejects)
+      this._repository.save(this.tvaCacheImages, this.tvaCacheByCategory, {
+        cacheFilePath: staticCacheFile,
+        lastModified,
+        contentLength,
+      });
 
       return true;
     } catch (error) {
@@ -365,102 +338,6 @@ export class TVACacheService {
         ['check_console', 'reload_module', 'contact_support']
       );
     }
-  }
-
-  /**
-   * Try to restore TVA cache from IndexedDB
-   * Validates freshness by comparing Content-Length with a HEAD request
-   * @param {string} cacheFilePath - TVA cache file path
-   * @returns {Promise<Object|null>} Cached data or null if miss/stale
-   * @private
-   */
-  async _tryRestoreFromIndexedDB(cacheFilePath) {
-    try {
-      const cached = await this._storageService.load(TVA_CACHE_KEY);
-      if (!cached?.tvaCacheImages?.length || !cached?.tvaCacheByCategory) {
-        this._logger.log('No valid TVA cache in IndexedDB');
-        return null;
-      }
-
-      // Verify same cache file path
-      if (cached.cacheFilePath !== cacheFilePath) {
-        this._logger.log('IndexedDB cache is for a different file, invalidating');
-        return null;
-      }
-
-      // Check freshness: HEAD request to compare Content-Length
-      try {
-        const headResponse = await fetch(cacheFilePath, {
-          method: 'HEAD',
-          credentials: 'omit',
-          signal: AbortSignal.timeout(3000),
-        });
-        if (headResponse.ok) {
-          const serverLength = parseInt(headResponse.headers.get('Content-Length') || '0');
-          const serverModified = headResponse.headers.get('Last-Modified') || '';
-
-          // If server provides Last-Modified and it differs → stale
-          if (serverModified && cached.lastModified && serverModified !== cached.lastModified) {
-            this._logger.log(
-              `Last-Modified changed: "${cached.lastModified}" → "${serverModified}"`
-            );
-            return null;
-          }
-
-          // If server provides Content-Length and it differs → stale
-          if (
-            serverLength > 0 &&
-            cached.contentLength > 0 &&
-            serverLength !== cached.contentLength
-          ) {
-            this._logger.log(`Content-Length changed: ${cached.contentLength} → ${serverLength}`);
-            return null;
-          }
-        }
-        // If HEAD fails (e.g., CORS), use cached data anyway
-      } catch (headError) {
-        this._logger.log('HEAD request failed, using cached data:', headError.message);
-      }
-
-      this._logger.log(`IndexedDB cache hit: ${cached.tvaCacheImages.length} images`);
-      return cached;
-    } catch (error) {
-      this._logger.log('Error restoring from IndexedDB:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Persist parsed TVA cache to IndexedDB for fast restore on next startup
-   * Fire-and-forget — does not block the caller
-   * @param {string} cacheFilePath - TVA cache file path
-   * @param {string} lastModified - Last-Modified response header
-   * @param {number} contentLength - Content-Length response header
-   * @private
-   */
-  _persistToIndexedDB(cacheFilePath, lastModified, contentLength) {
-    const data = {
-      tvaCacheImages: this.tvaCacheImages,
-      tvaCacheByCategory: this.tvaCacheByCategory,
-      imageCount: this.tvaCacheImages.length,
-      cacheFilePath,
-      lastModified,
-      contentLength,
-      timestamp: Date.now(),
-    };
-
-    this._storageService
-      .save(TVA_CACHE_KEY, data)
-      .then((success) => {
-        if (success) {
-          this._logger.log(`TVA cache persisted to IndexedDB: ${data.imageCount} images`);
-        } else {
-          this._logger.log('Failed to persist TVA cache to IndexedDB');
-        }
-      })
-      .catch((error) => {
-        this._logger.log('Error persisting TVA cache to IndexedDB:', error);
-      });
   }
 
   /**
@@ -481,12 +358,10 @@ export class TVACacheService {
     this.tvaCacheImages = [];
     this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
-    this._categoryCache = {};
-    pathFilter.clearCache();
-    // Clear IndexedDB cache to force fresh fetch
-    await this._storageService.remove(TVA_CACHE_KEY).catch((e) => {
-      console.warn(`${MODULE_ID} | Failed to clear IndexedDB cache:`, e);
-    });
+    this._categoryCache.clear();
+    this._pathFilter.clearCache();
+    // Drop the saved copy so the load below fetches and parses the file afresh
+    await this._repository.remove();
 
     try {
       const result = await this.loadTVACache();
@@ -575,57 +450,23 @@ export class TVACacheService {
 
     const categoryKey = categoryType.toLowerCase();
 
-    // Use pre-built category cache when available (O(1) lookup)
-    if (this._categoryCache && Object.keys(this._categoryCache).length > 0) {
-      const cached = this._categoryCache[categoryKey] || [];
-      const results = cached.map((img) => ({
-        path: img.path,
-        name: img.name,
-        category: img.category,
-        tags: img.tags,
-        source: 'tva-direct',
-        score: 0.3,
-      }));
-
-      const elapsed = Date.now() - startTime;
-      this._logger.log(
-        `Category search completed in ${elapsed}ms: ${results.length} matches (cached)`
-      );
-      return results;
-    }
-
-    // Fallback: scan searchable cache directly (when _categoryCache not built)
-    const categoryTermsLower = categoryTerms.map((t) => t.toLowerCase());
-    const results = [];
-    const seenPaths = new Set();
-
-    for (const img of this.tvaCacheSearchable) {
-      if (seenPaths.has(img.path)) continue;
-
-      const nameLower = img._nameLower ?? (img.name || '').toLowerCase();
-      const pathLower = img._pathLower ?? (img.path || '').toLowerCase();
-      const meaningfulPath = pathLower.split('/').slice(-4).join('/');
-
-      const matches = categoryTermsLower.some(
-        (termLower) => nameLower.includes(termLower) || meaningfulPath.includes(termLower)
-      );
-
-      if (matches) {
-        seenPaths.add(img.path);
-        results.push({
-          path: img.path,
-          name: img.name,
-          category: img.category,
-          tags: img.tags,
-          source: 'tva-direct',
-          score: 0.3,
-        });
-      }
-    }
+    // Pre-built lookup is O(1); a scan only happens before any build (tests, partial state)
+    const built = this._categoryCache.isBuilt;
+    const matches = built
+      ? this._categoryCache.get(categoryKey)
+      : this._categoryCache.scan(this.tvaCacheSearchable, categoryKey);
+    const results = matches.map((img) => ({
+      path: img.path,
+      name: img.name,
+      category: img.category,
+      tags: img.tags,
+      source: 'tva-direct',
+      score: 0.3,
+    }));
 
     const elapsed = Date.now() - startTime;
     this._logger.log(
-      `Category search completed in ${elapsed}ms: ${results.length} matches (scanned)`
+      `Category search completed in ${elapsed}ms: ${results.length} matches (${built ? 'cached' : 'scanned'})`
     );
     return results;
   }
