@@ -270,7 +270,7 @@ describe('SearchOrchestrator', () => {
       });
 
       // Initialize worker
-      orchestrator._ensureWorker();
+      orchestrator._workerClient.ensure();
       expect(orchestrator.worker).toBe(mockWorker);
 
       orchestrator.terminate();
@@ -662,6 +662,25 @@ describe('SearchOrchestrator', () => {
           expect(nameIdx).toBeLessThan(subtypeIdx);
         }
       }
+    });
+
+    it('ranks a perfect score of 0 ahead of a worse score', async () => {
+      // `score || 0.5` turned a perfect 0 into 0.5, ranking it behind a 0.3.
+      const { orchestrator } = createOrchestrator({
+        tvaCacheService: {
+          searchTVACacheDirect: vi.fn(async () => [
+            { path: 'FA_Pack/close.webp', name: 'Close', source: 'tva', score: 0.3 },
+            { path: 'FA_Pack/exact.webp', name: 'Exact', source: 'tva', score: 0 },
+          ]),
+        },
+      });
+
+      const results = await orchestrator.searchTokenArt(
+        { actorName: 'Exact', type: 'beast', subtype: '', searchTerms: ['exact'] },
+        null
+      );
+
+      expect(results.map((r) => r.path)).toEqual(['FA_Pack/exact.webp', 'FA_Pack/close.webp']);
     });
 
     it('filters invalid results (no path, non-string path)', async () => {

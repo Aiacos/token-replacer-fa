@@ -43,7 +43,7 @@ function createOrchestrator(worker) {
     workerFactory: () => worker,
     getSetting: vi.fn(() => 0.3),
   });
-  orchestrator._ensureWorker();
+  orchestrator._workerClient.ensure();
   return orchestrator;
 }
 
@@ -95,7 +95,7 @@ describe('concurrent worker searches', () => {
       (error) => error.errorType
     );
     await vi.advanceTimersByTimeAsync(0);
-    orchestrator.worker = null;
+    orchestrator._workerClient.teardown();
     await vi.advanceTimersByTimeAsync(60_000);
 
     await expect(outcome).resolves.toBe('worker_failed');

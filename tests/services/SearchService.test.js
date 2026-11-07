@@ -51,6 +51,21 @@ describe('SearchService', () => {
       );
     });
 
+    it('wires injected sub-services instead of the singletons', () => {
+      const deps = {
+        tvaCacheService: { init: vi.fn() },
+        forgeBazaarService: { init: vi.fn(), clearCache: vi.fn() },
+        searchOrchestrator: { setDependencies: vi.fn(), clearCache: vi.fn() },
+      };
+      new SearchService(deps).init();
+
+      expect(deps.searchOrchestrator.setDependencies).toHaveBeenCalledWith(
+        deps.tvaCacheService,
+        deps.forgeBazaarService
+      );
+      expect(searchOrchestrator.setDependencies).not.toHaveBeenCalled();
+    });
+
     it('is idempotent — second call does not re-invoke sub-services', () => {
       svc.init();
       svc.init();

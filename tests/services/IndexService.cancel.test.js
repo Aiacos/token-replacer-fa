@@ -122,13 +122,13 @@ describe('SearchOrchestrator cancellation', () => {
 
     // A second worker runs fuzzy search, separate from the indexing one — a
     // cancel that reaches only the indexer leaves this one running.
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
     orchestrator.cancelOperation();
     expect(orchestrator._cancelRequested).toBe(true);
     expect(worker.postMessage).toHaveBeenCalledWith({ command: 'cancel' });
 
     orchestrator.terminate();
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
     expect(orchestrator.worker).toBe(worker);
   });
 });
@@ -194,6 +194,7 @@ describe('worker teardown always allows a replacement', () => {
     const source = readFileSync('scripts/services/IndexService.js', 'utf8');
     const builder = readFileSync('scripts/services/index/WorkerIndexBuilder.js', 'utf8');
     const orchestrator = readFileSync('scripts/services/SearchOrchestrator.js', 'utf8');
+    const searchClient = readFileSync('scripts/services/search/WorkerSearchClient.js', 'utf8');
 
     // The pairing cannot come apart when no service holds the pair: the index
     // worker lives in a ManagedWorker, where "alive" *is* "a worker is held".
@@ -206,12 +207,14 @@ describe('worker teardown always allows a replacement', () => {
     }
     expect(builder).toMatch(/new ManagedWorker\(/);
 
-    // Until SearchOrchestrator adopts ManagedWorker too, its only legitimate
-    // assignments are the constructor, the _ensureWorker() catch and
-    // _teardownWorker() itself.
-    if (!/new ManagedWorker\(/.test(orchestrator)) {
-      const assignments = orchestrator.match(/this\.worker = null/g) ?? [];
-      expect(assignments.length, 'SearchOrchestrator gained a teardown path').toBe(3);
+    // The search worker lives in a ManagedWorker inside WorkerSearchClient.
+    for (const [name, text] of [
+      ['SearchOrchestrator', orchestrator],
+      ['WorkerSearchClient', searchClient],
+    ]) {
+      expect(text, `${name} assigns a worker field again`).not.toMatch(/this\.worker = /);
+      expect(text, `${name} reintroduced the init flag`).not.toMatch(/_workerInitialized/);
     }
+    expect(searchClient).toMatch(/new ManagedWorker\(/);
   });
 });

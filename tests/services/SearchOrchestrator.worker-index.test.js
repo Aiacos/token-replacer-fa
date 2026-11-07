@@ -58,7 +58,7 @@ describe('setSearchIndex freshness', () => {
       workerFactory: () => worker,
       getSetting: vi.fn(() => 0.3),
     });
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
   });
 
   /** Count how many times the index was pushed to the Worker. */
@@ -94,7 +94,7 @@ describe('setSearchIndex freshness', () => {
     await orchestrator.searchLocalIndexWithWorker(['wolf'], index);
 
     orchestrator.terminate();
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
     await orchestrator.searchLocalIndexWithWorker(['wolf'], index);
 
     // A fresh worker holds nothing, even for an index it was sent before.
