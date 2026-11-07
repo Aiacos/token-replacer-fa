@@ -98,14 +98,25 @@ export class TvaCacheParser {
   parseEntry(entry, category) {
     if (typeof entry === 'string') {
       if (entry === '') return null;
-      const fileName = entry.slice(entry.lastIndexOf('/') + 1).replace(EXTENSION, '');
-      return { path: entry, name: fileName, category };
+      return { path: entry, name: this._nameFromPath(entry), category };
     }
     if (Array.isArray(entry) && typeof entry[0] === 'string' && entry[0] !== '') {
-      return entry.length === 3
-        ? { path: entry[0], name: entry[1], tags: entry[2], category }
-        : { path: entry[0], name: entry[1], category };
+      const [path, cachedName, tags] = entry;
+      // The file is untrusted input: a non-string name would throw later in
+      // every lowercase comparison and fail the whole load.
+      const name =
+        typeof cachedName === 'string' && cachedName !== '' ? cachedName : this._nameFromPath(path);
+      return Array.isArray(tags) ? { path, name, tags, category } : { path, name, category };
     }
     return null;
+  }
+
+  /**
+   * @param {string} path - Image path
+   * @returns {string} File name without folder or extension
+   * @private
+   */
+  _nameFromPath(path) {
+    return path.slice(path.lastIndexOf('/') + 1).replace(EXTENSION, '');
   }
 }

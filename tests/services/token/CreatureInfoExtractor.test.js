@@ -19,6 +19,13 @@ function tokenWithType(type, name = 'Creature') {
 }
 
 describe('CreatureInfoExtractor', () => {
+  it('tolerates non-string type fields instead of aborting the run', () => {
+    const extractor = new CreatureInfoExtractor();
+    const info = extractor.extract(tokenWithType({ value: 7, custom: { bad: true } }));
+    expect(info.type).toBeNull();
+    expect(info.custom).toBeNull();
+  });
+
   let warn;
 
   beforeEach(() => {

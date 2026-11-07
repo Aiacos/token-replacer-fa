@@ -162,6 +162,17 @@ describe('StorageService fallback', () => {
   });
 
   describe('migration', () => {
+    it('keeps the data when old and new key match and IndexedDB refuses the write', async () => {
+      // The index migrates in place (same key): a save that falls back to
+      // localStorage lands on the very key the migration then deletes.
+      const fallback = createBackend({ data: { pathList: ['a.webp'] } });
+      const service = new StorageService({ primary: createBackend({ fail: true }), fallback });
+
+      expect(await service.migrateFromLocalStorage('index', 'index')).toBe(true);
+      expect(fallback.write).toHaveBeenCalledWith('index', { pathList: ['a.webp'] });
+      expect(fallback.remove).not.toHaveBeenCalled();
+    });
+
     it('does not remove the old key when saving the migrated data fails', async () => {
       const fallback = createBackend({ data: { old: true } });
       fallback.write.mockRejectedValue(new Error('quota'));

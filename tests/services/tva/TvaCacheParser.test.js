@@ -8,6 +8,19 @@ import { TvaCacheParser } from '../../../scripts/services/tva/TvaCacheParser.js'
 const parser = new TvaCacheParser({ yieldToMain: async () => {} });
 
 describe('TvaCacheParser', () => {
+  it('derives the name from the path when the cached name is not a string', () => {
+    const parser = new TvaCacheParser();
+    expect(parser.parseEntry(['tokens/Goblin_01.webp', 5], 'Humanoid')).toMatchObject({
+      path: 'tokens/Goblin_01.webp',
+      name: 'Goblin_01',
+    });
+    expect(parser.parseEntry(['tokens/Wolf.png', {}, 'not-tags'], 'Beast')).toEqual({
+      path: 'tokens/Wolf.png',
+      name: 'Wolf',
+      category: 'Beast',
+    });
+  });
+
   it('parses a plain path, naming it after the file without extension', async () => {
     const { images } = await parser.parse({ Beasts: ['a/b/Wolf_Grey_01.webp'] });
 

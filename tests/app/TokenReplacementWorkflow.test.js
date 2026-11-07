@@ -337,3 +337,25 @@ describe('TokenReplacementWorkflow — cancellation', () => {
     expect(deps.dialog.cancelCallback).toBeNull();
   });
 });
+
+describe('TokenReplacementWorkflow — after Cancel', () => {
+  it('stops repainting progress over the cancelled screen', async () => {
+    deps.settings.refreshTVACache = true;
+    let paintsBeforeCancel = -1;
+    deps.companions.tvaAPI = {
+      cacheImages: vi.fn(async () => {
+        paintsBeforeCancel = deps.dialog.updateDialogContent.mock.calls.length;
+        await deps.dialog.cancelCallback();
+      }),
+    };
+    const run = build();
+
+    expect(await run.execute()).toBe('cancelled');
+
+    const progressAfterCancel = deps.dialog.updateDialogContent.mock.calls
+      .map(([html]) => html)
+      .slice(paintsBeforeCancel)
+      .filter((html) => html === 'tva' || html === 'search');
+    expect(progressAfterCancel).toEqual([]);
+  });
+});

@@ -60,6 +60,9 @@ export class LocalIndexSource {
     }
   ) {
     this._worker = workerClient;
+    // A worker that fails once (Fuse unreachable from its CDN) fails every
+    // search of the batch; one notice per outage is enough.
+    this._fallbackNotified = false;
     this._fuseLoader = fuseLoader;
     this._pathFilter = pathFilter;
     this._getSetting = getSetting;
@@ -152,11 +155,15 @@ export class LocalIndexSource {
 
     console.log(`${MODULE_ID} | Using Web Worker for fuzzy search`);
     try {
-      return await this.fuzzyWithWorker(searchTerms, index, creatureType, onProgress);
+      const results = await this.fuzzyWithWorker(searchTerms, index, creatureType, onProgress);
+      this._fallbackNotified = false;
+      return results;
     } catch (error) {
       if (error?.cancelled) throw error;
       console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
       this._worker.teardown();
+      if (this._fallbackNotified) return this.fuzzyDirect(searchTerms, index, creatureType);
+      this._fallbackNotified = true;
       try {
         this._notify(
           localizer.orEnglish(

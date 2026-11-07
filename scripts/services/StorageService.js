@@ -197,15 +197,34 @@ export class StorageService {
       }
       console.log(`${MODULE_ID} | Migration successful: "${oldKey}" → "${newKey}"`);
 
-      try {
-        await this._fallback.remove(oldKey);
-      } catch (error) {
-        console.warn(`${MODULE_ID} | Failed to remove old localStorage key "${oldKey}":`, error);
+      // An in-place migration (same key) whose save fell back to localStorage
+      // wrote onto the old key itself: removing it would delete the only copy.
+      if (oldKey !== newKey || (await this._primaryHas(newKey))) {
+        try {
+          await this._fallback.remove(oldKey);
+        } catch (error) {
+          console.warn(`${MODULE_ID} | Failed to remove old localStorage key "${oldKey}":`, error);
+        }
       }
       return true;
     } catch (error) {
       console.error(`${MODULE_ID} | Migration failed with error:`, error);
       console.log(`${MODULE_ID} | Continuing with empty cache - index will rebuild automatically`);
+      return false;
+    }
+  }
+
+  /**
+   * Whether IndexedDB holds a key; a failing lookup counts as "no".
+   * @param {string} key - Storage key
+   * @returns {Promise<boolean>} True when IndexedDB has the key
+   * @private
+   */
+  async _primaryHas(key) {
+    try {
+      return await this._primary.has(key);
+    } catch (error) {
+      console.debug(`${MODULE_ID} | IndexedDB lookup failed for "${key}":`, error);
       return false;
     }
   }

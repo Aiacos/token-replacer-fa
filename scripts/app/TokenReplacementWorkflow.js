@@ -277,13 +277,13 @@ export class TokenReplacementWorkflow {
    * @returns {Promise<void>}
    */
   async _loadTvaCache() {
-    this._dialog.updateDialogContent(await this._dialog.createTVACacheHTML(false));
+    await this._showProgress(() => this._dialog.createTVACacheHTML(false));
     await this._yield(100);
 
     const tvaAPI = this._companions.tvaAPI;
     let loaded;
     if (this._settings.refreshTVACache && tvaAPI?.cacheImages) {
-      this._dialog.updateDialogContent(await this._dialog.createTVACacheHTML(true));
+      await this._showProgress(() => this._dialog.createTVACacheHTML(true));
       await this._yield(50);
       try {
         await tvaAPI.cacheImages();
@@ -316,9 +316,23 @@ export class TokenReplacementWorkflow {
 
   /** @private */
   async _showTvaLoading() {
-    this._dialog.updateDialogContent(
-      await this._dialog.createTVACacheHTML(false, this._localizer.localize('ui.loadingTvaCache'))
+    await this._showProgress(() =>
+      this._dialog.createTVACacheHTML(false, this._localizer.localize('ui.loadingTvaCache'))
     );
+  }
+
+  /**
+   * Paint a progress screen unless the user cancelled: the cancelled screen is
+   * already showing, and a progress screen would cover it with a Cancel button
+   * that no longer does anything.
+   * @private
+   * @param {() => Promise<string>} render - Builds the screen's HTML
+   * @returns {Promise<void>}
+   */
+  async _showProgress(render) {
+    if (this._cancelRequested) return;
+    const html = await render();
+    if (!this._cancelRequested) this._dialog.updateDialogContent(html);
   }
 
   /**
@@ -333,8 +347,8 @@ export class TokenReplacementWorkflow {
     const uniqueCreatures = groups.size;
     this._logger.log(`Searching ${uniqueCreatures} creature types for ${npcTokens.length} tokens`);
 
-    this._dialog.updateDialogContent(
-      await this._dialog.createParallelSearchHTML(
+    await this._showProgress(() =>
+      this._dialog.createParallelSearchHTML(
         0,
         uniqueCreatures,
         uniqueCreatures,
@@ -346,8 +360,8 @@ export class TokenReplacementWorkflow {
 
     return this._searchService.parallelSearchCreatures(groups, localIndex, async (info) => {
       if (info.type === 'batch' && this._dialog.isDialogOpen()) {
-        this._dialog.updateDialogContent(
-          await this._dialog.createParallelSearchHTML(
+        await this._showProgress(() =>
+          this._dialog.createParallelSearchHTML(
             info.completed,
             info.total,
             uniqueCreatures,

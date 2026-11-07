@@ -214,6 +214,25 @@ describe('LocalIndexSource', () => {
     expect(results.map((r) => r.path)).toEqual(['FA/Beasts/wolf.webp']);
   });
 
+  it('tells the user once while the worker keeps failing, and again after it recovers', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const notify = vi.fn();
+    const search = vi.fn(async () => boom());
+    const source = make({ worker: { ensure: () => ({}), teardown: vi.fn(), search }, notify });
+
+    // A CDN failure inside the worker fails every search of a batch.
+    await source.fuzzy(['wolf'], index);
+    await source.fuzzy(['dwarf'], index);
+    await source.fuzzy(['wolf'], index);
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    search.mockResolvedValueOnce([]);
+    await source.fuzzy(['wolf'], index);
+    await source.fuzzy(['wolf'], index);
+    expect(notify).toHaveBeenCalledTimes(2);
+  });
+
   it('does not recover a cancelled worker search on the main thread', async () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const worker = {

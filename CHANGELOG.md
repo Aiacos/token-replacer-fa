@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cancel could be undone by the next progress screen**: a later screen covered the cancelled one with a Cancel button that did nothing.
+- **Upgrading could lose the saved index** when IndexedDB refused the write during the one-time move out of localStorage.
+- **A TVA cache entry with a non-text name failed the whole load**; such entries now use the file name.
+- **One actor with unusual creature-type data stopped the whole run.**
+- **"Background worker failed" was shown once per creature** while the worker kept failing; it now appears once until the worker works again.
 - **Token art with a perfect match score was ranked behind weaker matches.**
 - **A damaged cached index made every search come back empty**: it is now detected on load, discarded and rebuilt.
 - **One unreadable TVA cache location stopped the whole index build**: the next location is now tried instead.

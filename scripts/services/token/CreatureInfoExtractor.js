@@ -104,8 +104,11 @@ export class CreatureInfoExtractor {
    * @private
    */
   _readTypeObject(typeData, info) {
-    const custom = typeData.custom || null;
-    let typeValue = typeData.value || typeData.label || null;
+    // Actor data comes from modules and imports too; one odd field must not
+    // abort grouping for the whole run.
+    const text = (value) => (typeof value === 'string' && value !== '' ? value : null);
+    const custom = text(typeData.custom);
+    let typeValue = text(typeData.value) ?? text(typeData.label);
     if (typeValue === CUSTOM_TYPE || !typeValue) typeValue = custom;
 
     info.type = typeValue ? typeValue.toLowerCase() : null;
