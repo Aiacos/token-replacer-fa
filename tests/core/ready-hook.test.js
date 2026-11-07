@@ -34,9 +34,9 @@ describe('ready hook', () => {
 describe('token replacement without an active scene', () => {
   it('warns once and does not report a second, unrelated error', async () => {
     vi.resetModules();
-    vi.doMock('../../scripts/core/Utils.js', async (importOriginal) => ({
+    vi.doMock('../../scripts/core/FuseLoader.js', async (importOriginal) => ({
       ...(await importOriginal()),
-      loadFuse: vi.fn(async () => function Fuse() {}),
+      fuseLoader: { load: vi.fn(async () => function Fuse() {}) },
     }));
     const { tokenReplacerApp } = await import('../../scripts/main.js');
     const scene = canvas.scene;
@@ -46,7 +46,7 @@ describe('token replacement without an active scene', () => {
       await tokenReplacerApp.processTokenReplacement();
     } finally {
       canvas.scene = scene;
-      vi.doUnmock('../../scripts/core/Utils.js');
+      vi.doUnmock('../../scripts/core/FuseLoader.js');
     }
 
     expect(ui.notifications.warn).toHaveBeenCalledTimes(1);

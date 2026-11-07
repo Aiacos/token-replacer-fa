@@ -7,14 +7,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Fuse from 'fuse.js';
 import { SearchOrchestrator } from '../../scripts/services/SearchOrchestrator.js';
 
-// Mock loadFuse to return real Fuse.js from devDependency instead of CDN import
-vi.mock('../../scripts/core/Utils.js', async (importOriginal) => {
+// Mock fuseLoader.load() to return real Fuse.js from devDependency instead of CDN import
+vi.mock('../../scripts/core/FuseLoader.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, loadFuse: vi.fn(async () => Fuse) };
+  return { ...actual, fuseLoader: { load: vi.fn(async () => Fuse) } };
 });
 
-// Re-import loadFuse so we can override it per-test when needed
-import { loadFuse } from '../../scripts/core/Utils.js';
+// Re-import fuseLoader so we can override it per-test when needed
+import { fuseLoader } from '../../scripts/core/FuseLoader.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -153,8 +153,8 @@ function createOrchestrator(overrides = {}) {
 describe('SearchOrchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Restore default loadFuse mock
-    vi.mocked(loadFuse).mockResolvedValue(Fuse);
+    // Restore default fuseLoader.load() mock
+    vi.mocked(fuseLoader.load).mockResolvedValue(Fuse);
   });
 
   // -----------------------------------------------------------------------
@@ -397,8 +397,8 @@ describe('SearchOrchestrator', () => {
       expect(results).toEqual([]);
     });
 
-    it('returns empty when loadFuse returns null', async () => {
-      vi.mocked(loadFuse).mockResolvedValueOnce(null);
+    it('returns empty when fuseLoader.load() returns null', async () => {
+      vi.mocked(fuseLoader.load).mockResolvedValueOnce(null);
       const { orchestrator } = createOrchestrator();
       const index = createTestIndex();
 
@@ -986,8 +986,8 @@ describe('SearchOrchestrator', () => {
   // -----------------------------------------------------------------------
   describe('Integration: fallback path (INTG-02)', () => {
     it('falls back to category search when fuzzy returns nothing', async () => {
-      // Override loadFuse to return a Fuse stub that always returns empty
-      vi.mocked(loadFuse).mockResolvedValue(
+      // Override fuseLoader.load() to return a Fuse stub that always returns empty
+      vi.mocked(fuseLoader.load).mockResolvedValue(
         class StubFuse {
           search() {
             return [];

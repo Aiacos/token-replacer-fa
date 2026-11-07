@@ -240,7 +240,7 @@ if (englishKeys) {
 // game.i18n does not exist yet, so a literal-scanning rule would have fired
 // mostly on correct code and been switched off within a week.
 //
-// Those fallbacks now go through i18nOrEnglish(key, english), which declares
+// Those fallbacks now go through localizer.orEnglish(key, english), which declares
 // them. That is what makes this rule possible: any *other* English literal
 // reaching a notification is text nobody translated.
 const NOTIFICATION_CALL = /ui\.notifications\.(?:info|warn|error|notify)\s*\(/g;
@@ -286,7 +286,7 @@ for (const file of scriptFiles) {
   for (const match of source.matchAll(NOTIFICATION_CALL)) {
     const argument = firstArgument(source, match.index + match[0].length);
     // A declared fallback is the one place an English literal belongs.
-    if (argument.includes('i18nOrEnglish(')) continue;
+    if (argument.includes('localizer.orEnglish(')) continue;
 
     const literals = [
       ...argument.matchAll(/'([^'\\]*(?:\\.[^'\\]*)*)'/g),
@@ -299,7 +299,7 @@ for (const file of scriptFiles) {
       const withoutInterpolation = literal.replace(/\$\{[^}]*\}/g, ' ');
       if (ENGLISH_PROSE.test(withoutInterpolation)) {
         fail(
-          `${relative} passes untranslated text to a notification: "${withoutInterpolation.trim().slice(0, 60)}" — use i18n(), or i18nOrEnglish() for a deliberate fallback`
+          `${relative} passes untranslated text to a notification: "${withoutInterpolation.trim().slice(0, 60)}" — use i18n(), or localizer.orEnglish() for a deliberate fallback`
         );
       }
     }

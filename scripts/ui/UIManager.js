@@ -12,12 +12,9 @@ import {
   MAX_DISPLAY_RESULTS,
   FALLBACK_IMAGE,
 } from '../core/Constants.js';
-import {
-  escapeHtml,
-  parseFilterTerms,
-  matchesAllTerms,
-  renderModuleTemplate,
-} from '../core/Utils.js';
+import { HtmlSanitizer } from '../core/HtmlSanitizer.js';
+import { FilterQuery } from '../core/FilterQuery.js';
+import { templateRenderer } from '../core/TemplateRenderer.js';
 
 // i18n cache to avoid repeated localization lookups
 const I18N_CACHE = new Map();
@@ -313,7 +310,7 @@ export class UIManager {
     const shortDir =
       currentDir.length > 50 ? '...' + currentDir.substring(currentDir.length - 47) : currentDir;
 
-    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/scan-progress.hbs`, {
+    return await templateRenderer.render(`modules/${MODULE_ID}/templates/scan-progress.hbs`, {
       currentDir,
       shortDir,
       dirsScanned,
@@ -344,7 +341,7 @@ export class UIManager {
   async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/parallel-search.hbs`, {
+    return await templateRenderer.render(`modules/${MODULE_ID}/templates/parallel-search.hbs`, {
       percent,
       completed,
       total,
@@ -398,7 +395,7 @@ export class UIManager {
     // Restore filter term from localStorage for session persistence
     const savedFilterTerm = loadFilterTerm();
 
-    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/match-selection.hbs`, {
+    return await templateRenderer.render(`modules/${MODULE_ID}/templates/match-selection.hbs`, {
       currentImage: creatureInfo.currentImage,
       actorName: creatureInfo.actorName,
       type: creatureInfo.type || 'Unknown',
@@ -444,7 +441,7 @@ export class UIManager {
     // Restore filter term from localStorage for session persistence
     const savedFilterTerm = loadFilterTerm();
 
-    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/no-match.hbs`, {
+    return await templateRenderer.render(`modules/${MODULE_ID}/templates/no-match.hbs`, {
       currentImage: creatureInfo.currentImage,
       actorName: creatureInfo.actorName,
       type: creatureInfo.type || 'Unknown',
@@ -482,7 +479,7 @@ export class UIManager {
     const { current, total, term, resultsFound } = progress;
     const percent = total > 0 ? Math.round((current / total) * 100) : 0;
 
-    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/search-progress.hbs`, {
+    return await templateRenderer.render(`modules/${MODULE_ID}/templates/search-progress.hbs`, {
       categoryType,
       percent,
       current,
@@ -527,7 +524,7 @@ export class UIManager {
         r.status === 'success' ? 'fa-check' : r.status === 'failed' ? 'fa-times' : 'fa-forward',
     }));
 
-    return await renderModuleTemplate(`modules/${MODULE_ID}/templates/progress.hbs`, {
+    return await templateRenderer.render(`modules/${MODULE_ID}/templates/progress.hbs`, {
       percent,
       current,
       total,
@@ -553,7 +550,7 @@ export class UIManager {
   async createTVACacheHTML(refreshing = false, customMessage = null) {
     const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
     const statusMessage = customMessage || i18n('ui.usingTvaCache');
-    return await renderModuleTemplate(templatePath, {
+    return await templateRenderer.render(templatePath, {
       refreshing,
       statusMessage,
       refreshingLabel: i18n('ui.refreshingCache'),
@@ -579,7 +576,7 @@ export class UIManager {
     const data =
       typeof errorData === 'string' ? { errorType: 'error', message: errorData } : errorData;
 
-    return await renderModuleTemplate(templatePath, {
+    return await templateRenderer.render(templatePath, {
       errorType: data.errorType || 'error',
       message: data.message,
       details: data.details,
@@ -603,12 +600,12 @@ export class UIManager {
     // CSS visibility toggling would avoid image re-downloads but adds complexity for limited gain.
     gridEl.innerHTML = matches
       .map((match, idx) => {
-        const safeMatchName = escapeHtml(match.name);
-        const safePath = escapeHtml(match.path);
+        const safeMatchName = HtmlSanitizer.escape(match.name);
+        const safePath = HtmlSanitizer.escape(match.path);
         const scoreDisplay =
           match.score !== undefined
             ? `${Math.round((1 - match.score) * 100)}%`
-            : escapeHtml(match.source || '');
+            : HtmlSanitizer.escape(match.source || '');
         return `
         <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
           <div class="skeleton-loader skeleton-72">
@@ -731,16 +728,13 @@ export class UIManager {
 
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            const filterTerms = parseFilterTerms(searchInput.value);
+            const query = FilterQuery.parse(searchInput.value);
 
             // Filter the FULL dataset in memory, not just rendered DOM
             const fullData = this._currentMatches || [];
-            const filtered =
-              filterTerms.length > 0
-                ? fullData.filter((m) =>
-                    matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
-                  )
-                : fullData;
+            const filtered = query.isEmpty
+              ? fullData
+              : fullData.filter((m) => query.matches((m.name || '') + ' ' + (m.path || '')));
 
             // Cap for rendering
             const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
@@ -923,7 +917,7 @@ export class UIManager {
             matchGrid.innerHTML = `
             <div class="no-results-message">
               <i class="fas fa-folder-open"></i>
-              <span>${escapeHtml(i18n('dialog.noResultsInCategory'))}</span>
+              <span>${HtmlSanitizer.escape(i18n('dialog.noResultsInCategory'))}</span>
             </div>
           `;
           return;
@@ -986,15 +980,14 @@ export class UIManager {
 
               clearTimeout(debounceTimer);
               debounceTimer = setTimeout(() => {
-                const filterTerms = parseFilterTerms(categorySearchInput.value);
+                const query = FilterQuery.parse(categorySearchInput.value);
 
                 // Filter the FULL dataset, not just rendered DOM elements
-                const filtered =
-                  filterTerms.length > 0
-                    ? fullCategoryResults.filter((m) =>
-                        matchesAllTerms((m.name || '') + ' ' + (m.path || ''), filterTerms)
-                      )
-                    : fullCategoryResults;
+                const filtered = query.isEmpty
+                  ? fullCategoryResults
+                  : fullCategoryResults.filter((m) =>
+                      query.matches((m.name || '') + ' ' + (m.path || ''))
+                    );
 
                 const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
 
@@ -1206,7 +1199,7 @@ export class UIManager {
       if (this.cancelCallback) {
         console.log(`${MODULE_ID} | Cancel button clicked`);
         cancelBtn.disabled = true;
-        cancelBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${escapeHtml(i18n('ui.cancelling'))}`;
+        cancelBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${HtmlSanitizer.escape(i18n('ui.cancelling'))}`;
 
         try {
           await this.cancelCallback();

@@ -5,14 +5,11 @@
  */
 
 import { MODULE_ID, CREATURE_TYPE_MAPPINGS } from '../core/Constants.js';
-import {
-  isExcludedPath,
-  clearExcludedPathCache,
-  yieldToMain,
-  createModuleError,
-  createDebugLogger,
-  createDefaultGetSetting,
-} from '../core/Utils.js';
+import { Scheduler } from '../core/Scheduler.js';
+import { pathFilter } from '../core/PathFilter.js';
+import { ModuleError } from '../core/ModuleError.js';
+import { Settings } from '../core/Settings.js';
+import { DebugLogger } from '../core/DebugLogger.js';
 import { storageService } from './StorageService.js';
 
 const TVA_CACHE_KEY = 'tva-cache-v1';
@@ -31,7 +28,7 @@ export class TVACacheService {
   constructor(deps = {}) {
     const {
       getTvaAPI = () => game.modules.get('token-variants')?.api,
-      getSetting = createDefaultGetSetting(),
+      getSetting = Settings.defaultGetter(),
       storageService: injectedStorage = storageService,
     } = deps;
 
@@ -47,9 +44,7 @@ export class TVACacheService {
     this.tvaCacheByCategory = {};
     this._categoryCache = {};
     this._loadPromise = null; // Promise deduplication for concurrent loads
-    // Shared utilities
-    this._createError = createModuleError;
-    this._debugLog = createDebugLogger('TVACacheService');
+    this._logger = new DebugLogger('TVACacheService');
   }
 
   /**
@@ -80,7 +75,7 @@ export class TVACacheService {
       const img = images[i];
       img._nameLower = (img.name || '').toLowerCase();
       img._pathLower = (img.path || '').toLowerCase();
-      if (!isExcludedPath(img.path)) {
+      if (!pathFilter.isExcluded(img.path)) {
         result.push(img);
       }
       // Yield to main thread between chunks for large datasets
@@ -128,17 +123,16 @@ export class TVACacheService {
 
     // Promise deduplication: join in-progress load
     if (this._loadPromise) {
-      this._debugLog('Cache load already in progress, joining existing promise');
+      this._logger.log('Cache load already in progress, joining existing promise');
       return this._loadPromise;
     }
 
     if (!this.hasTVA || !this.tvaAPI) {
-      this._debugLog('TVA not available, cannot load cache');
-      throw this._createError(
-        'tva_missing',
-        'Token Variant Art module is not installed or enabled',
-        ['install_tva', 'check_console']
-      );
+      this._logger.log('TVA not available, cannot load cache');
+      throw ModuleError.of('tva_missing', 'Token Variant Art module is not installed or enabled', [
+        'install_tva',
+        'check_console',
+      ]);
     }
 
     // Assign _loadPromise BEFORE the first await (the caching poll) so concurrent callers
@@ -149,22 +143,22 @@ export class TVACacheService {
       if (typeof isCaching === 'function') {
         const startWait = Date.now();
         while (isCaching() && Date.now() - startWait < maxWaitMs) {
-          this._debugLog(
+          this._logger.log(
             `Waiting for TVA to finish caching... (${Date.now() - startWait}ms elapsed)`
           );
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
 
         if (isCaching()) {
-          this._debugLog(`TVA still caching after ${maxWaitMs}ms, proceeding anyway`);
+          this._logger.log(`TVA still caching after ${maxWaitMs}ms, proceeding anyway`);
           // Throw error instead of proceeding - cache likely not ready
-          throw this._createError(
+          throw ModuleError.of(
             'tva_still_caching',
             `Token Variant Art still caching after ${maxWaitMs}ms timeout`,
             ['wait_for_cache', 'reload_module']
           );
         } else {
-          this._debugLog('TVA caching complete, loading cache directly');
+          this._logger.log('TVA caching complete, loading cache directly');
         }
       }
 
@@ -183,15 +177,15 @@ export class TVACacheService {
    */
   async _loadTVACacheFromFile() {
     if (this.tvaCacheLoaded) {
-      this._debugLog('TVA cache already loaded, skipping');
+      this._logger.log('TVA cache already loaded, skipping');
       return true;
     }
 
     try {
       const tvaConfig = this.tvaAPI?.TVA_CONFIG;
       if (!tvaConfig) {
-        this._debugLog('TVA_CONFIG not accessible');
-        throw this._createError(
+        this._logger.log('TVA_CONFIG not accessible');
+        throw ModuleError.of(
           'cache_load_failed',
           'TVA_CONFIG not accessible - TVA API may not be fully initialized',
           ['reload_module', 'check_console']
@@ -200,8 +194,8 @@ export class TVACacheService {
 
       // Check if static cache is enabled
       if (!tvaConfig.staticCache) {
-        this._debugLog('TVA static cache is disabled in settings');
-        throw this._createError(
+        this._logger.log('TVA static cache is disabled in settings');
+        throw ModuleError.of(
           'tva_cache_disabled',
           'TVA static cache is disabled in Token Variant Art settings',
           ['enable_static_cache', 'rebuild_cache']
@@ -210,8 +204,8 @@ export class TVACacheService {
 
       const staticCacheFile = tvaConfig.staticCacheFile;
       if (!staticCacheFile) {
-        this._debugLog('No static cache file configured in TVA');
-        throw this._createError(
+        this._logger.log('No static cache file configured in TVA');
+        throw ModuleError.of(
           'cache_load_failed',
           'No static cache file path configured in Token Variant Art',
           ['rebuild_cache', 'enable_static_cache']
@@ -226,7 +220,7 @@ export class TVACacheService {
         await this._buildSearchableCache();
         this.tvaCacheLoaded = true;
         const categories = Object.keys(this.tvaCacheByCategory).length;
-        this._debugLog(
+        this._logger.log(
           `TVA cache restored from IndexedDB: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
         );
         console.log(
@@ -236,14 +230,14 @@ export class TVACacheService {
       }
 
       // IndexedDB miss — full fetch + parse
-      this._debugLog(`Loading TVA cache from file: ${staticCacheFile}`);
+      this._logger.log(`Loading TVA cache from file: ${staticCacheFile}`);
 
       // Validate cache file path: must be relative or same-origin
       if (staticCacheFile.startsWith('//') || /^[a-z]+:/i.test(staticCacheFile)) {
         try {
           const cacheUrl = new URL(staticCacheFile, globalThis.location?.origin);
           if (globalThis.location && cacheUrl.origin !== globalThis.location.origin) {
-            throw this._createError(
+            throw ModuleError.of(
               'invalid_cache_path',
               `TVA cache file URL points to external origin: ${cacheUrl.origin}`,
               ['check_tva_config', 'rebuild_cache']
@@ -252,7 +246,7 @@ export class TVACacheService {
         } catch (urlError) {
           if (urlError.errorType === 'invalid_cache_path') throw urlError;
           // Malformed URL — reject
-          throw this._createError(
+          throw ModuleError.of(
             'invalid_cache_path',
             `Invalid TVA cache file path: ${staticCacheFile}`,
             ['check_tva_config', 'rebuild_cache']
@@ -262,8 +256,8 @@ export class TVACacheService {
 
       const response = await fetch(staticCacheFile, { credentials: 'omit' });
       if (!response.ok) {
-        this._debugLog(`Failed to load TVA cache file: HTTP ${response.status}`);
-        throw this._createError(
+        this._logger.log(`Failed to load TVA cache file: HTTP ${response.status}`);
+        throw ModuleError.of(
           'network_error',
           `Failed to fetch TVA cache file: HTTP ${response.status} ${response.statusText}`,
           ['check_network', 'rebuild_cache', 'check_file_access']
@@ -278,8 +272,8 @@ export class TVACacheService {
       try {
         json = await response.json();
       } catch (parseError) {
-        this._debugLog('Failed to parse TVA cache JSON:', parseError);
-        throw this._createError(
+        this._logger.log('Failed to parse TVA cache JSON:', parseError);
+        throw ModuleError.of(
           'cache_load_failed',
           `Invalid JSON in TVA cache file: ${parseError.message}`,
           ['rebuild_cache', 'check_console']
@@ -288,8 +282,8 @@ export class TVACacheService {
 
       // Validate cache structure
       if (!json || typeof json !== 'object') {
-        this._debugLog('TVA cache file contains invalid data structure');
-        throw this._createError(
+        this._logger.log('TVA cache file contains invalid data structure');
+        throw ModuleError.of(
           'cache_load_failed',
           'TVA cache file contains invalid data structure (not an object)',
           ['rebuild_cache']
@@ -329,14 +323,14 @@ export class TVACacheService {
 
           this.tvaCacheByCategory[category].push(imageObj);
           this.tvaCacheImages.push(imageObj);
-          if (++parseCount % 5000 === 0) await yieldToMain(0);
+          if (++parseCount % 5000 === 0) await Scheduler.yieldToMain(0);
         }
       }
 
       // Check if cache is empty
       if (this.tvaCacheImages.length === 0) {
-        this._debugLog('TVA cache loaded but contains no images');
-        throw this._createError(
+        this._logger.log('TVA cache loaded but contains no images');
+        throw ModuleError.of(
           'tva_cache_empty',
           'TVA cache file loaded successfully but contains no images',
           ['rebuild_cache', 'check_paths']
@@ -346,7 +340,7 @@ export class TVACacheService {
       await this._buildSearchableCache();
       this.tvaCacheLoaded = true;
       const categories = Object.keys(this.tvaCacheByCategory).length;
-      this._debugLog(
+      this._logger.log(
         `TVA cache parsed from file: ${this.tvaCacheImages.length} images (${this.tvaCacheSearchable.length} searchable) in ${categories} categories`
       );
       console.log(
@@ -364,8 +358,8 @@ export class TVACacheService {
       }
 
       // Otherwise, wrap unexpected errors
-      this._debugLog('Unexpected error loading TVA cache:', error);
-      throw this._createError(
+      this._logger.log('Unexpected error loading TVA cache:', error);
+      throw ModuleError.of(
         'unknown',
         `Unexpected error loading TVA cache: ${error.message || String(error)}`,
         ['check_console', 'reload_module', 'contact_support']
@@ -384,13 +378,13 @@ export class TVACacheService {
     try {
       const cached = await this._storageService.load(TVA_CACHE_KEY);
       if (!cached?.tvaCacheImages?.length || !cached?.tvaCacheByCategory) {
-        this._debugLog('No valid TVA cache in IndexedDB');
+        this._logger.log('No valid TVA cache in IndexedDB');
         return null;
       }
 
       // Verify same cache file path
       if (cached.cacheFilePath !== cacheFilePath) {
-        this._debugLog('IndexedDB cache is for a different file, invalidating');
+        this._logger.log('IndexedDB cache is for a different file, invalidating');
         return null;
       }
 
@@ -407,7 +401,9 @@ export class TVACacheService {
 
           // If server provides Last-Modified and it differs → stale
           if (serverModified && cached.lastModified && serverModified !== cached.lastModified) {
-            this._debugLog(`Last-Modified changed: "${cached.lastModified}" → "${serverModified}"`);
+            this._logger.log(
+              `Last-Modified changed: "${cached.lastModified}" → "${serverModified}"`
+            );
             return null;
           }
 
@@ -417,19 +413,19 @@ export class TVACacheService {
             cached.contentLength > 0 &&
             serverLength !== cached.contentLength
           ) {
-            this._debugLog(`Content-Length changed: ${cached.contentLength} → ${serverLength}`);
+            this._logger.log(`Content-Length changed: ${cached.contentLength} → ${serverLength}`);
             return null;
           }
         }
         // If HEAD fails (e.g., CORS), use cached data anyway
       } catch (headError) {
-        this._debugLog('HEAD request failed, using cached data:', headError.message);
+        this._logger.log('HEAD request failed, using cached data:', headError.message);
       }
 
-      this._debugLog(`IndexedDB cache hit: ${cached.tvaCacheImages.length} images`);
+      this._logger.log(`IndexedDB cache hit: ${cached.tvaCacheImages.length} images`);
       return cached;
     } catch (error) {
-      this._debugLog('Error restoring from IndexedDB:', error);
+      this._logger.log('Error restoring from IndexedDB:', error);
       return null;
     }
   }
@@ -457,13 +453,13 @@ export class TVACacheService {
       .save(TVA_CACHE_KEY, data)
       .then((success) => {
         if (success) {
-          this._debugLog(`TVA cache persisted to IndexedDB: ${data.imageCount} images`);
+          this._logger.log(`TVA cache persisted to IndexedDB: ${data.imageCount} images`);
         } else {
-          this._debugLog('Failed to persist TVA cache to IndexedDB');
+          this._logger.log('Failed to persist TVA cache to IndexedDB');
         }
       })
       .catch((error) => {
-        this._debugLog('Error persisting TVA cache to IndexedDB:', error);
+        this._logger.log('Error persisting TVA cache to IndexedDB:', error);
       });
   }
 
@@ -473,7 +469,7 @@ export class TVACacheService {
    * @throws {Object} Structured error if reload fails
    */
   async reloadTVACache() {
-    this._debugLog('Reloading TVA cache...');
+    this._logger.log('Reloading TVA cache...');
     // loadTVACache() joins a load already in flight, which would hand back the
     // very data this reload exists to replace. Let it finish first.
     if (this._loadPromise) {
@@ -486,7 +482,7 @@ export class TVACacheService {
     this.tvaCacheSearchable = [];
     this.tvaCacheByCategory = {};
     this._categoryCache = {};
-    clearExcludedPathCache();
+    pathFilter.clearCache();
     // Clear IndexedDB cache to force fresh fetch
     await this._storageService.remove(TVA_CACHE_KEY).catch((e) => {
       console.warn(`${MODULE_ID} | Failed to clear IndexedDB cache:`, e);
@@ -494,10 +490,10 @@ export class TVACacheService {
 
     try {
       const result = await this.loadTVACache();
-      this._debugLog('TVA cache reloaded successfully');
+      this._logger.log('TVA cache reloaded successfully');
       return result;
     } catch (error) {
-      this._debugLog('Failed to reload TVA cache:', error);
+      this._logger.log('Failed to reload TVA cache:', error);
       throw error;
     }
   }
@@ -509,16 +505,16 @@ export class TVACacheService {
    */
   async searchTVACacheDirect(searchTerm) {
     if (!this.tvaCacheLoaded) {
-      this._debugLog('Cannot search: TVA cache not loaded');
+      this._logger.log('Cannot search: TVA cache not loaded');
       return [];
     }
 
     if (!searchTerm) {
-      this._debugLog('Cannot search: empty search term');
+      this._logger.log('Cannot search: empty search term');
       return [];
     }
 
-    this._debugLog(`Searching TVA cache for: "${searchTerm}"`);
+    this._logger.log(`Searching TVA cache for: "${searchTerm}"`);
     const startTime = Date.now();
 
     const termLower = searchTerm.toLowerCase();
@@ -544,7 +540,7 @@ export class TVACacheService {
     results.sort((a, b) => a.score - b.score);
 
     const elapsed = Date.now() - startTime;
-    this._debugLog(`Search completed in ${elapsed}ms: ${results.length} matches found`);
+    this._logger.log(`Search completed in ${elapsed}ms: ${results.length} matches found`);
 
     return results;
   }
@@ -557,22 +553,22 @@ export class TVACacheService {
    */
   async searchTVACacheByCategory(categoryType) {
     if (!this.tvaCacheLoaded) {
-      this._debugLog('Cannot search by category: TVA cache not loaded');
+      this._logger.log('Cannot search by category: TVA cache not loaded');
       return [];
     }
 
     if (!categoryType) {
-      this._debugLog('Cannot search by category: empty category type');
+      this._logger.log('Cannot search by category: empty category type');
       return [];
     }
 
     const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType.toLowerCase()] || [];
     if (categoryTerms.length === 0) {
-      this._debugLog(`No category mapping found for: "${categoryType}"`);
+      this._logger.log(`No category mapping found for: "${categoryType}"`);
       return [];
     }
 
-    this._debugLog(
+    this._logger.log(
       `Searching TVA cache by category: "${categoryType}" (${categoryTerms.length} terms)`
     );
     const startTime = Date.now();
@@ -592,7 +588,7 @@ export class TVACacheService {
       }));
 
       const elapsed = Date.now() - startTime;
-      this._debugLog(
+      this._logger.log(
         `Category search completed in ${elapsed}ms: ${results.length} matches (cached)`
       );
       return results;
@@ -628,7 +624,7 @@ export class TVACacheService {
     }
 
     const elapsed = Date.now() - startTime;
-    this._debugLog(
+    this._logger.log(
       `Category search completed in ${elapsed}ms: ${results.length} matches (scanned)`
     );
     return results;
@@ -641,16 +637,16 @@ export class TVACacheService {
    */
   async searchTVACacheMultiple(searchTerms) {
     if (!this.tvaCacheLoaded) {
-      this._debugLog('Cannot search multiple terms: TVA cache not loaded');
+      this._logger.log('Cannot search multiple terms: TVA cache not loaded');
       return [];
     }
 
     if (!searchTerms || searchTerms.length === 0) {
-      this._debugLog('Cannot search multiple terms: empty search terms array');
+      this._logger.log('Cannot search multiple terms: empty search terms array');
       return [];
     }
 
-    this._debugLog(
+    this._logger.log(
       `Searching TVA cache for ${searchTerms.length} terms: [${searchTerms.join(', ')}]`
     );
     const startTime = Date.now();
@@ -688,7 +684,7 @@ export class TVACacheService {
     results.sort((a, b) => a.score - b.score);
 
     const elapsed = Date.now() - startTime;
-    this._debugLog(
+    this._logger.log(
       `Multiple term search completed in ${elapsed}ms: ${results.length} matches found`
     );
 
@@ -714,7 +710,7 @@ export class TVACacheService {
       categories: Object.keys(this.tvaCacheByCategory).length,
     };
 
-    this._debugLog('Cache stats:', stats);
+    this._logger.log('Cache stats:', stats);
     return stats;
   }
 }

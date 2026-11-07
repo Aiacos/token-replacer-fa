@@ -3,7 +3,7 @@
  *
  * Loaded via Vitest setupFiles BEFORE any test file imports are resolved.
  * All globals must be established here because services export singletons
- * that call createDebugLogger() and new Worker() at module scope.
+ * that build DebugLogger instances and new Worker() at module scope.
  *
  * @module tests/setup/foundry-mocks
  */

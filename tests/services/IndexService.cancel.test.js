@@ -11,6 +11,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { IndexService } from '../../scripts/services/IndexService.js';
+import { ModuleError } from '../../scripts/core/ModuleError.js';
 
 /**
  * Create an IndexService with a controllable fake worker.
@@ -78,17 +79,6 @@ describe('terminate', () => {
   });
 });
 
-describe('_cancelledError', () => {
-  it('is marked so build() can tell it apart from a worker failure', () => {
-    const { service } = createService();
-
-    const error = service._cancelledError();
-
-    expect(error).toBeInstanceOf(Error);
-    expect(error.cancelled).toBe(true);
-  });
-});
-
 describe('indexPathsDirectly', () => {
   it('stops when a cancel arrives mid-build', async () => {
     const { service } = createService();
@@ -132,8 +122,6 @@ describe('SearchOrchestrator cancellation', () => {
     expect(orchestrator._cancelRequested).toBe(true);
     expect(worker.postMessage).toHaveBeenCalledWith({ command: 'cancel' });
 
-    expect(orchestrator._cancelledError().cancelled).toBe(true);
-
     orchestrator.terminate();
     orchestrator._ensureWorker();
     expect(orchestrator.worker).toBe(worker);
@@ -148,7 +136,7 @@ describe('the cancellation marker survives the wrapping catches', () => {
     // where every caller checks for it.
     service.loadFromCache = vi.fn(async () => false);
     service.buildFromTVA = vi.fn(async () => {
-      throw service._cancelledError();
+      throw ModuleError.cancelled();
     });
 
     await expect(service.build()).rejects.toMatchObject({ cancelled: true });

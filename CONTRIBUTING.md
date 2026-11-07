@@ -88,14 +88,14 @@ tools/          CI/CD scripts (validation, version bump, release publishing)
 
 - **Constructor DI**: services accept dependencies via constructor with lazy defaults
 - **Singleton exports**: each service file exports both the class and a singleton instance
-- **Structured errors**: use `createModuleError(type, details, recoveryKeys)` from Utils.js
+- **Structured errors**: throw `ModuleError.of(type, details, recoveryKeys)` from `core/ModuleError.js`; a user cancellation is `ModuleError.cancelled()`
 - **Handlebars templates**: all UI HTML in `.hbs` files, never inline in JS
 - **Debug logging**: use `createDebugLogger(serviceName)` factory, never raw `console.log`
 
 ### Import Order
 
 1. Constants (`../core/Constants.js`)
-2. Utilities (`../core/Utils.js`)
+2. Core classes (`../core/*.js`)
 3. Sibling services (`./TVACacheService.js`)
 
 ## 🧪 Testing
@@ -115,7 +115,7 @@ Tests mirror the source structure:
 tests/
   core/
     Constants.test.js
-    Utils.test.js
+    <Class>.test.js        # one file per core class (ModuleError, PathFilter, ...)
   services/
     TokenService.test.js
     IndexService.test.js

@@ -143,7 +143,7 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 scripts/
 ├── core/
 │   ├── Constants.js    # Module ID, creature mappings, defaults
-│   └── Utils.js        # Helper functions, path extraction
+│   └── *.js            # Core classes: errors, logging, i18n, Fuse loader, path filter, TVA parsing
 ├── services/
 │   ├── TokenService.js    # Token extraction and grouping
 │   ├── SearchService.js   # Search orchestration (uses IndexService)

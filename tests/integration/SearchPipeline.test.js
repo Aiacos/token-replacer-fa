@@ -16,10 +16,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fuse from 'fuse.js';
 
-// Mock loadFuse to return real Fuse.js (established Phase 7 pattern)
-vi.mock('../../scripts/core/Utils.js', async (importOriginal) => {
+// Mock fuseLoader.load() to return real Fuse.js (established Phase 7 pattern)
+vi.mock('../../scripts/core/FuseLoader.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, loadFuse: vi.fn(async () => Fuse) };
+  return { ...actual, fuseLoader: { load: vi.fn(async () => Fuse) } };
 });
 
 import { TVACacheService } from '../../scripts/services/TVACacheService.js';

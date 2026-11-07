@@ -33,9 +33,9 @@ repairable.
 3. Comments explain _why_, never _what_. Code that needs a "what" comment gets
    rewritten instead.
 4. Duplicated logic carries a `SYNC: Keep in sync with <path>` marker. This is
-   mandatory for the `Utils.js` ↔ `IndexWorker.js` pairs (`loadFuse`,
-   `_validateFuseShape`, `CDN_SEGMENTS`, `isExcludedPath`), which cannot share
-   imports across the worker boundary.
+   mandatory for the main-thread ↔ `IndexWorker.js` pairs (`FuseLoader.load` ↔
+   `loadFuse`, `_validateFuseShape`, `CDN_SEGMENTS`, `PathFilter.isExcluded` ↔
+   `isExcludedPath`), which cannot share imports across the worker boundary.
 5. Dead code is deleted, not commented out. Git remembers.
 6. Simplicity, quality, correctness, security, readability and maintainability
    come before cleverness and delivery speed. Simplicity works inside Article XII:
@@ -74,7 +74,7 @@ repairable.
 1. Every user-visible string goes through `lang/en.json` and is mirrored in
    `lang/it.json`. Hardcoded English in a template, a dialog or a notification
    is a defect. The one exception is a fallback for the window before
-   `game.i18n` exists, and it must be _declared_ with `i18nOrEnglish(key,
+   `game.i18n` exists, and it must be _declared_ with `localizer.orEnglish(key,
 english)` — never improvised as `localize(key) || 'English'`, which cannot
    work: Foundry returns the key itself for a missing key, so the fallback is
    unreachable and the user sees a raw `TOKEN_REPLACER_FA.…` string.
@@ -399,7 +399,19 @@ scripts/
 ├── main.js              # Entry point: Hooks (init, ready), settings, processTokenReplacement()
 ├── core/
 │   ├── Constants.js     # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), EXCLUDED_FOLDERS
-│   └── Utils.js         # Path extraction from TVA results, Fuse.js loader
+│   ├── ModuleError.js   # Error subclass + factories: of(type, details, keys), cancelled()
+│   ├── DebugLogger.js   # Opt-in debugMode logger; never throws before settings exist
+│   ├── Settings.js      # Settings.defaultGetter(): lazy default for injected getSetting
+│   ├── Localizer.js     # localizer singleton: cached localize(), declared orEnglish() fallback
+│   ├── FuseLoader.js    # fuseLoader singleton: lazy CDN load + _validateFuseShape (SYNC)
+│   ├── PathFilter.js    # pathFilter singleton: isExcluded() with memo cache (SYNC)
+│   ├── TvaResultParser.js # Adapter: TVA result shapes → path / display name
+│   ├── FilterQuery.js   # Immutable AND-of-terms match filter (value object)
+│   ├── CreatureTerms.js # Subtype terms, generic-subtype test, result cache key
+│   ├── TemplateRenderer.js # templateRenderer singleton: facade over Foundry's template API
+│   ├── HtmlSanitizer.js # escape() for innerHTML, sanitizePath() for scan paths
+│   ├── Scheduler.js     # yieldToMain() for long main-thread loops
+│   └── ManagedWorker.js # Worker lifecycle owner: ensure/post/teardown (not yet adopted)
 ├── services/
 │   ├── SearchService.js      # Thin facade delegating to SearchOrchestrator and TVACacheService
 │   ├── SearchOrchestrator.js # Search logic: TVA search, category search, parallel batching
@@ -459,7 +471,7 @@ The module uses Handlebars templates (preloaded in `main.js` init hook) to separ
 
 - Handlebars auto-escapes all variables by default (e.g., `{{name}}`)
 - No manual escaping needed in template methods - just pass raw data
-- `escapeHtml()` utility is only used for dynamic HTML generation outside templates (e.g., `innerHTML` assignments in event handlers)
+- `HtmlSanitizer.escape()` is only used for dynamic HTML generation outside templates (e.g., `innerHTML` assignments in event handlers)
 
 **Template Conventions:**
 
@@ -504,7 +516,7 @@ Index building uses Web Workers to prevent main thread blocking:
 
 ### Critical: CDN Path Handling
 
-`isExcludedPath()` must filter out CDN URL segments before checking EXCLUDED_FOLDERS:
+`PathFilter.isExcluded()` (and the worker's `isExcludedPath()`) must filter out CDN URL segments before checking EXCLUDED_FOLDERS:
 
 ```javascript
 // Forge URLs: https://assets.forge-vtt.com/bazaar/assets/FA_Pack/...
@@ -512,16 +524,17 @@ Index building uses Web Workers to prevent main thread blocking:
 const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules', ...]);
 ```
 
-**Note:** This CDN filtering logic exists in BOTH IndexService.js (main thread fallback) and IndexWorker.js (worker thread)
+**Note:** This CDN filtering logic exists in BOTH `core/PathFilter.js` (main thread) and IndexWorker.js (worker thread)
 
 ### Worker Code Duplication
 
-Web Workers can't share ES module imports with the main thread, so several functions are duplicated between `Utils.js` and `IndexWorker.js`:
+Web Workers can't share ES module imports with the main thread, so several functions are duplicated between `scripts/core/` classes and `IndexWorker.js`:
 
-- `loadFuse()` / `_validateFuseShape()` — CDN loading + shape validation
-- `CDN_SEGMENTS` / `isExcludedPath()` — path filtering
+- `FuseLoader.load()` ↔ `loadFuse()`, and `FuseLoader._validateFuseShape()` ↔ `_validateFuseShape()` — CDN loading + shape validation (`core/FuseLoader.js`)
+- `CDN_SEGMENTS`, and `PathFilter.isExcluded()` ↔ `isExcludedPath()` — path filtering (`core/PathFilter.js`)
+- `compileCategorizer()` / `categorizeWith()` — byte-identical between `IndexService.js` and the worker
 
-Each duplicated function has a `SYNC: Keep in sync with ...` JSDoc marker. When modifying one copy, search for the marker and update both.
+The main-thread copies are methods because they own state (the Fuse constructor, the memo cache and precompiled patterns); the worker copies stay module functions and take their configuration as arguments. Each duplicate has a `SYNC: Keep in sync with ...` JSDoc marker, and `tests/core/worker-sync.test.js` fails when a marker goes missing or an identical pair drifts. When modifying one copy, search for the marker and update both.
 
 ## 🔄 Version Management
 

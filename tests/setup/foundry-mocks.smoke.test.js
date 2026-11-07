@@ -106,10 +106,25 @@ describe('Foundry Mock Infrastructure', () => {
       expect(mod.MODULE_ID).toBe('token-replacer-fa');
     });
 
-    it('can import Utils.js', async () => {
-      const mod = await import('../../scripts/core/Utils.js');
-      expect(mod.escapeHtml).toBeTypeOf('function');
-      expect(mod.createDebugLogger).toBeTypeOf('function');
+    // The singletons are built at import, so importing proves construction
+    // touches no Foundry global that might not exist yet.
+    it.each([
+      ['ModuleError', () => import('../../scripts/core/ModuleError.js')],
+      ['DebugLogger', () => import('../../scripts/core/DebugLogger.js')],
+      ['Settings', () => import('../../scripts/core/Settings.js')],
+      ['localizer', () => import('../../scripts/core/Localizer.js')],
+      ['fuseLoader', () => import('../../scripts/core/FuseLoader.js')],
+      ['pathFilter', () => import('../../scripts/core/PathFilter.js')],
+      ['TvaResultParser', () => import('../../scripts/core/TvaResultParser.js')],
+      ['FilterQuery', () => import('../../scripts/core/FilterQuery.js')],
+      ['CreatureTerms', () => import('../../scripts/core/CreatureTerms.js')],
+      ['templateRenderer', () => import('../../scripts/core/TemplateRenderer.js')],
+      ['HtmlSanitizer', () => import('../../scripts/core/HtmlSanitizer.js')],
+      ['Scheduler', () => import('../../scripts/core/Scheduler.js')],
+      ['ManagedWorker', () => import('../../scripts/core/ManagedWorker.js')],
+    ])('can import core %s', async (exportName, load) => {
+      const mod = await load();
+      expect(mod[exportName]).toBeDefined();
     });
 
     it('can import IndexService.js (eager Worker creation)', async () => {

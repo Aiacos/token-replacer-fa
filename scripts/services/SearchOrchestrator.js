@@ -11,20 +11,15 @@ import {
   PRIMARY_CATEGORY_TERMS,
   SLOW_MODE_BATCH_SIZE,
 } from '../core/Constants.js';
-import {
-  parseSubtypeTerms,
-  hasGenericSubtype,
-  getCreatureCacheKey,
-  isExcludedPath,
-  loadFuse,
-  extractPathFromTVAResult,
-  extractNameFromTVAResult,
-  yieldToMain,
-  createDebugLogger,
-  createDefaultGetSetting,
-  createModuleError,
-  i18nOrEnglish,
-} from '../core/Utils.js';
+import { Scheduler } from '../core/Scheduler.js';
+import { pathFilter } from '../core/PathFilter.js';
+import { CreatureTerms } from '../core/CreatureTerms.js';
+import { TvaResultParser } from '../core/TvaResultParser.js';
+import { ModuleError } from '../core/ModuleError.js';
+import { localizer } from '../core/Localizer.js';
+import { fuseLoader } from '../core/FuseLoader.js';
+import { Settings } from '../core/Settings.js';
+import { DebugLogger } from '../core/DebugLogger.js';
 import { indexService } from './IndexService.js';
 
 /**
@@ -37,7 +32,7 @@ export class SearchOrchestrator {
       tvaCacheService: injectedTVACache,
       forgeBazaarService: injectedForgeBazaar,
       indexService: injectedIndex = indexService,
-      getSetting = createDefaultGetSetting(),
+      getSetting = Settings.defaultGetter(),
       workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
     } = deps;
 
@@ -61,7 +56,7 @@ export class SearchOrchestrator {
     // Worker replies carry no request id, so only one search may be in flight:
     // with several, every pending search resolved with the first reply.
     this._workerSearchQueue = Promise.resolve();
-    this._debugLog = createDebugLogger('SearchOrchestrator');
+    this._logger = new DebugLogger('SearchOrchestrator');
   }
 
   /**
@@ -74,7 +69,7 @@ export class SearchOrchestrator {
       this.worker = this._workerFactory();
       // Only mark initialized on success so a transient factory failure can retry
       this._workerInitialized = true;
-      this._debugLog('Web Worker initialized for background search operations');
+      this._logger.log('Web Worker initialized for background search operations');
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
       this.worker = null;
@@ -173,19 +168,6 @@ export class SearchOrchestrator {
   }
 
   /**
-   * Build the error thrown when a search is cancelled.
-   * The `cancelled` marker is what stops the caller from treating it as a
-   * worker failure and falling back to the slower main-thread path.
-   * @private
-   * @returns {Error} Cancellation error
-   */
-  _cancelledError() {
-    const error = /** @type {Error & { cancelled?: boolean }} */ (new Error('Operation cancelled'));
-    error.cancelled = true;
-    return error;
-  }
-
-  /**
    * Check if folder name matches a creature type
    * @param {string} folderName - Folder name to check
    * @param {string} creatureType - Creature type to match
@@ -247,18 +229,18 @@ export class SearchOrchestrator {
         searchResults = await this._tvaCacheService.tvaAPI.doImageSearch(searchTerm);
       }
 
-      this._debugLog(`TVA raw results for "${searchTerm}":`, searchResults);
+      this._logger.log(`TVA raw results for "${searchTerm}":`, searchResults);
 
       if (!searchResults) return [];
 
       // Helper function to process a single item
       const processItem = (item) => {
-        const imagePath = extractPathFromTVAResult(item);
+        const imagePath = TvaResultParser.extractPath(item);
         // Skip if no path, already seen, or from excluded folder
-        if (!imagePath || seenPaths.has(imagePath) || isExcludedPath(imagePath)) return;
+        if (!imagePath || seenPaths.has(imagePath) || pathFilter.isExcluded(imagePath)) return;
 
         seenPaths.add(imagePath);
-        const name = extractNameFromTVAResult(item, imagePath);
+        const name = TvaResultParser.extractName(item, imagePath);
         results.push({
           path: imagePath,
           name: name,
@@ -290,11 +272,11 @@ export class SearchOrchestrator {
           } else if (typeof key === 'string' && (key.includes('/') || key.includes('.'))) {
             // Key itself is a path (older TVA format)
             // Skip if already seen or from excluded folder
-            if (!seenPaths.has(key) && !isExcludedPath(key)) {
+            if (!seenPaths.has(key) && !pathFilter.isExcluded(key)) {
               seenPaths.add(key);
               results.push({
                 path: key,
-                name: extractNameFromTVAResult(data, key),
+                name: TvaResultParser.extractName(data, key),
                 source: 'tva',
                 score: 0.5,
               });
@@ -354,7 +336,7 @@ export class SearchOrchestrator {
         this._teardownWorker();
         try {
           ui.notifications.warn(
-            i18nOrEnglish(
+            localizer.orEnglish(
               'notifications.workerFallback',
               'Token Replacer FA: Background worker failed, using slower method.'
             ),
@@ -381,7 +363,7 @@ export class SearchOrchestrator {
   async searchLocalIndexDirectly(searchTerms, index, creatureType = null) {
     if (!index || index.length === 0) return [];
 
-    const Fuse = await loadFuse();
+    const Fuse = await fuseLoader.load();
     if (!Fuse) {
       console.warn(`${MODULE_ID} | Fuse.js unavailable — search skipped. Results will be empty.`);
       return [];
@@ -405,14 +387,14 @@ export class SearchOrchestrator {
       // Each term is a full pass over the index; stopping between terms is the
       // only interruption point this path has.
       if (this._cancelRequested) {
-        this._debugLog('Direct fuzzy search cancelled by user');
-        throw this._cancelledError();
+        this._logger.log('Direct fuzzy search cancelled by user');
+        throw ModuleError.cancelled();
       }
       const searchResults = fuse.search(term);
       for (const result of searchResults) {
         const item = result.item;
         // Skip if already seen or from excluded folder
-        if (seenPaths.has(item.path) || isExcludedPath(item.path)) continue;
+        if (seenPaths.has(item.path) || pathFilter.isExcluded(item.path)) continue;
 
         // Optionally filter by creature type
         if (creatureType && item.category) {
@@ -457,12 +439,12 @@ export class SearchOrchestrator {
    */
   async _runWorkerSearch(searchTerms, index, creatureType, onProgress) {
     // A search queued behind one the user cancelled must not start.
-    if (this._cancelRequested) throw this._cancelledError();
+    if (this._cancelRequested) throw ModuleError.cancelled();
 
     // Captured once: a timeout elsewhere can null this.worker while we wait.
     const worker = this.worker;
     if (!worker) {
-      throw createModuleError('worker_failed', 'Web Worker not available for background search', [
+      throw ModuleError.of('worker_failed', 'Web Worker not available for background search', [
         'reload_module',
       ]);
     }
@@ -512,14 +494,14 @@ export class SearchOrchestrator {
           case 'cancelled':
             cleanup();
             console.log(`${MODULE_ID} | Search operation cancelled by user`);
-            reject(this._cancelledError());
+            reject(ModuleError.cancelled());
             break;
 
           case 'error':
             cleanup();
             console.error(`${MODULE_ID} | Worker search error:`, message);
             reject(
-              createModuleError(
+              ModuleError.of(
                 'worker_failed',
                 `Worker search error: ${message || 'Unknown error'}`,
                 ['reload_module', 'check_console']
@@ -537,11 +519,10 @@ export class SearchOrchestrator {
         cleanup();
         console.error(`${MODULE_ID} | Worker crashed during search:`, error);
         reject(
-          createModuleError(
-            'worker_failed',
-            `Worker crashed: ${error.message || 'Unknown error'}`,
-            ['reload_module', 'check_console']
-          )
+          ModuleError.of('worker_failed', `Worker crashed: ${error.message || 'Unknown error'}`, [
+            'reload_module',
+            'check_console',
+          ])
         );
       };
 
@@ -558,7 +539,7 @@ export class SearchOrchestrator {
         // search — unless it has already been replaced.
         if (this.worker === worker) this._teardownWorker();
         reject(
-          createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
+          ModuleError.of('worker_failed', 'Worker search timed out after 60 seconds', [
             'reload_module',
             'check_console',
           ])
@@ -592,7 +573,7 @@ export class SearchOrchestrator {
         cleanup();
         console.error(`${MODULE_ID} | Failed to post search to worker:`, error);
         reject(
-          createModuleError('worker_failed', `Failed to start worker search: ${error.message}`, [
+          ModuleError.of('worker_failed', `Failed to start worker search: ${error.message}`, [
             'reload_module',
             'check_console',
           ])
@@ -672,7 +653,7 @@ export class SearchOrchestrator {
         const termLower = directSearchTerm.toLowerCase();
         const localMatches = localIndex.filter(
           (img) =>
-            !isExcludedPath(img.path) &&
+            !pathFilter.isExcluded(img.path) &&
             (img.name?.toLowerCase().includes(termLower) ||
               img.fileName?.toLowerCase().includes(termLower) ||
               img.category?.toLowerCase().includes(termLower) ||
@@ -714,7 +695,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 0,
           total: 1,
-          term: i18nOrEnglish('ui.progressIndexLookup', 'index lookup'),
+          term: localizer.orEnglish('ui.progressIndexLookup', 'index lookup'),
           resultsFound: 0,
         });
       }
@@ -722,7 +703,7 @@ export class SearchOrchestrator {
       const indexResults = this._indexService.searchByCategory(categoryType);
       for (const result of indexResults) {
         // Double-check exclusion filter for safety
-        if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
+        if (!seenPaths.has(result.path) && !pathFilter.isExcluded(result.path)) {
           seenPaths.add(result.path);
           results.push({
             ...result,
@@ -735,7 +716,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: i18nOrEnglish('ui.progressIndexLookup', 'index lookup'),
+          term: localizer.orEnglish('ui.progressIndexLookup', 'index lookup'),
           resultsFound: results.length,
         });
       }
@@ -752,7 +733,7 @@ export class SearchOrchestrator {
           progressCallback({
             current: 0,
             total: 1,
-            term: i18nOrEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
+            term: localizer.orEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
             resultsFound: 0,
           });
         }
@@ -769,7 +750,7 @@ export class SearchOrchestrator {
           progressCallback({
             current: 1,
             total: 1,
-            term: i18nOrEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
+            term: localizer.orEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
             resultsFound: results.length,
           });
         }
@@ -784,7 +765,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 0,
           total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
+          term: localizer.orEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
           resultsFound: 0,
         });
       }
@@ -804,7 +785,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
+          term: localizer.orEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
           resultsFound: results.length,
         });
       }
@@ -823,7 +804,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 0,
           total: 1,
-          term: i18nOrEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
+          term: localizer.orEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
           resultsFound: 0,
         });
       }
@@ -840,7 +821,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: i18nOrEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
+          term: localizer.orEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
           resultsFound: results.length,
         });
       }
@@ -901,7 +882,7 @@ export class SearchOrchestrator {
           }
 
           // Yield to main thread after each batch for UI responsiveness
-          await yieldToMain(50);
+          await Scheduler.yieldToMain(50);
         }
       } else {
         // Fallback to primary terms - also parallelized
@@ -938,7 +919,7 @@ export class SearchOrchestrator {
             }
 
             searchCount += batch.length;
-            await yieldToMain(50);
+            await Scheduler.yieldToMain(50);
           }
         }
       }
@@ -951,7 +932,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 0,
           total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
+          term: localizer.orEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
           resultsFound: 0,
         });
       }
@@ -971,7 +952,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
+          term: localizer.orEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
           resultsFound: results.length,
         });
       }
@@ -985,14 +966,14 @@ export class SearchOrchestrator {
         progressCallback({
           current: 0,
           total: 1,
-          term: i18nOrEnglish('ui.progressLocalIndex', 'local index'),
+          term: localizer.orEnglish('ui.progressLocalIndex', 'local index'),
           resultsFound: results.length,
         });
       }
 
       const categoryMatches = localIndex.filter(
         (img) =>
-          !isExcludedPath(img.path) &&
+          !pathFilter.isExcluded(img.path) &&
           img.category &&
           this.folderMatchesCreatureType(img.category, categoryType)
       );
@@ -1021,7 +1002,7 @@ export class SearchOrchestrator {
     const searchTerms = creatureInfo.searchTerms;
     if (searchTerms.length === 0) return [];
 
-    const cacheKey = getCreatureCacheKey(creatureInfo);
+    const cacheKey = CreatureTerms.cacheKey(creatureInfo);
     if (useCache && this.searchCache.has(cacheKey)) {
       const cached = this.searchCache.get(cacheKey);
       // Promote to most-recent position for LRU ordering
@@ -1036,8 +1017,8 @@ export class SearchOrchestrator {
     const useTVAForAll = this._tvaCacheService?.hasTVA && useTVACache;
 
     // Check for specific subtypes
-    const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
-    const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
+    const isGenericSubtype = CreatureTerms.isGenericSubtype(creatureInfo.subtype);
+    const subtypeTerms = CreatureTerms.parseSubtype(creatureInfo.subtype);
     const hasSpecificSubtypes = subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type;
 
     // Case: Specific subtypes - search each term separately (OR logic)
@@ -1060,7 +1041,7 @@ export class SearchOrchestrator {
           );
           for (const result of nameResults) {
             // Double-check exclusion filter for safety
-            if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
+            if (!seenPaths.has(result.path) && !pathFilter.isExcluded(result.path)) {
               seenPaths.add(result.path);
               results.push({
                 ...result,
@@ -1077,7 +1058,7 @@ export class SearchOrchestrator {
 
         for (const result of indexResults) {
           // Double-check exclusion filter for safety
-          if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
+          if (!seenPaths.has(result.path) && !pathFilter.isExcluded(result.path)) {
             seenPaths.add(result.path);
             results.push({
               ...result,
@@ -1180,7 +1161,7 @@ export class SearchOrchestrator {
         if (creatureInfo.actorName) {
           const actorNameLower = creatureInfo.actorName.toLowerCase();
           const nameMatches = localIndex.filter((img) => {
-            if (isExcludedPath(img.path)) return false;
+            if (pathFilter.isExcluded(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
             return nameLower.includes(actorNameLower) || pathLower.includes(actorNameLower);
@@ -1204,7 +1185,7 @@ export class SearchOrchestrator {
           const termLower = term.toLowerCase();
           const localMatches = localIndex.filter((img) => {
             // Skip excluded paths
-            if (isExcludedPath(img.path)) return false;
+            if (pathFilter.isExcluded(img.path)) return false;
             const nameLower = (img.name || '').toLowerCase();
             const pathLower = (img.path || '').toLowerCase();
             const categoryLower = (img.category || '').toLowerCase();
@@ -1356,7 +1337,7 @@ export class SearchOrchestrator {
       // Batch boundaries are where this phase can stop: the searches inside a
       // batch run concurrently and are awaited together.
       if (this._cancelRequested) {
-        this._debugLog(`Parallel search cancelled after ${results.size} creature type(s)`);
+        this._logger.log(`Parallel search cancelled after ${results.size} creature type(s)`);
         break;
       }
 
@@ -1392,7 +1373,7 @@ export class SearchOrchestrator {
           // batch, so without this a deliberate stop prints one "search failed"
           // warning per creature type — the same mislabelling the wrapping
           // catches in IndexService had.
-          this._debugLog('Batch search stopped by cancellation');
+          this._logger.log('Batch search stopped by cancellation');
         } else {
           console.warn(
             `${MODULE_ID} | Batch search failed for one group:`,

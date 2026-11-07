@@ -5,7 +5,9 @@
  */
 
 import { MODULE_ID, MAX_SCAN_DEPTH } from '../core/Constants.js';
-import { yieldToMain, isExcludedPath, sanitizePath } from '../core/Utils.js';
+import { Scheduler } from '../core/Scheduler.js';
+import { pathFilter } from '../core/PathFilter.js';
+import { HtmlSanitizer } from '../core/HtmlSanitizer.js';
 
 /**
  * ScanService class for directory scanning operations
@@ -29,7 +31,7 @@ export class ScanService {
     if (additionalPathsSetting) {
       const additionalPaths = additionalPathsSetting
         .split(',')
-        .map((p) => sanitizePath(p))
+        .map((p) => HtmlSanitizer.sanitizePath(p))
         .filter((p) => p !== null);
       paths.push(...additionalPaths);
     }
@@ -103,7 +105,7 @@ export class ScanService {
       if (result.files) {
         for (const file of result.files) {
           // Skip files from excluded folders
-          if (isExcludedPath(file)) continue;
+          if (pathFilter.isExcluded(file)) continue;
 
           const ext = '.' + file.split('.').pop().toLowerCase();
           if (this.imageExtensions.includes(ext)) {
@@ -125,14 +127,14 @@ export class ScanService {
 
       // Yield to main thread periodically for UI responsiveness
       if (images.length > 0 && images.length % 30 === 0) {
-        await yieldToMain(50);
+        await Scheduler.yieldToMain(50);
       }
 
       // Recursively scan subdirectories
       if (result.dirs) {
         for (const dir of result.dirs) {
           // Skip excluded folders (assets, props, textures, etc.)
-          if (isExcludedPath(dir)) continue;
+          if (pathFilter.isExcluded(dir)) continue;
 
           // Use folder name as category for subdirectories
           const subCategory = dir.split('/').pop();
@@ -247,7 +249,7 @@ export class ScanService {
               }
 
               // Skip if no path, already seen, or from excluded folder
-              if (imagePath && !seenPaths.has(imagePath) && !isExcludedPath(imagePath)) {
+              if (imagePath && !seenPaths.has(imagePath) && !pathFilter.isExcluded(imagePath)) {
                 seenPaths.add(imagePath);
                 if (name === 'Unknown' && imagePath) {
                   name =
@@ -270,7 +272,7 @@ export class ScanService {
           console.warn(`${MODULE_ID} | TVA search failed for term:`, e);
         }
 
-        await yieldToMain(50);
+        await Scheduler.yieldToMain(50);
       }
     } catch (error) {
       console.warn(`${MODULE_ID} | Error getting TVA images:`, error);
@@ -292,7 +294,7 @@ export class ScanService {
     const categoryLower = categoryType.toLowerCase();
     return images.filter((img) => {
       // Skip excluded paths first
-      if (isExcludedPath(img.path)) return false;
+      if (pathFilter.isExcluded(img.path)) return false;
 
       const path = img.path?.toLowerCase() || '';
       const name = img.name?.toLowerCase() || '';

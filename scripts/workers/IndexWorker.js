@@ -466,7 +466,7 @@ class IndexWorkerRuntime {
  * Unlike the main-thread copy it caches nothing — IndexWorkerRuntime owns the
  * loaded constructor — and it rejects instead of returning null, so the
  * runtime's single error path reports the failure to the main thread.
- * SYNC: Keep in sync with Utils.js loadFuse()
+ * SYNC: Keep in sync with FuseLoader.js load()
  * @returns {Promise<Function>} Validated Fuse constructor
  * @throws {Error} When the import fails or the module fails shape validation
  */
@@ -491,7 +491,7 @@ async function loadFuse() {
 
 /**
  * Validate that a loaded Fuse candidate has the expected constructor shape.
- * SYNC: Keep in sync with Utils.js _validateFuseShape()
+ * SYNC: Keep in sync with FuseLoader.js _validateFuseShape()
  * @param {*} Candidate
  * @returns {boolean}
  */
@@ -614,7 +614,7 @@ function categorizeWith(compiled, searchText) {
 /**
  * CDN URL segments to skip when checking folder exclusions
  * These are common in Forge bazaar URLs: https://assets.forge-vtt.com/bazaar/assets/...
- * SYNC: Keep in sync with Utils.js CDN_SEGMENTS
+ * SYNC: Keep in sync with PathFilter.js CDN_SEGMENTS
  */
 const CDN_SEGMENTS = new Set([
   'https:',
@@ -642,7 +642,7 @@ const CDN_SEGMENTS = new Set([
  * The rules arrive compiled because they change per indexPaths run: a pure
  * function cannot hold a stale copy of a previous run's settings.
  *
- * SYNC: Keep in sync with Utils.js isExcludedPath()
+ * SYNC: Keep in sync with PathFilter.js isExcluded()
  * @param {string} path - Path to check
  * @param {Set<string>} excludedFolders - Folder names to exclude, matched against lowercased segments
  * @param {RegExp[]} excludedPatterns - Compiled whole-word filename terms

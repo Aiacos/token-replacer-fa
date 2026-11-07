@@ -9,7 +9,8 @@
  */
 
 import { MODULE_ID } from '../core/Constants.js';
-import { getCreatureCacheKey, createModuleError } from '../core/Utils.js';
+import { CreatureTerms } from '../core/CreatureTerms.js';
+import { ModuleError } from '../core/ModuleError.js';
 
 /**
  * TokenService class for handling token operations
@@ -180,7 +181,7 @@ export class TokenService {
       const creatureInfo = this.extractCreatureInfo(token);
       if (!creatureInfo) continue;
 
-      const key = getCreatureCacheKey(creatureInfo);
+      const key = CreatureTerms.cacheKey(creatureInfo);
 
       if (!groups.has(key)) {
         groups.set(key, {
@@ -227,7 +228,7 @@ export class TokenService {
       console.log(`${MODULE_ID} | Replaced token image for ${token.name}`);
       return true;
     } catch (error) {
-      throw createModuleError(
+      throw ModuleError.of(
         'token_replace_failed',
         `Error replacing token image for "${token.name}": ${error.message || String(error)}`,
         ['check_console', 'check_permissions']

@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SearchOrchestrator } from '../../scripts/services/SearchOrchestrator.js';
+import { ModuleError } from '../../scripts/core/ModuleError.js';
 
 /**
  * A Worker stub that answers every fuzzySearch with an empty result set.
@@ -166,7 +167,7 @@ describe('cancellation is not reported as a failure', () => {
     // unguarded allSettled loop prints one "search failed" warning per group.
     orchestrator.searchTokenArt = vi.fn(async () => {
       orchestrator.cancelOperation();
-      throw orchestrator._cancelledError();
+      throw ModuleError.cancelled();
     });
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

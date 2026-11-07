@@ -6,7 +6,11 @@
  */
 
 import { MODULE_ID } from './core/Constants.js';
-import { loadFuse, yieldToMain, loadModuleTemplates, i18nOrEnglish } from './core/Utils.js';
+import { Scheduler } from './core/Scheduler.js';
+import { ModuleError } from './core/ModuleError.js';
+import { localizer } from './core/Localizer.js';
+import { fuseLoader } from './core/FuseLoader.js';
+import { templateRenderer } from './core/TemplateRenderer.js';
 import { tokenService } from './services/TokenService.js';
 import { searchService } from './services/SearchService.js';
 import { searchOrchestrator } from './services/SearchOrchestrator.js';
@@ -146,22 +150,6 @@ export class TokenReplacerApp {
     console.log(
       `${MODULE_ID} | i18n cache stats: ${this.i18nCache.size} entries, ${this.i18nCacheStats.hits} hits, ${this.i18nCacheStats.misses} misses (${hitRate}% hit rate)`
     );
-  }
-
-  /**
-   * Create structured error object with localized message
-   * @param {string} errorType - Error type key (e.g., 'tva_missing', 'cache_load_failed')
-   * @param {string} details - Technical error details
-   * @param {Array<string>} recoverySuggestions - Array of recovery suggestion keys
-   * @returns {Object} Structured error object
-   */
-  _createError(errorType, details, recoverySuggestions = []) {
-    return {
-      errorType,
-      message: this.i18n(`errors.${errorType}`),
-      details,
-      recoverySuggestions: recoverySuggestions.map((key) => this.i18n(`recovery.${key}`)),
-    };
   }
 
   /**
@@ -394,9 +382,9 @@ export class TokenReplacerApp {
 
       // Load Fuse.js
       this._debugLog('Loading Fuse.js library');
-      const Fuse = await loadFuse();
+      const Fuse = await fuseLoader.load();
       if (!Fuse) {
-        const error = this._createError('fuse_load_failed', 'Fuse.js library failed to load', [
+        const error = ModuleError.of('fuse_load_failed', 'Fuse.js library failed to load', [
           'reload_module',
           'check_network',
         ]);
@@ -461,14 +449,14 @@ export class TokenReplacerApp {
       if (this.hasTVA && useTVACache) {
         this._debugLog('Using TVA cache');
         uiManager.updateDialogContent(await uiManager.createTVACacheHTML(false));
-        await yieldToMain(100);
+        await Scheduler.yieldToMain(100);
 
         // If refresh requested, do it FIRST, then force reload our cache
         let cacheLoaded = false;
         if (refreshTVACache && this.tvaAPI?.cacheImages) {
           this._debugLog('Refreshing TVA cache');
           uiManager.updateDialogContent(await uiManager.createTVACacheHTML(true));
-          await yieldToMain(50);
+          await Scheduler.yieldToMain(50);
           try {
             await this.tvaAPI.cacheImages();
             this._debugLog('TVA cache refreshed successfully');
@@ -476,7 +464,7 @@ export class TokenReplacerApp {
             console.warn(`${MODULE_ID} | Failed to refresh TVA cache:`, e);
             this._debugLog('TVA cache refresh failed, continuing with existing cache');
           }
-          await yieldToMain(100);
+          await Scheduler.yieldToMain(100);
           // Force reload: clears in-memory + IndexedDB cache, then re-fetches
           uiManager.updateDialogContent(
             await uiManager.createTVACacheHTML(false, this.i18n('ui.loadingTvaCache'))
@@ -497,7 +485,7 @@ export class TokenReplacerApp {
 
           // Check for empty cache
           if (stats.totalImages === 0) {
-            const error = this._createError(
+            const error = ModuleError.of(
               'tva_cache_empty',
               'TVA cache loaded but contains 0 images',
               ['rebuild_cache', 'check_file_access']
@@ -510,7 +498,7 @@ export class TokenReplacerApp {
           console.warn(`${MODULE_ID} | Failed to load TVA cache directly, will use API fallback`);
           this._debugLog('TVA cache load failed, using API fallback');
         }
-        await yieldToMain(100);
+        await Scheduler.yieldToMain(100);
       } else {
         this._debugLog('Building local token index');
         localIndex = await scanService.buildLocalTokenIndex();
@@ -519,7 +507,7 @@ export class TokenReplacerApp {
 
       // Check for search sources
       if (!this.hasTVA && localIndex.length === 0) {
-        const error = this._createError(
+        const error = ModuleError.of(
           'tva_missing',
           'No search sources available (TVA not active and local index empty)',
           ['install_tva']
@@ -554,7 +542,7 @@ export class TokenReplacerApp {
           []
         )
       );
-      await yieldToMain(50);
+      await Scheduler.yieldToMain(50);
 
       const searchResults = await searchService.parallelSearchCreatures(
         creatureGroups,
@@ -609,7 +597,7 @@ export class TokenReplacerApp {
       };
 
       await updateProgress(0, npcTokens.length, this.i18n('dialog.replacing'), null);
-      await yieldToMain(50);
+      await Scheduler.yieldToMain(50);
 
       let tokenIndex = 0;
 
@@ -626,7 +614,7 @@ export class TokenReplacerApp {
           uiManager.updateDialogContent(
             await uiManager.createNoMatchHTML(creatureInfo, tokens.length)
           );
-          await yieldToMain(50);
+          await Scheduler.yieldToMain(50);
 
           const dialogEl = uiManager.getDialogElement();
           let selectionResult = null;
@@ -687,7 +675,7 @@ export class TokenReplacerApp {
           }
 
           await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
-          await yieldToMain(50);
+          await Scheduler.yieldToMain(50);
           continue;
         }
 
@@ -712,7 +700,7 @@ export class TokenReplacerApp {
           uiManager.updateDialogContent(
             await uiManager.createMatchSelectionHTML(creatureInfo, matches, tokens.length)
           );
-          await yieldToMain(50);
+          await Scheduler.yieldToMain(50);
 
           const dialogEl = uiManager.getDialogElement();
           if (dialogEl) {
@@ -730,7 +718,7 @@ export class TokenReplacerApp {
           }
 
           await updateProgress(tokenIndex, npcTokens.length, this.i18n('dialog.replacing'), null);
-          await yieldToMain(50);
+          await Scheduler.yieldToMain(50);
         } else {
           this._debugLog('Using best match without confirmation (confirmReplace disabled)');
           selectedPaths = [bestMatch.path];
@@ -843,7 +831,7 @@ export class TokenReplacerApp {
           recoverySuggestions = ['reload_module', 'check_network'];
         }
 
-        errorDisplay = this._createError(
+        errorDisplay = ModuleError.of(
           errorType,
           error.message || String(error),
           recoverySuggestions
@@ -897,7 +885,7 @@ Hooks.once('init', async () => {
 
     // Preload Handlebars templates
     tokenReplacerApp._debugLog('Preloading Handlebars templates');
-    await loadModuleTemplates([
+    await templateRenderer.preload([
       'modules/token-replacer-fa/templates/error.hbs',
       'modules/token-replacer-fa/templates/tva-cache.hbs',
       'modules/token-replacer-fa/templates/scan-progress.hbs',
@@ -913,12 +901,12 @@ Hooks.once('init', async () => {
     console.error(`${MODULE_ID} | Initialization failed:`, error);
     // This catch can run before game.i18n exists, which is exactly why both of
     // these declare an English fallback rather than assuming localization works.
-    const msg = i18nOrEnglish(
+    const msg = localizer.orEnglish(
       'notifications.initFailed',
       'Token Replacer FA: Initialization failed. {error}',
       { error: error.message || String(error) }
     );
-    const tryLabel = i18nOrEnglish('ui.tryThis', 'Try:');
+    const tryLabel = localizer.orEnglish('ui.tryThis', 'Try:');
     if (error.recoverySuggestions?.length > 0) {
       ui.notifications.error(`${msg} ${tryLabel} ${error.recoverySuggestions.join('. ')}`, {
         permanent: true,
@@ -937,7 +925,7 @@ Hooks.once('ready', async () => {
   tokenReplacerApp._debugLog('Ready hook triggered, starting module initialization');
 
   tokenReplacerApp._debugLog('Loading Fuse.js library');
-  const FuseLoaded = await loadFuse();
+  const FuseLoaded = await fuseLoader.load();
   if (!FuseLoaded) {
     ui.notifications.warn(tokenReplacerApp.i18n('notifications.fuseLoadFailed'));
   } else {
@@ -999,7 +987,7 @@ Hooks.once('ready', async () => {
             if (percent < 100 && percent - lastNotifiedPercent < 10) return;
             lastNotifiedPercent = percent;
             ui.notifications.info(
-              i18nOrEnglish(
+              localizer.orEnglish(
                 'notifications.indexing',
                 'Token Replacer FA: Building index... {percent}% ({images} images)',
                 { percent, images }
@@ -1015,7 +1003,7 @@ Hooks.once('ready', async () => {
           if (!hasCache) {
             tokenReplacerApp._debugLog('Showing first-time index build notification');
             ui.notifications.info(
-              i18nOrEnglish(
+              localizer.orEnglish(
                 'notifications.indexingStart',
                 'Token Replacer FA: First-time setup - building image index in background. This may take several minutes but only happens once.'
               ),
@@ -1053,7 +1041,7 @@ Hooks.once('ready', async () => {
             if (!hasCache) {
               tokenReplacerApp._debugLog('Showing index build completion notification');
               ui.notifications.info(
-                i18nOrEnglish(
+                localizer.orEnglish(
                   'notifications.indexingComplete',
                   'Token Replacer FA: Index ready! {count} images indexed.',
                   { count: stats.totalImages }
@@ -1160,7 +1148,7 @@ Hooks.on('getSceneControlButtons', (controls) => {
   } catch (error) {
     console.error(`${MODULE_ID} | Failed to add scene control button:`, error);
     ui.notifications.error(
-      i18nOrEnglish(
+      localizer.orEnglish(
         'notifications.controlButtonFailed',
         'Token Replacer FA: could not add its scene control button. Check the console for details.'
       )
