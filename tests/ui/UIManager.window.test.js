@@ -24,12 +24,6 @@ async function renderedDialog(ui, html) {
   return { dialog, element };
 }
 
-// The shared ApplicationV2 mock lacks the render/close hooks that Foundry's
-// base class provides and TokenReplacerDialog calls through `super`.
-const MockBase = Object.getPrototypeOf(TokenReplacerDialog.prototype);
-MockBase._onRender ??= async () => {};
-MockBase._onClose ??= async () => {};
-
 beforeEach(() => {
   useRealTemplates();
   useMemoryStorage();

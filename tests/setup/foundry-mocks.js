@@ -108,6 +108,9 @@ vi.stubGlobal('foundry', {
         close() {
           return Promise.resolve();
         }
+        // Foundry's base class provides these hooks; subclasses call them via super.
+        async _onRender(_context, _options) {}
+        async _onClose(_options) {}
         get rendered() {
           return false;
         }

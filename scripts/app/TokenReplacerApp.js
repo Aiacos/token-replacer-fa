@@ -23,6 +23,7 @@ const TEMPLATES = Object.freeze([
   'modules/token-replacer-fa/templates/progress.hbs',
   'modules/token-replacer-fa/templates/match-selection.hbs',
   'modules/token-replacer-fa/templates/no-match.hbs',
+  'modules/token-replacer-fa/templates/match-grid.hbs',
 ]);
 
 /**
