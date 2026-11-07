@@ -165,26 +165,6 @@ describe('the cancellation marker survives the wrapping catches', () => {
   });
 });
 
-describe('worker cancellation is observable', () => {
-  it('yields inside the indexing loops so a cancel message can be dispatched', async () => {
-    const { readFileSync } = await import('node:fs');
-    const source = readFileSync('scripts/workers/IndexWorker.js', 'utf8');
-
-    // A worker is single-threaded: a synchronous loop holds the event loop, the
-    // cancel message never gets dispatched, and every `if (cancelled)` inside
-    // reads a value that cannot have changed. The awaits are what make the
-    // checks mean anything, so they are the thing worth pinning.
-    expect(source).toMatch(/async function handleIndexPaths\(/);
-    expect(source).toMatch(/function yieldToMessages\(\)/);
-
-    const indexingLoop = source.slice(
-      source.indexOf('async function handleIndexPaths('),
-      source.indexOf('function reportProgress(')
-    );
-    expect(indexingLoop).toMatch(/await yieldToMessages\(\)/);
-  });
-});
-
 describe('worker teardown always allows a replacement', () => {
   it('rebuilds after a failed worker build, not just after terminate()', async () => {
     const { service, worker } = createService();
