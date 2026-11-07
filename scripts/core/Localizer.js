@@ -24,7 +24,7 @@ export class Localizer {
   /**
    * @param {function(): ({localize: function(string): string}|undefined)} [getI18n] - Returns Foundry's i18n (default: game.i18n, read lazily)
    */
-  constructor(getI18n = () => game?.i18n) {
+  constructor(getI18n = () => (typeof game === 'undefined' ? undefined : game.i18n)) {
     this._getI18n = getI18n;
     /** @type {Map<string, string>} */
     this._cache = new Map();
