@@ -12,6 +12,9 @@ import { MatchGrid } from './MatchGrid.js';
  * @typedef {Object} SelectionResult
  * @property {string[]} paths - Chosen token art, in rank order
  * @property {'sequential'|'random'} mode - How the paths are spread over the tokens
+ * @property {boolean} [applyToRemaining] - True when the user chose "Apply to all
+ *   remaining": apply this choice, then give every remaining creature group its
+ *   best match without asking. Absent for a plain Apply.
  */
 
 /**
@@ -22,9 +25,10 @@ import { MatchGrid } from './MatchGrid.js';
  * dialog closing, whichever comes first — and settling detaches every
  * listener, so a late click on a stale dialog can reach nothing.
  *
- * @pattern Mediator — grid, mode buttons, count and Apply never talk to each
- * other; they talk to the panel, which keeps them consistent (Apply is
- * disabled exactly while the grid's selection is empty).
+ * @pattern Mediator — grid, mode buttons, count, Apply and "Apply to all
+ * remaining" never talk to each other; they talk to the panel, which keeps
+ * them consistent (both apply buttons are disabled exactly while the grid's
+ * selection is empty).
  */
 export class SelectionPanel {
   /**
@@ -65,6 +69,9 @@ export class SelectionPanel {
     this._applyButton = /** @type {HTMLButtonElement|null} */ (
       container.querySelector('.select-btn')
     );
+    this._applyAllButton = /** @type {HTMLButtonElement|null} */ (
+      container.querySelector('.apply-all-btn')
+    );
     this._countElement = container.querySelector('.selection-count');
 
     this._wire();
@@ -92,10 +99,18 @@ export class SelectionPanel {
     this._resolve(value);
   }
 
-  /** @private */
-  _apply() {
+  /**
+   * @param {boolean} [toRemaining=false] - Also hand every remaining creature its best match
+   * @private
+   */
+  _apply(toRemaining = false) {
     const paths = this.grid.selectedPaths;
-    if (paths.length > 0) this.settle({ paths, mode: this._mode });
+    if (paths.length === 0) return;
+    this.settle(
+      toRemaining
+        ? { paths, mode: this._mode, applyToRemaining: true }
+        : { paths, mode: this._mode }
+    );
   }
 
   /** @private */
@@ -122,6 +137,7 @@ export class SelectionPanel {
     }
 
     this._applyButton?.addEventListener('click', () => this._apply(), { signal });
+    this._applyAllButton?.addEventListener('click', () => this._apply(true), { signal });
     this._container
       .querySelector('.skip-btn')
       ?.addEventListener('click', () => this.settle(null), { signal });
@@ -137,6 +153,7 @@ export class SelectionPanel {
    */
   _showSelection(count) {
     if (this._applyButton) this._applyButton.disabled = count === 0;
+    if (this._applyAllButton) this._applyAllButton.disabled = count === 0;
     if (this._countElement) {
       this._countElement.textContent =
         count === 1

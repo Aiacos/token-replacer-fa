@@ -132,6 +132,23 @@ describe('no-match category browser', () => {
     expect(document.querySelector('.token-replacer-fa-selection-info').hidden).toBe(false);
   });
 
+  it('applies the chosen category match to every remaining creature', async () => {
+    const { selection } = await open(vi.fn(async () => [ORC]));
+    const applyAll = document.querySelector('.apply-all-btn');
+    expect(applyAll.disabled).toBe(true);
+
+    search('humanoid');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(applyAll.disabled).toBe(false);
+    applyAll.click();
+
+    await expect(selection).resolves.toEqual({
+      paths: ['orc.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+  });
+
   it('settles with null on Skip', async () => {
     const { selection } = await open(vi.fn());
 

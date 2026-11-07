@@ -108,13 +108,12 @@ export class NoMatchController {
           store: this._filterStore,
           signal,
           onChange: (text) => {
-            panel.grid.filter(text).then(
-              (outcome) => this._showCount(outcome),
-              (error) => this._reportRenderFailure(error)
-            );
+            panel.grid.filter(text).catch((error) => this._reportRenderFailure(error));
           },
         })
       : null;
+    // Every change, a page rendered on scroll included, reaches the count.
+    panel.grid.onCountChange((outcome) => this._showCount(outcome));
 
     find('.search-category-btn')?.addEventListener('click', () => this._search(), { signal });
     this._el.typeInput?.addEventListener(
@@ -190,7 +189,7 @@ export class NoMatchController {
       if (el.selectionInfo) el.selectionInfo.hidden = false;
     }
     try {
-      this._showCount(await this._panel.grid.setMatches(results));
+      await this._panel.grid.setMatches(results);
     } catch (error) {
       this._reportRenderFailure(error);
     }
@@ -213,12 +212,12 @@ export class NoMatchController {
    * @param {import('./MatchGrid.js').FilterOutcome} outcome
    * @private
    */
-  _showCount({ visible, total, capped }) {
+  _showCount({ visible, total }) {
     if (!this._el.resultCount) return;
-    this._el.resultCount.textContent = this._localizer.localize(
-      capped ? 'ui.showingResultsCapped' : 'ui.showingResults',
-      { visible, total }
-    );
+    this._el.resultCount.textContent = this._localizer.localize('ui.showingResults', {
+      visible,
+      total,
+    });
   }
 
   /**
