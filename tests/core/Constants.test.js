@@ -200,10 +200,23 @@ describe('EXCLUDED_FILENAME_TERMS', () => {
     });
   });
 
-  it('contains representative terms: "cliff", "barrel", "tree"', () => {
+  it('contains representative terms: "cliff", "barrel", "bush"', () => {
     expect(EXCLUDED_FILENAME_TERMS).toContain('cliff');
     expect(EXCLUDED_FILENAME_TERMS).toContain('barrel');
-    expect(EXCLUDED_FILENAME_TERMS).toContain('tree');
+    expect(EXCLUDED_FILENAME_TERMS).toContain('bush');
+  });
+
+  // A term that is also a word of a creature name silently drops that creature's
+  // token art everywhere: "hill" removed every Hill Giant.
+  it('never contains a word of a creature name the mappings search for', () => {
+    const creatureNames = [
+      ...Object.values(CREATURE_TYPE_MAPPINGS).flat(),
+      ...Object.values(PRIMARY_CATEGORY_TERMS).flat(),
+    ].map((name) => name.toLowerCase());
+    const collisions = EXCLUDED_FILENAME_TERMS.filter((term) =>
+      creatureNames.some((name) => new RegExp(`\\b${term}\\b`).test(name))
+    );
+    expect(collisions).toEqual([]);
   });
 });
 

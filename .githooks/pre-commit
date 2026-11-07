@@ -1,0 +1,11 @@
+#!/bin/sh
+# core.hooksPath disables .git/hooks, so a clone's own hook (gitleaks here) is
+# called explicitly; --git-common-dir keeps this correct inside a worktree.
+set -e
+
+local_hook="$(git rev-parse --git-common-dir)/hooks/pre-commit"
+if [ -x "$local_hook" ]; then
+  "$local_hook"
+fi
+
+npm run check

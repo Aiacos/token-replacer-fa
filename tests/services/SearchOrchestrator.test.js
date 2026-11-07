@@ -6,7 +6,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Fuse from 'fuse.js';
 import { SearchOrchestrator } from '../../scripts/services/SearchOrchestrator.js';
-import { MOCK_TVA_CACHE_JSON, createParsedImages } from '../helpers/mock-tva-cache.js';
 
 // Mock loadFuse to return real Fuse.js from devDependency instead of CDN import
 vi.mock('../../scripts/core/Utils.js', async (importOriginal) => {
@@ -163,7 +162,7 @@ describe('SearchOrchestrator', () => {
   // -----------------------------------------------------------------------
   describe('constructor DI', () => {
     it('instantiates with all injected deps without accessing Foundry globals', () => {
-      const mockGetSetting = vi.fn((mod, key) => undefined);
+      const mockGetSetting = vi.fn(() => undefined);
       const mockIndexService = { isBuilt: false, searchByCategory: vi.fn(() => []) };
       const mockTVACache = { hasTVA: false, tvaCacheLoaded: false };
       const mockForgeBazaar = { isServiceAvailable: () => false };
@@ -478,7 +477,7 @@ describe('SearchOrchestrator', () => {
           score: 0.1,
         },
       ];
-      const { orchestrator, deps } = createOrchestrator({
+      const { orchestrator } = createOrchestrator({
         tvaCacheService: {
           hasTVA: true,
           tvaCacheLoaded: true,
@@ -555,7 +554,7 @@ describe('SearchOrchestrator', () => {
           score: 0.1,
         },
       ];
-      const { orchestrator, deps } = createOrchestrator({
+      const { orchestrator } = createOrchestrator({
         tvaCacheService: {
           hasTVA: true,
           tvaCacheLoaded: true,
@@ -626,7 +625,7 @@ describe('SearchOrchestrator', () => {
     });
 
     it('sorts results: fromName > fromSubtype > fromCategory > other', async () => {
-      const { orchestrator, deps } = createOrchestrator({
+      const { orchestrator } = createOrchestrator({
         indexService: {
           isBuilt: true,
           searchByCategory: vi.fn(() => [{ path: 'cat.webp', name: 'Cat', source: 'index' }]),
@@ -785,7 +784,7 @@ describe('SearchOrchestrator', () => {
     }
 
     it('returns Map with same keys as input groups (2 groups = 1 batch)', async () => {
-      const { orchestrator, deps } = createOrchestrator({
+      const { orchestrator } = createOrchestrator({
         tvaCacheService: {
           hasTVA: true,
           tvaCacheLoaded: true,
@@ -946,7 +945,7 @@ describe('SearchOrchestrator', () => {
         },
       ];
 
-      const { orchestrator, deps } = createOrchestrator({
+      const { orchestrator } = createOrchestrator({
         indexService: {
           isBuilt: true,
           searchByCategory: vi.fn(() => []),

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Creatures shown another creature's token art**: when several creature types were searched at once on the local index, they could all receive the results of whichever search finished first.
+- **Hill Giants, Awakened Trees, Corpse Flowers and Cave Bears were never found**: their file names contained words meant to filter out scenery (`hill`, `tree`, `flower`, `cave`).
+- **A failed index refresh discarded a working index**: when the weekly refresh failed, searches lost the cached index for the whole session. The cached index is now kept.
+- **A full browser storage went unreported**: the index could fail to save while the log said it was saved, so it was rebuilt every session without a warning.
+- **One folder named `constructor` broke the whole index build**, forcing the slow fallback path.
+- **Stopping the index build right after starting it was ignored.**
+- **Players' browsers built the index too**, although only the GM can use it.
+- **A restored filter in the match selection did not filter the grid** until the term was retyped.
+- **Each category search in the no-match dialog slowed the next one**, because filter listeners piled up. A failed category search now shows an error instead of an endless spinner.
+- **Search progress labels appeared in English** in the Italian interface.
+- **"No active scene" also raised a second, misleading error** about unselected tokens.
+- **Reloading the TVA cache could return the old data** if an earlier load was still running.
+- **Stored data with shared references was only partly sanitized** on load.
+
+### Changed
+
+- **Constitution in `CLAUDE.md`** extended to cover architecture and design, security, test meaningfulness, debugging workflow, automatic pre-commit checks, cleanup routine and agent tooling. `TODO.md` and `SECURITY.md` added.
+- **Every commit runs `npm run check`** through a versioned pre-commit hook, activated by `npm install`.
+- **Releases build and verify the package before pushing** the release commit and tag, so a failed build no longer leaves a version with no release.
+
 ## [2.13.0] - 2026-08-30
 
 ### Added
@@ -22,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Coverage reporting** (`npm run test:coverage`) with the report uploaded as a CI artifact
 - **25 tests for the CI tooling itself** (`tests/tools/`), covering version bumping, changelog promotion, Dependabot triage and manifest validation
 - **`LICENSE`**: the MIT license file the README and CONTRIBUTING already linked to
-- **Constitution in `CLAUDE.md`**: eleven binding articles covering code quality, testing, UX consistency, performance, automated validation, SDK research, documentation, repository hygiene, CI/CD, subagent use and a shared documentation icon vocabulary
+- **Constitution in `CLAUDE.md`**: binding articles covering code quality, testing, UX consistency, performance, automated validation, SDK research, documentation, repository hygiene, CI/CD, subagent use and a shared documentation icon vocabulary
 
 ### Changed
 

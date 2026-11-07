@@ -45,6 +45,11 @@ jobs:
             echo "A PR for $BRANCH is already open — nothing to do"
             exit 0
           fi
+          # A branch left from a closed PR would reject the push every week.
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "::notice::$BRANCH exists without an open PR — delete it to let the watch retry"
+            exit 0
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

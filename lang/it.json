@@ -87,6 +87,7 @@
       "started": "Inizio sostituzione token art...",
       "complete": "Sostituzione completata! Sostituiti {count} token.",
       "noScene": "Nessuna scena attiva trovata",
+      "categorySearchFailed": "Token Replacer FA: la ricerca per categoria non è riuscita. Controlla la console (F12) per i dettagli.",
       "noTokens": "Nessun token NPC trovato nella scena corrente",
       "missingDeps": "Si consiglia Token Variant Art o FA Nexus per risultati migliori",
       "error": "Errore nella sostituzione del token: {error}",
@@ -141,6 +142,11 @@
       "contact_support": "Se il problema continua, segnala questo problema su GitHub con i log della console"
     },
     "ui": {
+      "progressIndexLookup": "ricerca nell'indice",
+      "progressTvaCacheFallback": "cache TVA (ripiego)",
+      "progressTvaCacheLookup": "ricerca nella cache TVA",
+      "progressForgeBazaar": "Forge Bazaar",
+      "progressLocalIndex": "indice locale",
       "showDetails": "Mostra dettagli",
       "howToFix": "Come risolvere:",
       "filterPlaceholder": "Filtra (es. nano monaco)...",

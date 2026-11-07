@@ -96,20 +96,9 @@ jobs:
       - name: Validate manifest, i18n keys and runtime assets
         run: npm run validate
 
-      - name: Commit and tag the bump
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add module.json package.json CHANGELOG.md CLAUDE.md scripts/main.js
-          git commit -m "chore: release v${VERSION}"
-          git tag -a "v${VERSION}" -m "v${VERSION}"
-          git push origin HEAD:"${GITHUB_REF_NAME}"
-          git push origin "v${VERSION}"
-
-      # ── build and publish ───────────────────────────────────────────────
+      # ── build and verify before anything is pushed ─────────────────────────
+      # A failure past the push would leave main and the tag at a version with
+      # no release, and the bump refuses to repeat a version on re-run.
       - name: Build the release ZIP
         run: bash build.sh
 
@@ -130,6 +119,19 @@ jobs:
           PACKAGED_VERSION=$(unzip -p "$ZIP" module.json | jq -r '.version')
           [ "$PACKAGED_VERSION" = "${{ steps.version.outputs.version }}" ] \
             || { echo "::error::packaged module.json says $PACKAGED_VERSION"; exit 1; }
+
+      - name: Commit and tag the bump
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add module.json package.json CHANGELOG.md CLAUDE.md scripts/main.js
+          git commit -m "chore: release v${VERSION}"
+          git tag -a "v${VERSION}" -m "v${VERSION}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
+          git push origin "v${VERSION}"
 
       - name: Point the standalone manifest at this release
         run: |
