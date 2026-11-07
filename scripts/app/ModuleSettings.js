@@ -54,6 +54,34 @@ const DEFINITIONS = Object.freeze([
     default: false,
   },
   {
+    key: 'scaleTokens',
+    name: 'TOKEN_REPLACER_FA.settings.scaleTokens.name',
+    hint: 'TOKEN_REPLACER_FA.settings.scaleTokens.hint',
+    type: Boolean,
+    default: false,
+  },
+  {
+    // SYNC: Keep the range in sync with SCALE_RANGE in app/TokenAppearancePolicy.js
+    key: 'tokenScale',
+    name: 'TOKEN_REPLACER_FA.settings.tokenScale.name',
+    hint: 'TOKEN_REPLACER_FA.settings.tokenScale.hint',
+    type: Number,
+    range: { min: 0.25, max: 3, step: 0.05 },
+    default: 1,
+  },
+  {
+    key: 'dynamicRing',
+    name: 'TOKEN_REPLACER_FA.settings.dynamicRing.name',
+    hint: 'TOKEN_REPLACER_FA.settings.dynamicRing.hint',
+    type: String,
+    choices: {
+      keep: 'TOKEN_REPLACER_FA.settings.dynamicRing.choices.keep',
+      enable: 'TOKEN_REPLACER_FA.settings.dynamicRing.choices.enable',
+      disable: 'TOKEN_REPLACER_FA.settings.dynamicRing.choices.disable',
+    },
+    default: 'keep',
+  },
+  {
     key: 'additionalPaths',
     name: 'TOKEN_REPLACER_FA.settings.additionalPaths.name',
     hint: 'TOKEN_REPLACER_FA.settings.additionalPaths.hint',
@@ -156,6 +184,21 @@ export class ModuleSettings {
   /** @returns {boolean} Ask the user to confirm a match */
   get confirmReplace() {
     return this.get('confirmReplace');
+  }
+
+  /** @returns {boolean} Apply `tokenScale` to token art when it is applied */
+  get scaleTokens() {
+    return this.get('scaleTokens');
+  }
+
+  /** @returns {number} Scale for both texture axes (0.25–3) */
+  get tokenScale() {
+    return this.get('tokenScale');
+  }
+
+  /** @returns {'keep'|'enable'|'disable'} What applying token art does to the dynamic ring */
+  get dynamicRing() {
+    return this.get('dynamicRing');
   }
 
   /** @returns {boolean} Read TVA's static cache file directly */

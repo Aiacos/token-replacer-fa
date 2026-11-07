@@ -9,6 +9,7 @@ import { ModuleError } from '../core/ModuleError.js';
 import { Scheduler } from '../core/Scheduler.js';
 import { localizer as defaultLocalizer } from '../core/Localizer.js';
 import { VariantAssignment } from './VariantAssignment.js';
+import { TokenAppearancePolicy } from './TokenAppearancePolicy.js';
 
 /**
  * Error-message patterns that map an unstructured error to a type the error
@@ -38,10 +39,15 @@ const ERROR_CLASSES = Object.freeze([
  * and search → for each group pick token art (auto, confirm, or manual browse)
  * and apply it → summarise.
  *
- * Cancel is offered only up to the end of the search, before any token is
- * touched, so a cancelled run always leaves the scene exactly as it was. A
- * failure while applying one creature group marks that group's tokens failed
- * and moves on to the next group.
+ * A selection resolved with `applyToRemaining` switches the run to batch mode:
+ * every later group gets its best match (first in rank order, sequential
+ * assignment) without a dialog, and a group with no match is skipped.
+ *
+ * The Cancel button is offered only up to the end of the search, before any
+ * token is touched, so a cancel from the dialog always leaves the scene as it
+ * was. `cancel()` called later (a macro, during a batch) stops between tokens:
+ * what was applied stays applied and the summary says so. A failure while
+ * applying one creature group marks that group's tokens failed and moves on.
  *
  * @pattern Command + Template Method — one object per run with `execute()` and
  * `cancel()`; `execute()` fixes the step order and each step is a method.
@@ -58,12 +64,13 @@ export class TokenReplacementWorkflow {
    * @param {{buildLocalTokenIndex: function(): Promise<Array>}} deps.scanService - Local scan fallback
    * @param {Object} deps.tokenService - Token lookup and grouping
    * @param {Object} deps.dialog - The UI manager (dialog, templates, selection handlers)
-   * @param {{write: function(*, string): Promise<boolean>}} deps.imageWriter - Applies token art
+   * @param {{write: function(*, string, Object=): Promise<boolean>}} deps.imageWriter - Applies token art
    * @param {{localize: Function}} [deps.localizer] - Localizer
    * @param {function(): Object} [deps.getUi] - Returns Foundry's `ui` (read lazily)
    * @param {function(): (Object|null)} [deps.getScene] - Returns the active scene
    * @param {function(number): Promise<void>} [deps.yieldToMain] - Lets the UI paint
    * @param {function(string): {assign: Function}} [deps.assignmentFor] - Assignment strategy per mode
+   * @param {function(Object): {changesFor: function(string): Object}} [deps.appearanceFor] - Builds the run's extra token changes from the settings
    * @param {{log: Function}} [deps.logger] - Debug logger
    */
   constructor({
@@ -82,6 +89,7 @@ export class TokenReplacementWorkflow {
     getScene = () => canvas?.scene,
     yieldToMain = (ms) => Scheduler.yieldToMain(ms),
     assignmentFor = (mode) => VariantAssignment.forMode(mode),
+    appearanceFor = (runSettings) => TokenAppearancePolicy.fromSettings(runSettings),
     logger = new DebugLogger('Workflow'),
   }) {
     this._settings = settings;
@@ -99,6 +107,7 @@ export class TokenReplacementWorkflow {
     this._getScene = getScene;
     this._yield = yieldToMain;
     this._assignmentFor = assignmentFor;
+    this._appearanceFor = appearanceFor;
     this._logger = logger;
 
     this._cancelRequested = false;
@@ -109,6 +118,10 @@ export class TokenReplacementWorkflow {
     this._total = 0;
     /** @type {{autoReplace: boolean, confirmReplace: boolean, threshold: number}|null} */
     this._policy = null;
+    /** @type {{changesFor: function(string): Object}|null} Scale/ring changes, read once per run */
+    this._appearance = null;
+    /** True once a selection asked to apply its choice to every remaining group */
+    this._applyToRemaining = false;
   }
 
   /**
@@ -172,7 +185,9 @@ export class TokenReplacementWorkflow {
 
       await this._applyAll(searchResults, localIndex);
       await this._summarise();
-      return 'completed';
+      // A cancel this late stopped a batch between tokens; the summary above
+      // already reports what was applied before it.
+      return this._cancelRequested ? 'cancelled' : 'completed';
     } catch (error) {
       // A cancellation reaches here when it interrupts an in-flight search; it
       // is an outcome, not a failure. Setting the flag matters: an error that
@@ -375,7 +390,8 @@ export class TokenReplacementWorkflow {
 
   /**
    * Pick and apply token art group by group. A group that fails is reported
-   * and the remaining groups still run.
+   * and the remaining groups still run. Once a selection asks for it, the
+   * remaining groups take their best match unasked.
    * @private
    * @param {Map} searchResults - Results per creature group
    * @param {Array} localIndex - Local index, for the manual category browser
@@ -387,18 +403,17 @@ export class TokenReplacementWorkflow {
       confirmReplace: this._settings.confirmReplace,
       threshold: this._settings.fuzzyThreshold,
     };
+    this._appearance = this._appearanceFor(this._settings);
 
     await this._progress(this._localizer.localize('dialog.replacing'));
     await this._yield(50);
 
     for (const group of searchResults.values()) {
-      if (!this._dialog.isDialogOpen()) break;
+      if (this._stopApplying()) break;
       try {
-        const selection =
-          group.matches.length === 0
-            ? await this._chooseManually(group, localIndex)
-            : await this._chooseFromMatches(group);
+        const selection = await this._choose(group, localIndex);
         await this._apply(group, selection);
+        if (selection.applyToRemaining) this._applyToRemaining = true;
       } catch (error) {
         console.warn(
           `${MODULE_ID} | Token replacement failed for "${group.creatureInfo?.actorName}":`,
@@ -411,10 +426,38 @@ export class TokenReplacementWorkflow {
     }
   }
 
+  /** @private @returns {boolean} True when the user closed the dialog or cancelled */
+  _stopApplying() {
+    return this._cancelRequested || !this._dialog.isDialogOpen();
+  }
+
+  /**
+   * Pick the art for one group: unasked in batch mode, otherwise through the
+   * match selection or, without matches, the category browser.
+   * @private
+   * @returns {Promise<{paths: string[]|null, mode?: string, applyToRemaining?: boolean}>} The selection
+   */
+  async _choose(group, localIndex) {
+    if (this._applyToRemaining) return this._bestMatch(group);
+    return group.matches.length === 0
+      ? this._chooseManually(group, localIndex)
+      : this._chooseFromMatches(group);
+  }
+
+  /**
+   * The group's best match, spread sequentially; no match means skip.
+   * @private
+   * @returns {{paths: string[]|null, mode: string}} The selection
+   */
+  _bestMatch(group) {
+    const best = group.matches[0];
+    return { paths: best ? [best.path] : null, mode: 'sequential' };
+  }
+
   /**
    * No match found: let the user browse categories for this creature.
    * @private
-   * @returns {Promise<{paths: string[]|null, mode?: string}>} The user's selection
+   * @returns {Promise<{paths: string[]|null, mode?: string, applyToRemaining: boolean}>} The user's selection
    */
   async _chooseManually(group, localIndex) {
     const { creatureInfo, tokens } = group;
@@ -436,14 +479,28 @@ export class TokenReplacementWorkflow {
 
     await this._progress(this._localizer.localize('dialog.replacing'));
     await this._yield(50);
-    return { paths: selection?.paths ?? null, mode: selection?.mode };
+    return this._selectionOf(selection);
+  }
+
+  /**
+   * Normalise a dialog's SelectionResult; a dismissed dialog (null) skips.
+   * @private
+   * @param {{paths?: string[], mode?: string, applyToRemaining?: boolean}|null} selection - Dialog result
+   * @returns {{paths: string[]|null, mode?: string, applyToRemaining: boolean}} The selection
+   */
+  _selectionOf(selection) {
+    return {
+      paths: selection?.paths ?? null,
+      mode: selection?.mode,
+      applyToRemaining: selection?.applyToRemaining === true,
+    };
   }
 
   /**
    * Matches found: auto-apply a good-enough best match, ask the user, or take
    * the best match unasked, depending on the settings.
    * @private
-   * @returns {Promise<{paths: string[]|null, mode?: string}>} The chosen art
+   * @returns {Promise<{paths: string[]|null, mode?: string, applyToRemaining?: boolean}>} The chosen art
    */
   async _chooseFromMatches(group) {
     const { matches, tokens, creatureInfo } = group;
@@ -452,7 +509,7 @@ export class TokenReplacementWorkflow {
     const { autoReplace, confirmReplace, threshold } = this._policy;
 
     if ((autoReplace && score >= 1 - threshold) || !confirmReplace) {
-      return { paths: [best.path] };
+      return this._bestMatch(group);
     }
 
     this._dialog.updateDialogContent(
@@ -465,7 +522,7 @@ export class TokenReplacementWorkflow {
 
     await this._progress(this._localizer.localize('dialog.replacing'));
     await this._yield(50);
-    return { paths: selection?.paths ?? null, mode: selection?.mode };
+    return this._selectionOf(selection);
   }
 
   /**
@@ -483,15 +540,15 @@ export class TokenReplacementWorkflow {
 
     if (assignments.length === 0) {
       for (const token of group.tokens) {
-        if (!this._dialog.isDialogOpen()) break;
+        if (this._stopApplying()) break;
         await this._report(group, token, 'skipped');
       }
       return;
     }
 
     for (const { token, path } of assignments) {
-      if (!this._dialog.isDialogOpen()) break;
-      const success = await this._imageWriter.write(token, path);
+      if (this._stopApplying()) break;
+      const success = await this._imageWriter.write(token, path, this._appearance);
       const match = path
         .split('/')
         .pop()

@@ -25,6 +25,23 @@
         "name": "Fallback Ricerca Completa",
         "hint": "Se non trova match nella categoria del tipo creatura, cerca nell'intero indice. Default: Spento"
       },
+      "scaleTokens": {
+        "name": "Ridimensiona la token art applicata",
+        "hint": "Se attivo, applicare la token art imposta anche la scala del token al valore qui sotto. Default: Spento"
+      },
+      "tokenScale": {
+        "name": "Scala della token art",
+        "hint": "Scala applicata a entrambi gli assi del token quando \"Ridimensiona la token art applicata\" è attivo. Default: 1"
+      },
+      "dynamicRing": {
+        "name": "Anello dinamico del token",
+        "hint": "Cosa fa all'anello dinamico del token l'applicazione della token art. Default: Lascia invariato",
+        "choices": {
+          "keep": "Lascia invariato",
+          "enable": "Attiva, con la nuova art come soggetto",
+          "disable": "Disattiva"
+        }
+      },
       "additionalPaths": {
         "name": "Percorsi Aggiuntivi",
         "hint": "Lista di percorsi aggiuntivi separati da virgola per cercare token art (es. tokens/monsters, assets/tokens)"
