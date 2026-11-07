@@ -87,6 +87,7 @@
       "started": "Starting token art replacement...",
       "complete": "Token replacement complete! Replaced {count} tokens.",
       "noScene": "No active scene found",
+      "categorySearchFailed": "Token Replacer FA: the category search failed. Check the console (F12) for details.",
       "noTokens": "No NPC tokens found on current scene",
       "missingDeps": "Token Variant Art or FA Nexus module recommended for best results",
       "error": "Error replacing token: {error}",
@@ -141,6 +142,11 @@
       "contact_support": "If the problem continues, please report this issue on GitHub with console logs"
     },
     "ui": {
+      "progressIndexLookup": "index lookup",
+      "progressTvaCacheFallback": "TVA cache fallback",
+      "progressTvaCacheLookup": "TVA cache lookup",
+      "progressForgeBazaar": "Forge Bazaar",
+      "progressLocalIndex": "local index",
       "showDetails": "Show Details",
       "howToFix": "How to fix this:",
       "filterPlaceholder": "Filter (e.g., dwarf monk)...",

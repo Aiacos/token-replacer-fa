@@ -142,6 +142,21 @@ describe('StorageService - IndexedDB path', () => {
     });
   });
 
+  describe('load() of shared references', () => {
+    // The TVA cache stores each image object under two structures, and
+    // IndexedDB's structured clone keeps that sharing on the way back.
+    it('sanitizes an object every time it is referenced', async () => {
+      const shared = JSON.parse('{"__proto__": {"polluted": true}, "path": "a.webp"}');
+      await service.save('shared-key', { images: [shared], byCategory: { beast: [shared] } });
+
+      const loaded = await service.load('shared-key');
+
+      expect(Object.hasOwn(loaded.images[0], '__proto__')).toBe(false);
+      expect(Object.hasOwn(loaded.byCategory.beast[0], '__proto__')).toBe(false);
+      expect(loaded.byCategory.beast[0]).toBe(loaded.images[0]);
+    });
+  });
+
   describe('load()', () => {
     it('returns saved data (round-trip)', async () => {
       const data = { creatures: ['dragon', 'goblin'], count: 42 };

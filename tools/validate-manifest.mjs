@@ -306,6 +306,20 @@ for (const file of scriptFiles) {
   }
 }
 
+// ── hardcoded text in search progress labels ───────────────────────────────
+// A progress `term` is rendered verbatim by search-progress.hbs. It is either a
+// creature name (data) or a phase label — and literal labels like 'index lookup'
+// reached Italian users in English. Any quoted literal there is a label.
+const PROGRESS_TERM_LITERAL = /\bterm:\s*'([^'\n]+)'/g;
+for (const file of scriptFiles) {
+  const source = readFileSync(file, 'utf8');
+  for (const match of source.matchAll(PROGRESS_TERM_LITERAL)) {
+    fail(
+      `${path.relative(ROOT, file)} passes an untranslated progress label: "${match[1]}" — use i18n()`
+    );
+  }
+}
+
 // ── runtime asset paths referenced from source exist ────────────────────────
 // Covers both `renderTemplate('modules/${MODULE_ID}/templates/x.hbs')` and the
 // Web Worker URL, which is loaded by path and therefore invisible to the

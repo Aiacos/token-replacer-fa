@@ -721,12 +721,7 @@ export class UIManager {
           }
         };
 
-        // Initial state - show clear button and apply filter if restored from localStorage
         toggleClearButton();
-        if (searchInput.value.trim().length > 0) {
-          // Trigger filter logic for restored filter term
-          searchInput.dispatchEvent(new Event('input'));
-        }
 
         searchInput.addEventListener('input', () => {
           toggleClearButton();
@@ -801,6 +796,12 @@ export class UIManager {
           resolve,
           updateSelectionCount
         );
+      }
+
+      // A filter term restored from localStorage is applied last: dispatched any
+      // earlier, it reached no listener, or the unfiltered first render won.
+      if (searchInput && searchInput.value.trim().length > 0) {
+        searchInput.dispatchEvent(new Event('input'));
       }
 
       // Handle button clicks
@@ -881,21 +882,32 @@ export class UIManager {
         }
       };
 
-      const setupModeButtons = () => {
+      const setupModeButtons = (signal) => {
         const modeButtons = container.querySelectorAll('.mode-btn');
         modeButtons.forEach((btn) => {
-          btn.addEventListener('click', () => {
-            modeButtons.forEach((b) => b.classList.remove('active'));
-            btn.classList.add('active');
-            assignmentMode = btn.dataset.mode;
-          });
+          btn.addEventListener(
+            'click',
+            () => {
+              modeButtons.forEach((b) => b.classList.remove('active'));
+              btn.classList.add('active');
+              assignmentMode = btn.dataset.mode;
+            },
+            { signal }
+          );
         });
       };
 
       // Full category results stored for filtering across the entire dataset
       let fullCategoryResults = [];
+      // displayResults() runs once per search and wires listeners each time, so
+      // each search gets its own controller and aborts the previous one.
+      let resultsAbort = null;
+      ac.signal.addEventListener('abort', () => resultsAbort?.abort());
 
       const displayResults = (results) => {
+        resultsAbort?.abort();
+        resultsAbort = new AbortController();
+        const resultsSignal = resultsAbort.signal;
         if (loadingEl) loadingEl.style.display = 'none';
 
         const categoryFilter = container.querySelector('.category-filter');
@@ -946,7 +958,7 @@ export class UIManager {
         if (multiSelectEnabled) {
           if (modeToggle) modeToggle.style.display = 'flex';
           if (selectionInfo) selectionInfo.style.display = 'block';
-          setupModeButtons();
+          setupModeButtons(resultsSignal);
         }
 
         // Setup category filter with AND logic on full dataset
@@ -965,11 +977,7 @@ export class UIManager {
           };
 
           toggleClearButton();
-          if (categorySearchInput.value.trim().length > 0) {
-            categorySearchInput.dispatchEvent(new Event('input'));
-          }
 
-          // Tie to the dialog's AbortController so re-renders don't stack duplicate listeners
           categorySearchInput.addEventListener(
             'input',
             () => {
@@ -1008,15 +1016,19 @@ export class UIManager {
                 }
               }, 150);
             },
-            { signal: ac.signal }
+            { signal: resultsSignal }
           );
 
           if (categoryClearBtn) {
-            categoryClearBtn.addEventListener('click', () => {
-              categorySearchInput.value = '';
-              categorySearchInput.dispatchEvent(new Event('input'));
-              categorySearchInput.focus();
-            });
+            categoryClearBtn.addEventListener(
+              'click',
+              () => {
+                categorySearchInput.value = '';
+                categorySearchInput.dispatchEvent(new Event('input'));
+                categorySearchInput.focus();
+              },
+              { signal: resultsSignal }
+            );
           }
         }
       };
@@ -1040,22 +1052,25 @@ export class UIManager {
             loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, {
               current: 0,
               total: 1,
-              term: 'initializing...',
+              term: i18n('ui.initializing'),
               resultsFound: 0,
             });
           }
           if (matchGrid) matchGrid.innerHTML = '';
           if (selectBtn) selectBtn.disabled = true;
 
-          const results = await searchByCategory(
-            selectedType,
-            localIndex,
-            null,
-            async (progress) => {
+          let results;
+          try {
+            results = await searchByCategory(selectedType, localIndex, null, async (progress) => {
               if (loadingEl)
                 loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, progress);
-            }
-          );
+            });
+          } catch (error) {
+            console.warn(`${MODULE_ID} | Category search failed:`, error);
+            if (loadingEl) loadingEl.style.display = 'none';
+            ui.notifications.error(i18n('notifications.categorySearchFailed'));
+            return;
+          }
           displayResults(results);
         });
       }

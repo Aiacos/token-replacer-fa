@@ -246,11 +246,14 @@ export const EXCLUDED_FOLDERS_SET = new Set(EXCLUDED_FOLDERS);
  * Terms that indicate environmental/prop assets when found in filenames
  * Used as additional filter beyond folder exclusion
  * These terms strongly suggest non-creature assets
+ *
+ * A word that also appears in a creature name does not belong here: "hill" once
+ * dropped every Hill Giant. tests/core/Constants.test.js enforces that against
+ * the category mappings.
  */
 export const EXCLUDED_FILENAME_TERMS = [
   // Terrain/landscape
   'cliff',
-  'cave',
   'cavern',
   'entrance',
   'portal',
@@ -262,7 +265,6 @@ export const EXCLUDED_FILENAME_TERMS = [
   'terrain',
   'landscape',
   'mountain',
-  'hill',
   'valley',
   'canyon',
   'ravine',
@@ -290,10 +292,8 @@ export const EXCLUDED_FILENAME_TERMS = [
   'stream',
   'shore',
   // Vegetation
-  'tree',
   'bush',
   'grass',
-  'flower',
   'forest',
   'jungle',
   // Props/objects (common in FA packs)
