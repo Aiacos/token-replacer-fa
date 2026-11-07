@@ -13,9 +13,10 @@ import { IndexService } from '../../scripts/services/IndexService.js';
 
 /**
  * @param {object} [storageOverrides={}] - Storage method overrides
+ * @param {object} [depOverrides={}] - Other dependency overrides
  * @returns {{service: IndexService, worker: object}}
  */
-function createService(storageOverrides = {}) {
+function createService(storageOverrides = {}, depOverrides = {}) {
   const worker = {
     postMessage: vi.fn(),
     terminate: vi.fn(),
@@ -34,6 +35,7 @@ function createService(storageOverrides = {}) {
     workerFactory: vi.fn(() => worker),
     getSetting: vi.fn(),
     getTvaAPI: vi.fn(),
+    ...depOverrides,
   });
   return { service, worker };
 }
@@ -124,6 +126,96 @@ describe('terms that collide with Object.prototype', () => {
 
     expect(service.search('constructor')).toEqual([]);
     expect(service.searchMultiple(['constructor', 'wolf']).map((r) => r.path)).toEqual([WOLF]);
+  });
+});
+
+describe('a TVA path source that throws', () => {
+  it('does not stop the next source from being tried', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const tvaAPI = {
+      // An exotic TVA build whose getter explodes used to abort the whole build
+      // with index_build_failed, although a later source had the paths.
+      get cacheImagePaths() {
+        throw new Error('getter exploded');
+      },
+      getSearchCache: async () => [WOLF],
+    };
+    const service = new IndexService({
+      storageService: {
+        load: vi.fn(async () => null),
+        save: vi.fn(async () => true),
+        remove: vi.fn(async () => true),
+        needsMigration: vi.fn(async () => false),
+        migrateFromLocalStorage: vi.fn(async () => {}),
+      },
+      workerFactory: vi.fn(),
+      getSetting: vi.fn(),
+      getTvaAPI: () => tvaAPI,
+    });
+    service.index = service.createEmptyIndex();
+
+    await expect(service.buildFromTVA()).resolves.toBe(1);
+    expect(service.index.pathList).toEqual([WOLF]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.any(Error));
+  });
+});
+
+describe('a malformed cached index', () => {
+  it('is discarded instead of loaded', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const remove = vi.fn(async () => true);
+    // termIndex points at id 0 but allPaths is missing: loading it used to
+    // succeed, and then every search silently returned nothing.
+    const { service } = createService({
+      remove,
+      load: vi.fn(async () => ({
+        version: 15,
+        lastUpdate: Date.now(),
+        categories: {},
+        pathList: [WOLF],
+        termIndex: { wolf: [0] },
+      })),
+    });
+
+    await expect(service.loadFromCache()).resolves.toBe(false);
+    expect(service.index).toBeNull();
+    expect(remove).toHaveBeenCalled();
+  });
+});
+
+describe('a cancelled worker build', () => {
+  it('is not mistaken for a worker failure: no fallback, no warning, worker kept', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { service, worker } = createService({}, { getTvaAPI: () => ({}) });
+    worker.addEventListener.mockImplementation((type, handler) => {
+      if (type === 'message') worker.onMessage = handler;
+    });
+    worker.postMessage.mockImplementation((msg) => {
+      if (msg.command === 'indexPaths') worker.onMessage({ data: { type: 'cancelled' } });
+    });
+    service.index = service.createEmptyIndex();
+    ui.notifications.warn.mockClear();
+
+    await expect(service.buildFromTVA(null, [{ path: WOLF, name: 'Wolf' }])).rejects.toMatchObject({
+      cancelled: true,
+    });
+    expect(service.index.pathList).toEqual([]);
+    expect(ui.notifications.warn).not.toHaveBeenCalled();
+    expect(service.worker).toBe(worker);
+  });
+});
+
+describe('IndexService.CACHE_KEY', () => {
+  it('names the key the index is stored under', async () => {
+    const save = vi.fn(async () => true);
+    const { service } = createService({ save });
+    service.index = service.createEmptyIndex();
+
+    await service.saveToCache();
+
+    expect(save).toHaveBeenCalledWith(IndexService.CACHE_KEY, service.index);
+    expect(IndexService.CACHE_KEY).toBe('token-replacer-fa-index-v3');
   });
 });
 

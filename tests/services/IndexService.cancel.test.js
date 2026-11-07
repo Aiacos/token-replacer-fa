@@ -42,24 +42,28 @@ function createService(overrides = {}) {
 }
 
 describe('cancelOperation', () => {
-  it('raises the cancel flag even when no worker exists', () => {
+  it('raises the cancel flag even when no worker exists', async () => {
     const { service } = createService();
 
     service.cancelOperation();
 
     // The main-thread fallback has no worker to message and is the path most in
     // need of an escape hatch, so the flag must not depend on one.
-    expect(service._cancelRequested).toBe(true);
+    service.index = service.createEmptyIndex();
+    const paths = Array.from({ length: 1500 }, (_, i) => `modules/fa/tokens/goblin-${i}.webp`);
+    await expect(service.indexPathsDirectly(paths)).rejects.toMatchObject({ cancelled: true });
   });
 
-  it('messages the worker when there is one', () => {
+  it('messages the worker when there is one', async () => {
     const { service, worker } = createService();
     service._ensureWorker();
 
     service.cancelOperation();
 
     expect(worker.postMessage).toHaveBeenCalledWith({ command: 'cancel' });
-    expect(service._cancelRequested).toBe(true);
+    await expect(service.indexPathsWithWorker(['a/b.webp'])).rejects.toMatchObject({
+      cancelled: true,
+    });
   });
 });
 
@@ -97,7 +101,8 @@ describe('indexPathsDirectly', () => {
     const paths = Array.from({ length: 50 }, (_, i) => `modules/fa/tokens/goblin-${i}.webp`);
 
     await expect(service.indexPathsDirectly(paths)).resolves.toEqual(expect.any(Number));
-    expect(service._cancelRequested).toBe(false);
+    // A run that nobody cancelled must not leave a cancel behind for the next one.
+    await expect(service.indexPathsDirectly(paths)).resolves.toEqual(expect.any(Number));
   });
 });
 
@@ -165,11 +170,10 @@ describe('worker teardown always allows a replacement', () => {
     service.indexPathsWithWorker = vi.fn(async () => {
       throw new Error('worker exploded');
     });
-    service._teardownWorker();
+    service.terminate();
 
     service._ensureWorker();
     expect(service.worker).toBe(worker);
-    expect(service._workerInitialized).toBe(true);
   });
 
   it('survives a terminate() that throws', () => {
@@ -179,24 +183,35 @@ describe('worker teardown always allows a replacement', () => {
       throw new Error('already dead');
     });
 
-    expect(() => service._teardownWorker()).not.toThrow();
+    expect(() => service.terminate()).not.toThrow();
     expect(service.worker).toBeNull();
-    expect(service._workerInitialized).toBe(false);
+    // ...and a later build still gets a fresh one.
+    service._ensureWorker();
+    expect(service.worker).toBe(worker);
   });
 
   it('leaves no path that nulls the worker without clearing the flag', () => {
     const source = readFileSync('scripts/services/IndexService.js', 'utf8');
+    const builder = readFileSync('scripts/services/index/WorkerIndexBuilder.js', 'utf8');
     const orchestrator = readFileSync('scripts/services/SearchOrchestrator.js', 'utf8');
 
-    // Only three assignments are legitimate per file: the constructor, the
-    // _ensureWorker() catch (which deliberately leaves the flag false so a
-    // transient factory failure can retry), and _teardownWorker() itself.
+    // The pairing cannot come apart when no service holds the pair: the index
+    // worker lives in a ManagedWorker, where "alive" *is* "a worker is held".
     for (const [name, text] of [
       ['IndexService', source],
-      ['SearchOrchestrator', orchestrator],
+      ['WorkerIndexBuilder', builder],
     ]) {
-      const assignments = text.match(/this\.worker = null/g) ?? [];
-      expect(assignments.length, `${name} gained a teardown path outside the helper`).toBe(3);
+      expect(text, `${name} assigns a worker field again`).not.toMatch(/this\.worker = /);
+      expect(text, `${name} reintroduced the init flag`).not.toMatch(/_workerInitialized/);
+    }
+    expect(builder).toMatch(/new ManagedWorker\(/);
+
+    // Until SearchOrchestrator adopts ManagedWorker too, its only legitimate
+    // assignments are the constructor, the _ensureWorker() catch and
+    // _teardownWorker() itself.
+    if (!/new ManagedWorker\(/.test(orchestrator)) {
+      const assignments = orchestrator.match(/this\.worker = null/g) ?? [];
+      expect(assignments.length, 'SearchOrchestrator gained a teardown path').toBe(3);
     }
   });
 });
