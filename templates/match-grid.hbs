@@ -1,0 +1,18 @@
+{{#each tiles}}
+  <button
+    type='button'
+    class='match-option'
+    data-path='{{path}}'
+    aria-pressed='false'
+    title='{{name}}'
+  >
+    <span class='skeleton-loader skeleton-72'>
+      <img src='{{path}}' alt='' loading='lazy' width='72' height='72' />
+    </span>
+    <span class='match-name'>{{name}}</span>
+    {{#if scoreLabel}}
+      <span class='match-score'>{{scoreLabel}}</span>
+    {{/if}}
+    <span class='match-check' aria-hidden='true'><i class='fas fa-check'></i></span>
+  </button>
+{{/each}}

@@ -10,18 +10,24 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { UIManager } from '../../scripts/ui/UIManager.js';
+import { MatchGrid } from '../../scripts/ui/MatchGrid.js';
+import { useRealTemplates, useMemoryStorage } from './helpers/real-templates.js';
 
 const MATCHES = [
   { name: 'Goblin', path: 'tokens/goblin.webp', score: 0.1 },
   { name: 'Wolf', path: 'tokens/wolf.webp', score: 0.2 },
 ];
 
-/** Paths currently rendered in the grid. */
+/** Paths currently shown in the grid (filtering hides tiles, it no longer removes them). */
 const renderedPaths = (root) =>
-  [...root.querySelectorAll('.match-option')].map((el) => el.dataset.path);
+  [...root.querySelectorAll('.match-option:not([hidden])')].map((el) => el.dataset.path);
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Tiles are rendered from templates/match-grid.hbs, so the grid is empty
+  // under the global '<div>mock template</div>' renderer.
+  useRealTemplates();
+  useMemoryStorage();
 });
 
 afterEach(() => {
@@ -41,7 +47,7 @@ describe('match selection', () => {
         <button class="select-btn"></button><button class="skip-btn"></button>
       </div></div>`;
     const ui = new UIManager();
-    ui._currentMatches = MATCHES;
+    await ui.createMatchSelectionHTML({ actorName: 'Goblin' }, MATCHES, 1);
 
     ui.setupMatchSelectionHandlers(document.getElementById('dialog'));
     await vi.advanceTimersByTimeAsync(200);
@@ -89,7 +95,7 @@ describe('no-match category search', () => {
     }
     expect(searchByCategory).toHaveBeenCalledTimes(3);
 
-    const render = vi.spyOn(ui, '_renderMatchGrid');
+    const render = vi.spyOn(MatchGrid.prototype, 'filter');
     const filter = document.querySelector('.category-search-filter-input');
     filter.value = 'goblin';
     filter.dispatchEvent(new Event('input'));
@@ -115,7 +121,7 @@ describe('no-match category search', () => {
     document.querySelector('.search-category-btn').click();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(document.querySelector('.category-results-loading').style.display).toBe('none');
+    expect(document.querySelector('.category-results-loading').hidden).toBe(true);
     expect(globalThis.ui.notifications.error).toHaveBeenCalled();
   });
 

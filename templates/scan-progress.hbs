@@ -1,8 +1,8 @@
 <div class='token-replacer-fa-scan-progress'>
-  <div class='scan-status'>
-    <i class='fas fa-search fa-spin'></i>
+  <p class='scan-status' data-announce>
+    <i class='fas fa-search fa-spin' aria-hidden='true'></i>
     <span>{{scanningLabel}}</span>
-  </div>
+  </p>
 
   <div class='scan-stats'>
     <div class='stat-item'>
@@ -20,7 +20,7 @@
     <div class='current-path' title='{{currentDir}}'>{{shortDir}}</div>
     {{#if currentFile}}
       <div class='current-file'>
-        <i class='fas fa-image'></i>
+        <i class='fas fa-image' aria-hidden='true'></i>
         {{currentFile}}
       </div>
     {{/if}}
@@ -28,15 +28,20 @@
 
   {{#if showDirInfo}}
     <div class='dir-info'>
-      <span><i class='fas fa-file-image'></i> {{filesLabel}}</span>
-      <span><i class='fas fa-folder'></i> {{subdirectoriesLabel}}</span>
+      <span><i class='fas fa-file-image' aria-hidden='true'></i> {{filesLabel}}</span>
+      <span><i class='fas fa-folder' aria-hidden='true'></i> {{subdirectoriesLabel}}</span>
     </div>
   {{/if}}
 
   <div class='token-replacer-fa-progress-buttons'>
-    <button type='button' class='cancel-btn' data-action='cancel'>
-      <i class='fas fa-times'></i>
-      {{cancelLabel}}
+    <button
+      type='button'
+      class='cancel-btn'
+      data-action='cancel'
+      data-busy-label='{{cancellingLabel}}'
+    >
+      <i class='fas fa-times' aria-hidden='true'></i>
+      <span class='btn-label'>{{cancelLabel}}</span>
     </button>
   </div>
 </div>
