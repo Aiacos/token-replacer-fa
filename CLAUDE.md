@@ -410,14 +410,15 @@ scripts/
 │   ├── StoppableNotification.js # v13 Notification element / v12 id — Adapter
 │   ├── SceneControls.js      # v13 scene-control payload — Adapter
 │   ├── CompanionModules.js   # TVA / FA Nexus presence — Adapter
-│   └── TokenImageWriter.js   # TVA updateTokenImage or core update — Strategy
+│   ├── TokenImageWriter.js   # TVA updateTokenImage (+ one follow-up update for extras) or core update — Strategy
+│   └── TokenAppearancePolicy.js # Scale + dynamic ring extras, built once per run — Strategy
 ├── core/                     # Shared building blocks, no Foundry access at construction
 │   ├── Constants.js          # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), exclusions (data)
 │   ├── ModuleError.js        # Error subclass: of(type, details, keys), cancelled() — Factory
 │   ├── DebugLogger.js · Settings.js · Localizer.js (localizer: localize(), orEnglish())
 │   ├── FuseLoader.js         # fuseLoader: lazy CDN load + shape check (SYNC with worker)
 │   ├── PathFilter.js         # pathFilter: isExcluded() + memo cache (SYNC with worker)
-│   ├── TvaResultParser.js · FilterQuery.js (Value Object) · CreatureTerms.js
+│   ├── TvaResultParser.js · FilterQuery.js (Value Object; WildcardTerm — Interpreter) · CreatureTerms.js
 │   ├── TemplateRenderer.js · HtmlSanitizer.js · Scheduler.js
 │   └── ManagedWorker.js      # Lazy worker lifecycle: ensure/post/teardown — used by index + search
 ├── services/
@@ -426,7 +427,8 @@ scripts/
 │   ├── search/               # SearchPlan (priority rules), Index/TvaCache/LocalIndex/ForgeBazaar
 │   │                         #   sources (Strategy), ResultRanker, ResultCollector,
 │   │                         #   SearchResultCache (LRU), WorkerSearchClient (one search in
-│   │                         #   flight, on ManagedWorker), ParallelSearchRunner (batches)
+│   │                         #   flight, on ManagedWorker), ParallelSearchRunner (batches),
+│   │                         #   FullLibrarySearch (fallbackFullSearch: name search, Strategy)
 │   ├── IndexService.js       # Category + term index — Facade; only it decides worker fallback
 │   ├── index/                # TermIndex, IndexRepository (CACHE_KEY, VERSION), TvaPathSourceChain
 │   │                         #   (Chain of Responsibility), Worker/Direct/TvaSearch builders
@@ -445,7 +447,8 @@ scripts/
     ├── TokenReplacerDialog.js # ApplicationV2 subclass; focus restore, aria-live region
     ├── MatchSelectionController.js · NoMatchController.js # one per dialog — Mediator
     ├── SelectionPanel.js     # grid + mode + Apply/Skip, resolves once — Mediator
-    ├── MatchGrid.js          # Set-based selection, keyed tiles, <button aria-pressed> — Observer
+    ├── MatchGrid.js          # Set-based selection, keyed tiles, pages of 200 via an IntersectionObserver
+    │                         #   sentinel (chunked fallback), arrow-key focus — Observer
     ├── FilterBox.js · FilterTermStore.js (Repository) · ProgressView.js · DisplayLabels.js
 templates/                    # *.hbs, incl. match-grid.hbs (tiles); only the grid scrolls
 tools/                        # CI/CD logic — plain Node, unit-tested, no YAML branching
@@ -459,23 +462,25 @@ tests/
 
 ### Where a change goes
 
-| To change…                                      | Edit                                                               |
-| ----------------------------------------------- | ------------------------------------------------------------------ |
-| which sources run, in which order, per priority | `services/search/SearchPlan.js`                                    |
-| how matches are ordered                         | `services/search/ResultRanker.js`                                  |
-| a new place to find TVA image paths             | a new source in `services/index/TvaPathSources.js`, not a new `if` |
-| how the persisted index is versioned            | `IndexRepository.VERSION` (bump to invalidate caches)              |
-| a step of the replacement run                   | `app/TokenReplacementWorkflow.js`                                  |
-| how selected token art is spread over tokens    | a new `VariantAssignment` strategy                                 |
-| dialog behaviour                                | the dialog's controller in `ui/`; markup in `templates/`           |
+| To change…                                      | Edit                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| which sources run, in which order, per priority | `services/search/SearchPlan.js`                                          |
+| how matches are ordered                         | `services/search/ResultRanker.js`                                        |
+| a new place to find TVA image paths             | a new source in `services/index/TvaPathSources.js`, not a new `if`       |
+| how the persisted index is versioned            | `IndexRepository.VERSION` (bump to invalidate caches)                    |
+| a step of the replacement run                   | `app/TokenReplacementWorkflow.js`                                        |
+| how selected token art is spread over tokens    | a new `VariantAssignment` strategy                                       |
+| dialog behaviour                                | the dialog's controller in `ui/`; markup in `templates/`                 |
+| what happens when a creature has no match       | `services/search/FullLibrarySearch.js` (`SearchPlan.stepForFullLibrary`) |
+| extra token changes when art is applied         | `app/TokenAppearancePolicy.js`                                           |
 
 ### Key Data Flow
 
 1. `main.js` registers hooks; `ready` → `IndexBootstrapper.run()` (GM only) loads Fuse and starts the background TVA-cache + index build
 2. The scene control → `TokenReplacerApp.processTokenReplacement()` → a new `TokenReplacementWorkflow`
 3. `TokenService` extracts creature info; tokens are grouped by creature
-4. `SearchOrchestrator` runs the `SearchPlan` sources per group through `ParallelSearchRunner`; one failing group does not stop the others
-5. `UIManager` shows matches; the chosen `VariantAssignment` maps token art to tokens; `TokenImageWriter` applies it
+4. `SearchOrchestrator` runs the `SearchPlan` sources per group through `ParallelSearchRunner`; one failing group does not stop the others. With `fallbackFullSearch`, a group with no match gets a whole-library name search (`fromFullSearch: true`)
+5. `UIManager` shows matches; the chosen `VariantAssignment` maps token art to tokens; `TokenImageWriter` applies it with the run's `TokenAppearancePolicy` extras. A selection resolved with `applyToRemaining` gives every later group its best match without a dialog; `cancel()` stops the apply phase between tokens
 
 ### Template System
 

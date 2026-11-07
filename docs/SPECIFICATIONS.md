@@ -29,7 +29,7 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 
 | Requirement | Value                     |
 | ----------- | ------------------------- |
-| Foundry VTT | v12 minimum, v13 verified |
+| Foundry VTT | v13 minimum, v14 verified |
 | Game System | D&D 5e (dnd5e) v3.0.0+    |
 
 ### 2.2 Module Dependencies
@@ -100,12 +100,15 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 - [x] Image preview with name and score
 - [x] Multi-select for multiple tokens
 - [x] Double-click to apply immediately
+- [x] Arrow keys, Home and End move between matches
+- [x] Progressive loading: 200 matches per page, the next page loads as the grid scrolls (no cap)
 
 #### 3.2.3 Search Filter (AND Logic)
 
 - [x] Text input for filtering results
 - [x] Supports multiple terms with AND logic
 - [x] Delimiters: space, comma, colon
+- [x] Wildcards inside a term: `*` any characters, `?` exactly one
 - [x] Debounced input (150ms)
 
 #### 3.2.4 No Match Handling
@@ -119,19 +122,25 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 - [x] Sequential mode: assign variants in order
 - [x] Random mode: shuffle variants randomly
 - [x] Selection count display
+- [x] Apply to all remaining: apply the choice, then every remaining creature takes its best match without a dialog; creatures with no match are skipped
 
 ### 3.3 Settings
 
-| Setting              | Type         | Default | Description                                                           |
-| -------------------- | ------------ | ------- | --------------------------------------------------------------------- |
-| `fuzzyThreshold`     | Number (0-1) | 0.1     | Fuse.js match threshold (lower = stricter)                            |
-| `searchPriority`     | Choice       | both    | faNexus / forgeBazaar / both                                          |
-| `autoReplace`        | Boolean      | false   | Auto-apply best match                                                 |
-| `confirmReplace`     | Boolean      | true    | Show confirmation dialog                                              |
-| `fallbackFullSearch` | Boolean      | false   | Search all when no category match (**Planned - not yet implemented**) |
-| `useTVACache`        | Boolean      | true    | Use TVA's pre-built cache                                             |
-| `refreshTVACache`    | Boolean      | false   | Refresh cache before search                                           |
-| `additionalPaths`    | String       | ""      | Extra directories to scan                                             |
+| Setting                | Type            | Default | Description                                                                                                                                |
+| ---------------------- | --------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `fuzzyThreshold`       | Number (0-1)    | 0.1     | Fuse.js match threshold (lower = stricter)                                                                                                 |
+| `searchPriority`       | Choice          | both    | faNexus / forgeBazaar / both                                                                                                               |
+| `autoReplace`          | Boolean         | false   | Apply the best match when its score clears the threshold                                                                                   |
+| `confirmReplace`       | Boolean         | true    | Show the selection dialog; off applies the best match                                                                                      |
+| `fallbackFullSearch`   | Boolean         | false   | When a creature's normal search finds nothing, search its actor name across the whole library (index, or TVA cache), ignoring the category |
+| `additionalPaths`      | String          | ""      | Extra directories to scan                                                                                                                  |
+| `useTVACache`          | Boolean         | true    | Use TVA's pre-built cache                                                                                                                  |
+| `refreshTVACache`      | Boolean         | false   | Refresh cache before search                                                                                                                |
+| `indexUpdateFrequency` | Choice          | weekly  | daily / weekly / monthly / quarterly index rebuild                                                                                         |
+| `scaleTokens`          | Boolean         | false   | Also set `texture.scaleX/scaleY` of the placed token when art is applied                                                                   |
+| `tokenScale`           | Number (0.25-3) | 1       | Scale used when `scaleTokens` is on (clamped to the range)                                                                                 |
+| `dynamicRing`          | Choice          | keep    | keep / enable (`ring.enabled` + `ring.subject.texture` = new art) / disable                                                                |
+| `debugMode`            | Boolean         | false   | Detailed console logging                                                                                                                   |
 
 ---
 
@@ -139,20 +148,8 @@ Token Replacer FA automatically replaces NPC token artwork in Foundry VTT with m
 
 ### 4.1 Architecture
 
-```
-scripts/
-├── core/
-│   ├── Constants.js    # Module ID, creature mappings, defaults
-│   └── *.js            # Core classes: errors, logging, i18n, Fuse loader, path filter, TVA parsing
-├── services/
-│   ├── TokenService.js    # Token extraction and grouping
-│   ├── SearchService.js   # Search orchestration (uses IndexService)
-│   ├── IndexService.js    # Pre-built keyword index for O(1) searches (v2.2.0+)
-│   └── ScanService.js     # Directory scanning
-├── ui/
-│   └── UIManager.js    # Dialog and HTML generation
-└── main.js             # Entry point, hooks, settings
-```
+See the **Architecture** section of `CLAUDE.md`, which is authoritative and kept
+current: every runtime class, its pattern, and where each kind of change goes.
 
 ### 4.2 TVA API Integration
 
@@ -218,43 +215,21 @@ Extraction checks these properties in order:
 - [x] Debounced filter input
 - [x] Yield to main thread every 3 searches
 
-### 4.4.1 IndexService Architecture (v2.2.0+)
+### 4.4.1 IndexService Architecture
 
-```
-IndexService
-├── images[]              # Flat array of all token images
-├── keywordIndex<Map>     # keyword → Set<imageIndex> for O(1) lookup
-├── pathIndex<Map>        # path → imageIndex for deduplication
-└── categoryIndex<Map>    # category → Set<imageIndex>
-
-Build Process:
-1. Collect all images from TVA cache (broad term searches)
-2. Scan local directories recursively
-3. Extract keywords from path/name/category
-4. Build inverted index for instant lookups
-
-Search Performance:
-- Single term: O(1) hash lookup
-- Multiple terms OR: O(n) where n = number of terms
-- Previous: O(m×k) where m = terms, k = API latency
-```
+Paths are interned once in `index.pathList`; `allPaths`, `categories` and the
+term index hold integer ids into it. The build runs in `IndexWorker.js`, with a
+main-thread fallback. Details: `CLAUDE.md`, Constitution Article IV and the Web
+Worker Architecture section.
 
 ### 4.5 Foundry VTT Compatibility
 
-#### v12 Support
-
-- `onClick` handler for scene controls
-- V1 Dialog API
-
-#### v13 Support
-
-- `onChange` handler for scene controls
-- Array and object format for controls
-
-#### Known Deprecations
-
-- V1 Application framework (Dialog) - deadline v16
-- Requires migration to ApplicationV2 for v16+
+- v13 is the supported floor and v14 is verified; `compatibility.maximum` stays unset.
+- The dialog is an `ApplicationV2` subclass; templates render only through
+  `foundry.applications.handlebars`.
+- Scene controls use the v13 `onChange` handler and object format.
+- Token changes use v13 `TokenDocument` fields: `texture.src`, `texture.scaleX/scaleY`,
+  `ring.enabled`, `ring.subject.texture`.
 
 ---
 
@@ -309,12 +284,19 @@ Search Performance:
 
 ### 5.6 UI
 
-| Test   | Steps                           | Expected                      |
-| ------ | ------------------------------- | ----------------------------- |
-| TC-501 | Type in search bar, press Enter | Search triggers               |
-| TC-502 | Type "humanoid"                 | Autocomplete shows suggestion |
-| TC-503 | Double-click match              | Applies immediately           |
-| TC-504 | Click Skip                      | Token skipped, moves to next  |
+| Test   | Steps                                                      | Expected                                                                      |
+| ------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| TC-501 | Type in search bar, press Enter                            | Search triggers                                                               |
+| TC-502 | Type "humanoid"                                            | Autocomplete shows suggestion                                                 |
+| TC-503 | Double-click match                                         | Applies immediately                                                           |
+| TC-504 | Click Skip                                                 | Token skipped, moves to next                                                  |
+| TC-505 | 500+ matches, scroll the grid                              | Next 200 load; count reads "Showing 400 of N"                                 |
+| TC-506 | Filter `gob*` then `orc?`                                  | Wildcards match any run / one character                                       |
+| TC-507 | Focus a tile, press arrow keys                             | Focus moves between visible tiles                                             |
+| TC-508 | 3 creature types, "Apply to all remaining" on the first    | No further dialog; the others get their best match, no-match ones are skipped |
+| TC-509 | `scaleTokens` on, `tokenScale` 1.5                         | Replaced tokens get scale 1.5                                                 |
+| TC-510 | `dynamicRing` = enable                                     | Replaced tokens show the ring with the new art as subject                     |
+| TC-511 | `fallbackFullSearch` on, creature with an unusual category | Name matches from the whole library are offered                               |
 
 ---
 
@@ -382,21 +364,14 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 ## 9. Known Issues
 
-| Issue                         | Status           | Workaround                                                               |
-| ----------------------------- | ---------------- | ------------------------------------------------------------------------ |
-| Dialog V1 deprecation warning | Deferred         | Functional until v16                                                     |
-| Large result sets slow UI     | Open             | Virtualization planned                                                   |
-| `fallbackFullSearch` setting  | Planned          | UI setting exists, implementation pending. Use category browser manually |
-| ~~Slow search performance~~   | **Fixed v2.2.0** | Pre-built index provides O(1) lookups                                    |
+| Issue                          | Status    | Workaround                                                                      |
+| ------------------------------ | --------- | ------------------------------------------------------------------------------- |
+| Light theme                    | Open      | Colours are module tokens (`--trfa-*`), not yet mapped to Foundry's light theme |
+| Rendered tiles stay in the DOM | By design | Paging renders 200 at a time; filter to narrow very large result sets           |
 
 ---
 
 ## 10. Future Improvements
 
-- [ ] Migrate to ApplicationV2/DialogV2
-- [ ] Virtual scrolling for large result sets
-- [ ] Implement `fallbackFullSearch` setting (UI exists, logic pending)
-- [ ] Batch apply to all tokens
-- [ ] Custom token scaling options
-- [ ] Token ring/border support
-- [ ] Wildcard search support
+- [ ] Map the `--trfa-*` colour tokens onto Foundry's light theme
+- [ ] Search and link Forgotten Adventures Live Gallery tokens, pending FA's permission (see `TODO.md`)

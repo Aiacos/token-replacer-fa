@@ -61,23 +61,6 @@
       "debugMode": {
         "name": "Modalità Debug",
         "hint": "Abilita logging dettagliato nella console per la risoluzione dei problemi. Registra dettagli della ricerca, tempistiche ed errori. Default: Spento"
-      },
-      "scaleTokens": {
-        "name": "Ridimensiona la token art applicata",
-        "hint": "Imposta anche la scala del token quando la sua art viene sostituita."
-      },
-      "tokenScale": {
-        "name": "Scala della token art",
-        "hint": "Scala applicata quando 'Ridimensiona la token art applicata' è attivo (1 = dimensione originale)."
-      },
-      "dynamicRing": {
-        "name": "Anello dinamico del token",
-        "hint": "Cosa fare con l'anello dinamico di Foundry quando la art viene applicata.",
-        "choices": {
-          "keep": "Lascia invariato",
-          "enable": "Attiva, con la nuova art come soggetto",
-          "disable": "Disattiva"
-        }
       }
     },
     "frequency": {

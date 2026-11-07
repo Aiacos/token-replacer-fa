@@ -61,23 +61,6 @@
       "debugMode": {
         "name": "Debug Mode",
         "hint": "Enable detailed console logging for troubleshooting. Logs search details, timing, and errors. Default: Off"
-      },
-      "scaleTokens": {
-        "name": "Scale applied token art",
-        "hint": "Also set the token's scale when its art is replaced."
-      },
-      "tokenScale": {
-        "name": "Token art scale",
-        "hint": "Scale applied when 'Scale applied token art' is on (1 = original size)."
-      },
-      "dynamicRing": {
-        "name": "Dynamic token ring",
-        "hint": "What to do with Foundry's dynamic token ring when art is applied.",
-        "choices": {
-          "keep": "Leave unchanged",
-          "enable": "Enable, with the new art as subject",
-          "disable": "Disable"
-        }
       }
     },
     "frequency": {

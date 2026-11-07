@@ -18,6 +18,10 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 - **Interactive selection**: Shows matching options with preview images and lets you choose the best match
 - **Progress tracking**: Visual progress dialogs with real-time results summary
 - **Batch processing**: Identical creatures share search results for efficient processing
+- **Apply to all remaining**: Apply your choice for one creature, then give every remaining creature its best match without further dialogs
+- **Filter with wildcards**: Narrow the matches with several words (all must match); `*` stands for any characters and `?` for exactly one (e.g. `gob*`, `orc?`)
+- **Large result sets**: The match grid loads more art as you scroll, with no cap on how many matches you can reach
+- **Token appearance**: Optionally set the token's scale and Foundry's dynamic token ring when its art is applied
 - **Configurable**: Adjustable fuzzy threshold, search priority, fallback options, and custom paths
 - **Localization**: Available in English and Italian
 
@@ -62,20 +66,27 @@ re-download.
    - Group identical creatures for batch processing
    - Search for matching art using fuzzy search
    - Show matching options for each creature type
-5. Select the desired replacement, skip, or cancel
+5. Select the desired replacement, skip, or cancel. Use the arrow keys, Home and End to move between matches, and **Apply to all remaining** to let the remaining creatures take their best match automatically (creatures with no match are skipped)
 
 ## ⚙️ Settings
 
-| Setting                     | Description                                                             | Default |
-| --------------------------- | ----------------------------------------------------------------------- | ------- |
-| **Fuzzy Search Threshold**  | Lower values require closer matches (0.0 = exact, 1.0 = match anything) | 0.1     |
-| **Search Priority**         | Which source to search first (FA Nexus, Forge Bazaar, or Both)          | Both    |
-| **Auto Replace on Match**   | Automatically replace if high-confidence match found                    | Off     |
-| **Confirm Before Replace**  | Show selection dialog for each creature type                            | On      |
-| **Fallback to Full Search** | Search entire index if no matches in creature category                  | Off     |
-| **Additional Search Paths** | Comma-separated custom paths to search for tokens                       | Empty   |
-| **Use TVA Cache**           | Use Token Variant Art's pre-built cache instead of manual scanning      | On      |
-| **Refresh TVA Cache**       | Force refresh TVA cache before searching (for new images)               | Off     |
+| Setting                     | Description                                                                                                                                                                   | Default         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| **Fuzzy Search Threshold**  | Lower values require closer matches (0.0 = exact, 1.0 = match anything)                                                                                                       | 0.1             |
+| **Search Priority**         | Which source to search first (FA Nexus, Forge Bazaar, or Both)                                                                                                                | Both            |
+| **Auto Replace on Match**   | Automatically replace if high-confidence match found                                                                                                                          | Off             |
+| **Confirm Before Replace**  | Show selection dialog for each creature type                                                                                                                                  | On              |
+| **Fallback to Full Search** | When a creature's category has no match, search its actor name across the whole library (index or TVA cache). These name-only matches are less reliable than category matches | Off             |
+| **Additional Search Paths** | Comma-separated custom paths to search for tokens                                                                                                                             | Empty           |
+| **Use TVA Cache**           | Use Token Variant Art's pre-built cache instead of manual scanning                                                                                                            | On              |
+| **Refresh TVA Cache**       | Force refresh TVA cache before searching (for new images)                                                                                                                     | Off             |
+| **Index Update Frequency**  | How often the token image index is rebuilt                                                                                                                                    | Weekly          |
+| **Scale applied token art** | Also set the placed token's scale when its art is replaced                                                                                                                    | Off             |
+| **Token art scale**         | Scale used when the option above is on (0.25–3, 1 = original size)                                                                                                            | 1               |
+| **Dynamic token ring**      | Leave unchanged, enable with the new art as subject, or disable                                                                                                               | Leave unchanged |
+| **Debug Mode**              | Detailed console logging for troubleshooting                                                                                                                                  | Off             |
+
+Scale and ring apply to the token placed on the scene, not to the actor's prototype token.
 
 ## 🧠 How It Works
 
@@ -210,7 +221,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ### Recent Highlights
 
-- **Unreleased** — Bug fixes (Promise.allSettled, race condition, score fallback), performance (pre-lowercase search, LRU eviction, Worker timeout), security (hasOwnProperty, credentials, stack traces)
+- **Unreleased** — Apply to all remaining, wildcard filter, paged match grid, full-library fallback search, token scale and dynamic ring settings, keyboard navigation, object-oriented architecture, accessibility and performance fixes
 - **v2.12.4** — Security hardening: protocol validation, CSP-compatible event handlers, credential protection
 - **v2.12.0** — Quality refactor: comprehensive test suite, CI pipeline, constructor DI, structured error handling, Worker lifecycle management
 - **v2.11.0** — ApplicationV2 dialog migration for Foundry v13 compatibility, service decomposition

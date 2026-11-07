@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Arrow keys, Home and End move between token art tiles**, so a keyboard user no longer has to Tab through every match to reach Apply.
+- **Apply to all remaining**: a button on both selection screens applies the current choice, then gives every remaining creature its best match without further dialogs; creatures with no match are skipped.
+- **Wildcards in the match filter**: `*` stands for any characters and `?` for exactly one, inside any filter word.
+- **The match grid loads more as you scroll**, replacing the 200-match cap: every match is reachable without filtering.
+- **The "Fallback to Full Search" setting now works**: a creature with no category match falls back to a name search across the whole library.
+- **Token appearance settings**: optionally set the token's scale, and enable or disable Foundry's dynamic token ring with the new art as its subject, whenever art is applied.
+- **Arrow keys, Home and End move between token art tiles**, loading further pages as needed, so a keyboard user no longer has to Tab through every match to reach Apply.
 
 ### Fixed
 
