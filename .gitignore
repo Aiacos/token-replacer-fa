@@ -44,3 +44,6 @@ coverage/
 # Agent session state (kept on disk, not versioned)
 fix-todos/
 security-scan/
+
+# Agent worktrees: full checkouts nested in this one
+.claude/worktrees/
