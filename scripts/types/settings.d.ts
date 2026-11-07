@@ -8,6 +8,9 @@ interface SettingConfig {
   'token-replacer-fa.autoReplace': boolean;
   'token-replacer-fa.confirmReplace': boolean;
   'token-replacer-fa.fallbackFullSearch': boolean;
+  'token-replacer-fa.scaleTokens': boolean;
+  'token-replacer-fa.tokenScale': number;
+  'token-replacer-fa.dynamicRing': 'keep' | 'enable' | 'disable';
   'token-replacer-fa.additionalPaths': string;
   'token-replacer-fa.useTVACache': boolean;
   'token-replacer-fa.refreshTVACache': boolean;

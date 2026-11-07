@@ -110,16 +110,18 @@ export class TokenService {
    * Replace a token's image
    * @param {Token} token - Token to update
    * @param {string} imagePath - New image path
+   * @param {Object<string, *>} [extraChanges={}] - More dotted-key token changes (scale, ring), sent in the same update
    * @returns {Promise<true>} Always true on success
    * @throws {Object} Structured error with errorType 'token_replace_failed'
    */
-  async replaceTokenImage(token, imagePath) {
+  async replaceTokenImage(token, imagePath, extraChanges = {}) {
     try {
       // Update both the token document and the prototype token on the actor
       // Foundry VTT dot-notation update path syntax ('texture.src')
       await token.document.update(
         /** @type {any} */ ({
           'texture.src': imagePath,
+          ...extraChanges,
         })
       );
 

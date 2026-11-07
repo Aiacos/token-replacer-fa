@@ -176,7 +176,8 @@ describe('TokenReplacementWorkflow — happy path', () => {
     expect(deps.dialog.createNoMatchHTML).toHaveBeenCalledWith({ actorName: 'Orc' }, 1);
     expect(deps.imageWriter.write).toHaveBeenCalledWith(
       groups.get('orc').tokens[0],
-      'manual/orc.webp'
+      'manual/orc.webp',
+      expect.anything()
     );
   });
 });
@@ -357,5 +358,202 @@ describe('TokenReplacementWorkflow — after Cancel', () => {
       .slice(paintsBeforeCancel)
       .filter((html) => html === 'tva' || html === 'search');
     expect(progressAfterCancel).toEqual([]);
+  });
+});
+
+describe('TokenReplacementWorkflow — batch apply', () => {
+  beforeEach(() => {
+    groups.set('ogre', { tokens: [token('r1')], creatureInfo: { actorName: 'Ogre' } });
+    groups.set('wolf', { tokens: [token('w1'), token('w2')], creatureInfo: { actorName: 'Wolf' } });
+    matches.ogre = [];
+    matches.wolf = [
+      { path: 'fa/wolf_1.webp', score: 0.3 },
+      { path: 'fa/wolf_2.webp', score: 0.35 },
+    ];
+    deps.settings.confirmReplace = true;
+  });
+
+  const written = () => deps.imageWriter.write.mock.calls.map(([t, path]) => [t.name, path]);
+
+  it('applies the choice, then gives every remaining group its best match without a dialog', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValueOnce({
+      paths: ['pick/goblin.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+    const run = build();
+
+    expect(await run.execute()).toBe('completed');
+
+    expect(deps.dialog.setupMatchSelectionHandlers).toHaveBeenCalledTimes(1);
+    expect(deps.dialog.createMatchSelectionHTML).toHaveBeenCalledTimes(1);
+    expect(written()).toEqual([
+      ['g1', 'pick/goblin.webp'],
+      ['g2', 'pick/goblin.webp'],
+      ['o1', 'fa/orc_1.webp'],
+      ['w1', 'fa/wolf_1.webp'],
+      ['w2', 'fa/wolf_1.webp'],
+    ]);
+  });
+
+  it('assigns the remaining groups sequentially, whatever mode the dialog used', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValueOnce({
+      paths: ['pick/a.webp', 'pick/b.webp'],
+      mode: 'random',
+      applyToRemaining: true,
+    });
+    const assignmentFor = vi.fn((mode) => ({
+      assign: (tokens, paths) => tokens.map((t) => ({ token: t, path: paths[0] })),
+      mode,
+    }));
+
+    await build({ assignmentFor }).execute();
+
+    // goblin (dialog), then orc, ogre (no match, skipped) and wolf unasked
+    expect(assignmentFor.mock.calls.map(([mode]) => mode)).toEqual([
+      'random',
+      'sequential',
+      'sequential',
+      'sequential',
+    ]);
+  });
+
+  it('skips groups without a match instead of opening the category browser', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValueOnce({
+      paths: ['pick/goblin.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+    const run = build();
+
+    await run.execute();
+
+    expect(deps.dialog.createNoMatchHTML).not.toHaveBeenCalled();
+    expect(deps.dialog.setupNoMatchHandlers).not.toHaveBeenCalled();
+    expect(run.results.find((r) => r.name === 'Ogre (r1)')).toEqual({
+      name: 'Ogre (r1)',
+      status: 'skipped',
+    });
+  });
+
+  it('keeps the outcome summary correct across replaced, failed and skipped tokens', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValueOnce({
+      paths: ['pick/goblin.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+    deps.imageWriter.write.mockImplementation(async (t) => t.name !== 'w2');
+    const run = build();
+
+    await run.execute();
+
+    const count = (status) => run.results.filter((r) => r.status === status).length;
+    expect([count('success'), count('failed'), count('skipped')]).toEqual([4, 1, 1]);
+    expect(run.results).toHaveLength(6);
+    expect(deps.localizer.localize).toHaveBeenCalledWith('notifications.complete', { count: 4 });
+    expect(deps.localizer.localize).toHaveBeenCalledWith('notifications.replaceFailed', {
+      count: 1,
+    });
+  });
+
+  it('starts the batch from the category browser as well', async () => {
+    matches.goblin = [];
+    deps.dialog.setupNoMatchHandlers.mockResolvedValueOnce({
+      paths: ['manual/goblin.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+
+    await build().execute();
+
+    expect(deps.dialog.setupNoMatchHandlers).toHaveBeenCalledTimes(1);
+    expect(deps.dialog.setupMatchSelectionHandlers).not.toHaveBeenCalled();
+    expect(written().map(([, path]) => path)).toEqual([
+      'manual/goblin.webp',
+      'manual/goblin.webp',
+      'fa/orc_1.webp',
+      'fa/wolf_1.webp',
+      'fa/wolf_1.webp',
+    ]);
+  });
+
+  it('asks for every group as before when the choice is not applied to the rest', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValue({
+      paths: ['pick/any.webp'],
+      mode: 'sequential',
+      applyToRemaining: false,
+    });
+
+    await build().execute();
+
+    expect(deps.dialog.setupMatchSelectionHandlers).toHaveBeenCalledTimes(3);
+    expect(deps.dialog.setupNoMatchHandlers).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops mid-batch when the run is cancelled, leaving the rest untouched', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValueOnce({
+      paths: ['pick/goblin.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+    const run = build();
+    deps.imageWriter.write.mockImplementation(async (t) => {
+      if (t.name === 'o1') run.cancel(); // e.g. TokenReplacerFA.cancel() from a macro
+      return true;
+    });
+
+    expect(await run.execute()).toBe('cancelled');
+
+    expect(written().map(([name]) => name)).toEqual(['g1', 'g2', 'o1']);
+    expect(run.results.map((r) => r.status)).toEqual(['success', 'success', 'success']);
+    // Tokens did change, so the "nothing was changed" screen would be a lie.
+    expect(deps.dialog.createErrorHTML).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'ui.cancelled' })
+    );
+    expect(deps.localizer.localize).toHaveBeenCalledWith('notifications.complete', { count: 3 });
+  });
+
+  it('starts every run without batch state from an earlier run', async () => {
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValueOnce({
+      paths: ['pick/goblin.webp'],
+      mode: 'sequential',
+      applyToRemaining: true,
+    });
+    await build().execute();
+
+    deps.dialog.setupMatchSelectionHandlers.mockClear();
+    deps.dialog.setupMatchSelectionHandlers.mockResolvedValue(null);
+    await build().execute();
+
+    expect(deps.dialog.setupMatchSelectionHandlers).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('TokenReplacementWorkflow — token appearance', () => {
+  it('builds the appearance policy once per run and hands it to every write', async () => {
+    const appearance = { changesFor: vi.fn(() => ({})) };
+    const appearanceFor = vi.fn(() => appearance);
+
+    await build({ appearanceFor }).execute();
+
+    expect(appearanceFor).toHaveBeenCalledTimes(1);
+    expect(appearanceFor).toHaveBeenCalledWith(deps.settings);
+    expect(deps.imageWriter.write).toHaveBeenCalledTimes(3);
+    for (const call of deps.imageWriter.write.mock.calls) expect(call[2]).toBe(appearance);
+  });
+
+  it('reads the scale and ring settings into the default policy', async () => {
+    deps.settings.scaleTokens = true;
+    deps.settings.tokenScale = 2;
+    deps.settings.dynamicRing = 'disable';
+
+    await build().execute();
+
+    const appearance = deps.imageWriter.write.mock.calls[0][2];
+    expect(appearance.changesFor('a.webp')).toEqual({
+      'texture.scaleX': 2,
+      'texture.scaleY': 2,
+      'ring.enabled': false,
+    });
   });
 });

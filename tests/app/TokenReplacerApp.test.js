@@ -195,6 +195,6 @@ describe('TokenReplacerApp — macro API', () => {
   it('replaces a token image through the token service without TVA', async () => {
     const t = { name: 'Goblin' };
     expect(await build().replaceTokenImage(t, 'goblin.webp')).toBe(true);
-    expect(services.tokenService.replaceTokenImage).toHaveBeenCalledWith(t, 'goblin.webp');
+    expect(services.tokenService.replaceTokenImage).toHaveBeenCalledWith(t, 'goblin.webp', {});
   });
 });

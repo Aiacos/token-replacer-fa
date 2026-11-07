@@ -49,6 +49,32 @@ describe('ModuleSettings', () => {
     expect(settings.get('debugMode')).toBe(false);
   });
 
+  it('registers token scaling and the dynamic ring with their ranges and choices', () => {
+    const store = fakeStore();
+    const settings = new ModuleSettings(() => store);
+    settings.register();
+    const config = (key) => store.register.mock.calls.find(([, k]) => k === key)[2];
+
+    expect(config('scaleTokens')).toMatchObject({ type: Boolean, default: false });
+    expect(config('tokenScale')).toMatchObject({
+      type: Number,
+      range: { min: 0.25, max: 3, step: 0.05 },
+      default: 1,
+    });
+    expect(config('dynamicRing')).toMatchObject({
+      type: String,
+      default: 'keep',
+      choices: {
+        keep: 'TOKEN_REPLACER_FA.settings.dynamicRing.choices.keep',
+        enable: 'TOKEN_REPLACER_FA.settings.dynamicRing.choices.enable',
+        disable: 'TOKEN_REPLACER_FA.settings.dynamicRing.choices.disable',
+      },
+    });
+    expect(settings.scaleTokens).toBe(false);
+    expect(settings.tokenScale).toBe(1);
+    expect(settings.dynamicRing).toBe('keep');
+  });
+
   it('surfaces a read before registration instead of inventing a value', () => {
     const settings = new ModuleSettings(() => fakeStore());
     expect(() => settings.autoReplace).toThrow(/not a registered/);

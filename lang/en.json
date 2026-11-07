@@ -25,6 +25,23 @@
         "name": "Fallback to Full Search",
         "hint": "If no matches found in creature type category, search the entire index. Default: Off"
       },
+      "scaleTokens": {
+        "name": "Scale applied token art",
+        "hint": "When on, applying token art also sets the token scale to the value below. Default: Off"
+      },
+      "tokenScale": {
+        "name": "Token art scale",
+        "hint": "Scale applied to both axes of the token when \"Scale applied token art\" is on. Default: 1"
+      },
+      "dynamicRing": {
+        "name": "Dynamic token ring",
+        "hint": "What applying token art does to the token's dynamic ring. Default: Leave unchanged",
+        "choices": {
+          "keep": "Leave unchanged",
+          "enable": "Enable, with the new art as subject",
+          "disable": "Disable"
+        }
+      },
       "additionalPaths": {
         "name": "Additional Search Paths",
         "hint": "Comma-separated list of additional paths to search for token art (e.g., tokens/monsters, assets/tokens)"

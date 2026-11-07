@@ -509,3 +509,50 @@ describe('TokenService', () => {
     });
   });
 });
+
+describe('TokenService.replaceTokenImage()', () => {
+  function tokenWith(update, actorUpdate = vi.fn(async () => {})) {
+    return { name: 'Goblin', document: { update }, actor: { update: actorUpdate } };
+  }
+
+  it('updates the token and its prototype with the new art', async () => {
+    const update = vi.fn(async () => {});
+    const actorUpdate = vi.fn(async () => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const replaced = await new TokenService().replaceTokenImage(
+      tokenWith(update, actorUpdate),
+      'a.webp'
+    );
+    expect(replaced).toBe(true);
+    expect(update).toHaveBeenCalledWith({ 'texture.src': 'a.webp' });
+    expect(actorUpdate).toHaveBeenCalledWith({ 'prototypeToken.texture.src': 'a.webp' });
+    log.mockRestore();
+  });
+
+  it('merges extra changes into the same single token update', async () => {
+    const update = vi.fn(async () => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await new TokenService().replaceTokenImage(tokenWith(update), 'a.webp', {
+      'texture.scaleX': 2,
+      'ring.enabled': false,
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update).toHaveBeenCalledWith({
+      'texture.src': 'a.webp',
+      'texture.scaleX': 2,
+      'ring.enabled': false,
+    });
+    log.mockRestore();
+  });
+
+  it('turns a rejected update into a structured error', async () => {
+    const update = vi.fn(async () => {
+      throw new Error('denied');
+    });
+    await expect(
+      new TokenService().replaceTokenImage(tokenWith(update), 'a.webp')
+    ).rejects.toMatchObject({ errorType: 'token_replace_failed' });
+  });
+});
