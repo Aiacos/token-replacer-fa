@@ -77,6 +77,20 @@ describe('SearchPlan.stepForSubtypes()', () => {
   });
 });
 
+describe('SearchPlan.stepForFullLibrary()', () => {
+  it('prefers a built index, then a loaded TVA cache', () => {
+    expect(plan({ indexBuilt: true, tva: true, tvaCache: true }).plan.stepForFullLibrary()).toBe(
+      STEP.INDEX
+    );
+    expect(plan({ tva: true, tvaCache: true }).plan.stepForFullLibrary()).toBe(STEP.TVA_CACHE);
+  });
+
+  it('never picks the slow TVA API or the Bazaar', () => {
+    expect(plan({ tva: true, forge: true }).plan.stepForFullLibrary()).toBeNull();
+    expect(plan().plan.stepForFullLibrary()).toBeNull();
+  });
+});
+
 describe('SearchPlan.standardSteps()', () => {
   it('runs the local fuzzy search for faNexus and both only', () => {
     const { plan: p } = plan({ tva: true });

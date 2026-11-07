@@ -94,6 +94,21 @@ export class SearchPlan {
   }
 
   /**
+   * The step that looks an actor name up across the whole library when its
+   * category found nothing (`fallbackFullSearch`). Only the in-memory sources
+   * qualify: the index answers through its term index, the TVA cache through
+   * one pass over the loaded cache. The TVA API is left out on purpose — one
+   * slow request per empty group would turn a miss into a long stall.
+   * @returns {string|null} `INDEX`, `TVA_CACHE`, or null
+   */
+  stepForFullLibrary() {
+    const { STEP } = SearchPlan;
+    if (this.index.isAvailable()) return STEP.INDEX;
+    if (this.tva.isCacheLoaded()) return STEP.TVA_CACHE;
+    return null;
+  }
+
+  /**
    * Which sources the standard (no specific subtype) search runs, in order:
    * the local fuzzy search first, then TVA term by term.
    * @param {string} priority - `searchPriority` setting

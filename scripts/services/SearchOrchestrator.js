@@ -29,15 +29,17 @@ import { SearchResultCache } from './search/SearchResultCache.js';
 import { ResultRanker } from './search/ResultRanker.js';
 import { ResultCollector } from './search/ResultCollector.js';
 import { ParallelSearchRunner } from './search/ParallelSearchRunner.js';
+import { FullLibrarySearch } from './search/FullLibrarySearch.js';
 
 /**
  * Turns creature information into a ranked list of token-art matches. The
  * orchestrator owns the *flow* — subtype OR-search, standard search, category
- * browse — and delegates each concern to a collaborator in `search/`:
- * the sources find candidates, `SearchPlan` picks which source runs for the
- * priority setting, `ResultRanker` orders, `SearchResultCache` remembers,
- * `WorkerSearchClient` keeps fuzzy search off the main thread and
- * `ParallelSearchRunner` batches a whole scene.
+ * browse, then the optional whole-library name fallback — and delegates each
+ * concern to a collaborator in `search/`: the sources find candidates,
+ * `SearchPlan` picks which source runs for the priority setting,
+ * `FullLibrarySearch` runs the fallback, `ResultRanker` orders,
+ * `SearchResultCache` remembers, `WorkerSearchClient` keeps fuzzy search off
+ * the main thread and `ParallelSearchRunner` batches a whole scene.
  *
  * Collaborators are built once — in the constructor, or again when
  * `setDependencies()` swaps the TVA or Bazaar service — never per search.
@@ -121,6 +123,13 @@ export class SearchOrchestrator {
       index: this._indexSource,
       tva: this._tvaSource,
       forge: this._forgeSource,
+    });
+    this._fullLibrary = new FullLibrarySearch({
+      plan: this._plan,
+      index: this._indexSource,
+      tva: this._tvaSource,
+      pathFilter: this._pathFilter,
+      getSetting: this._getSetting,
     });
   }
 
@@ -431,16 +440,42 @@ export class SearchOrchestrator {
   }
 
   /**
-   * Search for token art based on creature info
+   * Search for token art based on creature info. When nothing matches and the
+   * `fallbackFullSearch` setting is on, the actor name is looked up across the
+   * whole library instead (`FullLibrarySearch`).
+   *
+   * Only the normal answer is cached: the fallback runs after the cache, so
+   * turning the setting on applies to creatures already searched this session.
    * @param {Object} creatureInfo - Creature information
    * @param {Array} localIndex - Local image index
    * @param {boolean} useCache - Whether to use cache
    * @returns {Promise<Array>} Search results
    */
   async searchTokenArt(creatureInfo, localIndex, useCache = true) {
-    const searchTerms = creatureInfo.searchTerms;
-    if (searchTerms.length === 0) return [];
+    if (creatureInfo.searchTerms.length === 0) return [];
 
+    const matches = await this._searchCreature(creatureInfo, localIndex, useCache);
+    if (matches.length > 0) return matches;
+
+    const fallback = await this._fullLibrary.search(creatureInfo.actorName);
+    if (fallback.length === 0) return matches;
+    console.log(
+      `${MODULE_ID} | No category match for "${creatureInfo.actorName}" — full-library fallback found ${fallback.length} results`
+    );
+    return this._rankerFor(this._getSetting(MODULE_ID, 'searchPriority')).rank(fallback);
+  }
+
+  /**
+   * The normal search for one creature: cached, then the subtype OR-search or
+   * the standard search.
+   * @private
+   * @param {Object} creatureInfo - Creature information
+   * @param {Array} localIndex - Local image index
+   * @param {boolean} useCache - Whether to use cache
+   * @returns {Promise<Array>} Search results
+   */
+  async _searchCreature(creatureInfo, localIndex, useCache) {
+    const searchTerms = creatureInfo.searchTerms;
     const cacheKey = CreatureTerms.cacheKey(creatureInfo);
     if (useCache) {
       const cached = this.searchCache.get(cacheKey);
