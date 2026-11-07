@@ -153,6 +153,7 @@
       "showingResults": "Mostrate {visible} di {total} corrispondenze",
       "showingResultsCapped": "Mostrate {visible} di {total} corrispondenze — usa il filtro per restringerle",
       "selectedCount": "{count} selezionati",
+      "selectedCountOne": "1 selezionato",
       "variantAssignment": "Assegnazione della token art:",
       "modeSequential": "Sequenziale",
       "modeRandom": "Casuale",

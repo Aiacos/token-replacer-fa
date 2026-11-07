@@ -19,8 +19,9 @@ import { DisplayLabels } from './DisplayLabels.js';
 /**
  * @typedef {Object} FilterOutcome
  * @property {number} visible - Tiles shown
- * @property {number} total - Matches passing the filter
- * @property {boolean} capped - Whether the render cap hid some of them
+ * @property {number} total - Matches in the whole result set, filtered or not, so
+ *   the count reads "3 of 40" rather than "3 of 3"
+ * @property {boolean} capped - Whether the render cap hid matches passing the filter
  */
 
 /**
@@ -121,21 +122,23 @@ export class MatchGrid {
       : this._matches.filter((m) => query.matches(`${m.name || ''} ${m.path || ''}`));
     const shown = passing.slice(0, this._maxVisible);
 
+    const outcome = {
+      visible: shown.length,
+      total: this._matches.length,
+      capped: passing.length > shown.length,
+    };
+
     await this._ensureTiles(shown);
-    if (seq !== this._filterSeq) {
-      return {
-        visible: shown.length,
-        total: passing.length,
-        capped: passing.length > shown.length,
-      };
-    }
+    if (seq !== this._filterSeq) return outcome;
 
     const visible = new Set(shown.map((m) => m.path));
     for (const [path, tile] of this._tiles) tile.hidden = !visible.has(path);
-    if (this._emptyElement) {
-      this._emptyElement.hidden = !(this._matches.length > 0 && shown.length === 0);
-    }
-    return { visible: shown.length, total: passing.length, capped: passing.length > shown.length };
+    // A filter that hides everything leaves only the empty message: the grid's
+    // framed box would otherwise sit above it, empty.
+    const filteredOut = this._matches.length > 0 && shown.length === 0;
+    this._element.hidden = filteredOut;
+    if (this._emptyElement) this._emptyElement.hidden = !filteredOut;
+    return outcome;
   }
 
   /**
@@ -330,6 +333,55 @@ export class MatchGrid {
       { signal }
     );
 
+    this._element.addEventListener(
+      'keydown',
+      (event) => {
+        const tile = tileFor(event);
+        if (!tile) return;
+        const target = this._tileForKey(tile, event.key);
+        if (target === undefined) return;
+        event.preventDefault();
+        target?.focus();
+      },
+      { signal }
+    );
+
     MatchGrid.watchImages(this._element, signal);
+  }
+
+  /**
+   * Where an arrow, Home or End key moves focus from a tile. Every tile stays a
+   * Tab stop; the arrows are a shortcut through a grid that can hold hundreds,
+   * so a keyboard user is not made to Tab through all of them to reach Apply.
+   * @param {HTMLElement} tile - The focused tile
+   * @param {string} key - KeyboardEvent.key
+   * @returns {HTMLElement|null|undefined} The tile to focus, null to stay at an
+   *   edge, undefined for a key the grid does not handle
+   * @private
+   */
+  _tileForKey(tile, key) {
+    const tiles = /** @type {HTMLElement[]} */ ([
+      ...this._element.querySelectorAll('.match-option:not([hidden])'),
+    ]);
+    const index = tiles.indexOf(tile);
+    // Columns come from the layout (auto-fill), so they are counted, not configured.
+    const columns = () => tiles.filter((t) => t.offsetTop === tiles[0].offsetTop).length || 1;
+    const at = (/** @type {number} */ i) => tiles[i] ?? null;
+    switch (key) {
+      case 'ArrowRight':
+        return at(index + 1);
+      case 'ArrowLeft':
+        return at(index - 1);
+      case 'ArrowDown':
+        return at(index + columns());
+      case 'ArrowUp':
+        return at(index - columns());
+      case 'Home':
+        return at(0);
+      case 'End':
+        return at(tiles.length - 1);
+      default:
+        return undefined;
+    }
   }
 }

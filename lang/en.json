@@ -153,6 +153,7 @@
       "showingResults": "Showing {visible} of {total} matches",
       "showingResultsCapped": "Showing {visible} of {total} matches — use the filter to narrow them down",
       "selectedCount": "{count} selected",
+      "selectedCountOne": "1 selected",
       "variantAssignment": "Token art assignment:",
       "modeSequential": "Sequential",
       "modeRandom": "Random",

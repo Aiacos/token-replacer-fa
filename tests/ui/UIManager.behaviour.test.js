@@ -103,6 +103,18 @@ describe('match grid', () => {
     expect(document.querySelector('.selection-count').textContent).toBe('0 selected');
   });
 
+  it('uses the singular for exactly one selected match', async () => {
+    // Italian has no plural-neutral form: "1 selezionati" is wrong, so one
+    // selection gets its own string rather than a {count} in the plural one.
+    await openMatchSelection(new UIManager(), [GOBLIN, WOLF], 2);
+
+    expect(document.querySelector('.selection-count').textContent).toBe(
+      englishFor('TOKEN_REPLACER_FA.ui.selectedCountOne')
+    );
+    tile(WOLF.path).click();
+    expect(document.querySelector('.selection-count').textContent).toBe('2 selected');
+  });
+
   it('says so when the filter matches nothing', async () => {
     await openMatchSelection(new UIManager(), [GOBLIN, WOLF]);
 

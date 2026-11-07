@@ -138,7 +138,10 @@ export class SelectionPanel {
   _showSelection(count) {
     if (this._applyButton) this._applyButton.disabled = count === 0;
     if (this._countElement) {
-      this._countElement.textContent = this._localizer.localize('ui.selectedCount', { count });
+      this._countElement.textContent =
+        count === 1
+          ? this._localizer.localize('ui.selectedCountOne')
+          : this._localizer.localize('ui.selectedCount', { count });
     }
   }
 }

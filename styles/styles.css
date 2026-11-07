@@ -72,7 +72,9 @@
   accent-color: var(--trfa-accent);
 }
 
-.token-replacer-fa-dialog .dialog-content p {
+/* :where() keeps this reset at zero specificity for the <p>, so a component
+   rule that sets its own margin (.no-match-message, .scan-status, …) wins. */
+.token-replacer-fa-dialog .dialog-content :where(p) {
   margin: 0;
 }
 
@@ -352,6 +354,7 @@
 }
 
 .token-replacer-fa-dialog .search-input-wrapper input {
+  box-sizing: border-box;
   width: 100%;
   min-height: 36px;
   padding: 8px 40px 8px 36px;

@@ -63,7 +63,8 @@ describe('MatchGrid', () => {
     const outcome = await g.filter('goblin boss');
 
     expect(visiblePaths()).toEqual(['b.webp']);
-    expect(outcome).toEqual({ visible: 1, total: 1, capped: false });
+    // total is the whole result set, so the count reads "1 of 3", not "1 of 1".
+    expect(outcome).toEqual({ visible: 1, total: 3, capped: false });
   });
 
   it('reports a capped result when more matches pass than it shows', async () => {
@@ -143,6 +144,86 @@ describe('MatchGrid', () => {
 
     await g.filter('');
     expect(empty.hidden).toBe(true);
+  });
+
+  it('hides the grid box while the filter matches nothing, so no empty frame shows', async () => {
+    const g = grid();
+    await g.setMatches([A, B]);
+
+    const outcome = await g.filter('zzz');
+    expect(element.hidden).toBe(true);
+    expect(outcome).toEqual({ visible: 0, total: 2, capped: false });
+
+    await g.filter('');
+    expect(element.hidden).toBe(false);
+  });
+
+  describe('arrow-key navigation', () => {
+    const press = (key) => {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      document.activeElement.dispatchEvent(event);
+      return event;
+    };
+    const focused = () => document.activeElement?.dataset.path;
+    const D = { name: 'Owlbear', path: 'd.webp', score: 0.95 };
+
+    it('moves along the visible tiles with Left, Right, Home and End', async () => {
+      const g = grid();
+      await g.setMatches([A, B, C]);
+      tile('a.webp').focus();
+
+      expect(press('ArrowRight').defaultPrevented).toBe(true);
+      expect(focused()).toBe('b.webp');
+      press('ArrowLeft');
+      expect(focused()).toBe('a.webp');
+      press('ArrowLeft');
+      expect(focused()).toBe('a.webp');
+      press('End');
+      expect(focused()).toBe('c.webp');
+      press('Home');
+      expect(focused()).toBe('a.webp');
+    });
+
+    it('skips tiles the filter hides', async () => {
+      const g = grid();
+      await g.setMatches([A, B, C]);
+      await g.filter('goblin');
+      tile('a.webp').focus();
+
+      press('End');
+      expect(focused()).toBe('b.webp');
+    });
+
+    it('moves by a row with Up and Down, using the laid-out column count', async () => {
+      const g = grid();
+      await g.setMatches([A, B, C, D]);
+      // Two columns: jsdom has no layout, so give the tiles their rows.
+      for (const [path, top] of [
+        ['a.webp', 0],
+        ['b.webp', 0],
+        ['c.webp', 100],
+        ['d.webp', 100],
+      ]) {
+        Object.defineProperty(tile(path), 'offsetTop', { value: top, configurable: true });
+      }
+      tile('b.webp').focus();
+
+      press('ArrowDown');
+      expect(focused()).toBe('d.webp');
+      press('ArrowDown');
+      expect(focused()).toBe('d.webp');
+      press('ArrowUp');
+      expect(focused()).toBe('b.webp');
+    });
+
+    it('leaves other keys to the browser', async () => {
+      const g = grid();
+      await g.setMatches([A, B]);
+      tile('a.webp').focus();
+
+      expect(press('Enter').defaultPrevented).toBe(false);
+      expect(focused()).toBe('a.webp');
+    });
   });
 
   it('uses buttons, which browsers activate with Enter and Space', async () => {

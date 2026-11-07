@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Arrow keys, Home and End move between token art tiles**, so a keyboard user no longer has to Tab through every match to reach Apply.
+
 ### Fixed
 
+- **The match count read "Showing 1 of 1" while filtering**; it now counts the whole result set ("1 of 12").
+- **A filter that matched nothing left an empty grid frame** above the "no match" message.
+- **Spacing was missing under the "no match" message and the progress titles**, and the creature-type field was taller than the controls beside it.
+- **"1 selezionati"** in Italian: one selected match now has its own singular label.
 - **Cancel could be undone by the next progress screen**: a later screen covered the cancelled one with a Cancel button that did nothing.
 - **Upgrading could lose the saved index** when IndexedDB refused the write during the one-time move out of localStorage.
 - **A TVA cache entry with a non-text name failed the whole load**; such entries now use the file name.
