@@ -83,3 +83,84 @@ describe('FilterQuery immutability', () => {
     expect(query.terms).toEqual(['orc']);
   });
 });
+
+describe('FilterQuery wildcards', () => {
+  const name = 'goblin archer modules/fa/tokens/goblin_archer_01.webp';
+
+  it('treats * as any run of characters, including none', () => {
+    expect(FilterQuery.parse('gob*archer').matches(name)).toBe(true);
+    expect(FilterQuery.parse('goblin*_archer').matches(name)).toBe(true);
+    expect(FilterQuery.parse('gob**lin').matches(name)).toBe(true);
+    expect(FilterQuery.parse('gob*wolf').matches(name)).toBe(false);
+  });
+
+  it('treats ? as exactly one character', () => {
+    expect(FilterQuery.parse('gob?in').matches(name)).toBe(true);
+    expect(FilterQuery.parse('gob??in').matches(name)).toBe(false);
+    expect(FilterQuery.parse('archer_0?.webp').matches(name)).toBe(true);
+  });
+
+  it('stays unanchored and case-insensitive', () => {
+    expect(FilterQuery.parse('ARCH*01').matches('Goblin ARCHER_01 boss')).toBe(true);
+    expect(FilterQuery.parse('??rcher').matches('Archer')).toBe(false);
+    expect(FilterQuery.parse('??rcher').matches('x Archer')).toBe(true);
+  });
+
+  it('keeps AND logic across wildcard and plain terms', () => {
+    expect(FilterQuery.parse('gob* 01').matches(name)).toBe(true);
+    expect(FilterQuery.parse('gob* 02').matches(name)).toBe(false);
+  });
+
+  it('matches everything with a term made only of *', () => {
+    expect(FilterQuery.parse('*').matches('anything')).toBe(true);
+    expect(FilterQuery.parse('***').matches('')).toBe(true);
+    expect(FilterQuery.parse('***').matches(null)).toBe(true);
+  });
+
+  it('takes every other regex metacharacter literally', () => {
+    expect(FilterQuery.parse('(a+)+$').matches('aaaa')).toBe(false);
+    expect(FilterQuery.parse('(a+)+$').matches('x(a+)+$y')).toBe(true);
+    expect(FilterQuery.parse('[*]').matches('[x]')).toBe(true);
+    expect(FilterQuery.parse('a.b*').matches('axb')).toBe(false);
+    expect(FilterQuery.parse('a.?').matches('a.b')).toBe(true);
+    expect(FilterQuery.parse('a.?').matches('axb')).toBe(false);
+  });
+
+  it.each([['['], ['\\'], ['(a+)+$'], ['*[?'], ['^$|{}'], ['\\*'], ['(?<x>a)']])(
+    'never throws on hostile input %j',
+    (text) => {
+      expect(() =>
+        FilterQuery.parse(text).matches('some text [with] \\ (a+)+$ ^$|{}')
+      ).not.toThrow();
+    }
+  );
+
+  it('matches a backslash literally', () => {
+    expect(FilterQuery.parse('a\\?').matches('xa\\by')).toBe(true);
+    expect(FilterQuery.parse('a\\?').matches('xab')).toBe(false);
+  });
+
+  it('is not prone to catastrophic backtracking', () => {
+    const haystack = 'a'.repeat(20000);
+    const started = performance.now();
+
+    expect(FilterQuery.parse('a*a*a*a*a*a*a*a*a*b').matches(haystack)).toBe(false);
+    expect(FilterQuery.parse('a?a?a?a?a?a?b').matches(haystack)).toBe(false);
+
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it('keeps the parsed terms as typed', () => {
+    expect(FilterQuery.parse('Gob*, ?rc').terms).toEqual(['gob*', '?rc']);
+  });
+
+  it('gives the same answer when a wildcard query is reused', () => {
+    const query = FilterQuery.parse('gob?in');
+
+    expect(Object.isFrozen(query)).toBe(true);
+    expect(query.matches('xx goblin')).toBe(true);
+    expect(query.matches('goblin')).toBe(true);
+    expect(query.matches('gob')).toBe(false);
+    expect(query.matches('goblin')).toBe(true);
+  });
+});

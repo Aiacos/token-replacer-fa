@@ -44,6 +44,23 @@
       "debugMode": {
         "name": "Modalità Debug",
         "hint": "Abilita logging dettagliato nella console per la risoluzione dei problemi. Registra dettagli della ricerca, tempistiche ed errori. Default: Spento"
+      },
+      "scaleTokens": {
+        "name": "Ridimensiona la token art applicata",
+        "hint": "Imposta anche la scala del token quando la sua art viene sostituita."
+      },
+      "tokenScale": {
+        "name": "Scala della token art",
+        "hint": "Scala applicata quando 'Ridimensiona la token art applicata' è attivo (1 = dimensione originale)."
+      },
+      "dynamicRing": {
+        "name": "Anello dinamico del token",
+        "hint": "Cosa fare con l'anello dinamico di Foundry quando la art viene applicata.",
+        "choices": {
+          "keep": "Lascia invariato",
+          "enable": "Attiva, con la nuova art come soggetto",
+          "disable": "Disattiva"
+        }
       }
     },
     "frequency": {
@@ -149,9 +166,8 @@
       "progressLocalIndex": "indice locale",
       "showDetails": "Mostra dettagli",
       "howToFix": "Come risolvere:",
-      "filterPlaceholder": "Filtra (es. nano monaco)...",
+      "filterPlaceholder": "Filtra (es. nano monaco, gob*)...",
       "showingResults": "Mostrate {visible} di {total} corrispondenze",
-      "showingResultsCapped": "Mostrate {visible} di {total} corrispondenze — usa il filtro per restringerle",
       "selectedCount": "{count} selezionati",
       "selectedCountOne": "1 selezionato",
       "variantAssignment": "Assegnazione della token art:",
@@ -217,7 +233,10 @@
         "ooze": "Melma",
         "plant": "Vegetale",
         "undead": "Non morto"
-      }
+      },
+      "applyToRemaining": "Applica a tutte le rimanenti",
+      "applyToRemainingHint": "Applica questa scelta, poi assegna automaticamente a ogni creatura rimanente la sua corrispondenza migliore, senza chiedere",
+      "filterHint": "Ogni parola deve corrispondere. * indica qualsiasi sequenza di caratteri, ? esattamente uno (es. gob*, orc?)"
     }
   }
 }

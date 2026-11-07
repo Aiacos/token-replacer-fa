@@ -212,6 +212,7 @@
 .token-replacer-fa-dialog .search-category-btn,
 .token-replacer-fa-dialog .close-btn,
 .token-replacer-fa-dialog .skip-btn,
+.token-replacer-fa-dialog .apply-all-btn,
 .token-replacer-fa-dialog .cancel-btn {
   display: inline-flex;
   align-items: center;
@@ -246,6 +247,7 @@
 }
 
 .token-replacer-fa-dialog .skip-btn,
+.token-replacer-fa-dialog .apply-all-btn,
 .token-replacer-fa-dialog .cancel-btn {
   background: transparent;
   border: 1px solid var(--trfa-control-border);
@@ -253,6 +255,7 @@
 }
 
 .token-replacer-fa-dialog .skip-btn:hover,
+.token-replacer-fa-dialog .apply-all-btn:hover:not(:disabled),
 .token-replacer-fa-dialog .cancel-btn:hover:not(:disabled) {
   background: var(--trfa-surface-raised);
   border-color: var(--trfa-text-muted);
@@ -260,6 +263,7 @@
 }
 
 .token-replacer-fa-dialog .select-btn:disabled,
+.token-replacer-fa-dialog .apply-all-btn:disabled,
 .token-replacer-fa-dialog .cancel-btn:disabled {
   background: var(--trfa-disabled-bg);
   border-color: var(--trfa-border-strong);
@@ -446,6 +450,13 @@
   display: none;
 }
 
+/* Watched by MatchGrid's IntersectionObserver: as it nears the view, the next
+   page of tiles renders. A full-width row, so it never takes a tile's cell. */
+.token-replacer-fa-match-select .match-grid-sentinel {
+  grid-column: 1 / -1;
+  height: 1px;
+}
+
 .token-replacer-fa-match-select .match-option {
   position: relative;
   display: flex;
@@ -549,6 +560,7 @@
 .token-replacer-fa-progress-buttons {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
   justify-content: center;
   flex-shrink: 0;
   margin-top: 12px;

@@ -55,14 +55,16 @@ export class MatchSelectionController {
   start() {
     const panel = this._panel;
     const resultCount = this._container.querySelector('.result-count');
-    const showCount = ({ visible, total, capped }) => {
+    // The grid reports every change, a page rendered on scroll included, so
+    // the count is never read off one filter call's result.
+    panel.grid.onCountChange(({ visible, total }) => {
       if (resultCount) {
-        resultCount.textContent = this._localizer.localize(
-          capped ? 'ui.showingResultsCapped' : 'ui.showingResults',
-          { visible, total }
-        );
+        resultCount.textContent = this._localizer.localize('ui.showingResults', {
+          visible,
+          total,
+        });
       }
-    };
+    });
 
     const input = /** @type {HTMLInputElement|null} */ (
       this._container.querySelector('.search-filter-input')
@@ -74,17 +76,16 @@ export class MatchSelectionController {
           store: this._filterStore,
           signal: panel.signal,
           onChange: (text) => {
-            panel.grid.filter(text).then(showCount, (error) => this._reportRenderFailure(error));
+            panel.grid.filter(text).catch((error) => this._reportRenderFailure(error));
           },
         })
       : null;
 
     panel.grid.setMatches(this._matches).then(
-      (outcome) => {
+      () => {
         // A term restored from the previous dialog is applied once the grid
         // exists; applied any earlier, the unfiltered first render would win.
         if (filterBox && filterBox.value.trim().length > 0) filterBox.apply();
-        else showCount(outcome);
       },
       (error) => this._reportRenderFailure(error)
     );

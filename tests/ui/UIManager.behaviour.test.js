@@ -148,6 +148,100 @@ describe('match grid', () => {
     await expect(selection).resolves.toEqual({ paths: [WOLF.path], mode: 'sequential' });
   });
 
+  it('applies the choice to every remaining creature, in the chosen mode', async () => {
+    const ui = new UIManager();
+    const { selection } = await openMatchSelection(ui, [GOBLIN, WOLF], 2);
+
+    tile(WOLF.path).click();
+    document.querySelector('.mode-btn[data-mode="random"]').click();
+    document.querySelector('.apply-all-btn').click();
+
+    await expect(selection).resolves.toEqual({
+      paths: [GOBLIN.path, WOLF.path],
+      mode: 'random',
+      applyToRemaining: true,
+    });
+  });
+
+  it('keeps a plain Apply free of the apply-to-remaining flag', async () => {
+    const ui = new UIManager();
+    const { selection } = await openMatchSelection(ui, [GOBLIN]);
+
+    selectBtn().click();
+
+    const result = await selection;
+    expect(result.applyToRemaining).toBeUndefined();
+  });
+
+  it('disables apply-to-remaining exactly while Apply is disabled', async () => {
+    const ui = new UIManager();
+    const { selection } = await openMatchSelection(ui, [GOBLIN, WOLF], 2);
+    const applyAll = document.querySelector('.apply-all-btn');
+    const settled = vi.fn();
+    selection.then(settled);
+    expect(applyAll.disabled).toBe(false);
+
+    tile(GOBLIN.path).click();
+    expect(applyAll.disabled).toBe(true);
+    applyAll.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).not.toHaveBeenCalled();
+
+    tile(WOLF.path).click();
+    expect(applyAll.disabled).toBe(false);
+  });
+
+  it('explains what apply-to-remaining does, in the user language', async () => {
+    await openMatchSelection(new UIManager(), [GOBLIN]);
+    const applyAll = document.querySelector('.apply-all-btn');
+
+    expect(applyAll.getAttribute('type')).toBe('button');
+    expect(applyAll.textContent.trim()).toBe(englishFor('TOKEN_REPLACER_FA.ui.applyToRemaining'));
+    expect(applyAll.title).toBe(englishFor('TOKEN_REPLACER_FA.ui.applyToRemainingHint'));
+    expect(applyAll.title).not.toContain('TOKEN_REPLACER_FA');
+  });
+
+  it('renders a large result set page by page and keeps the count current', async () => {
+    const matches = Array.from({ length: 450 }, (_, i) => ({
+      name: `Goblin ${i}`,
+      path: `tokens/goblin-${i}.webp`,
+      score: 0.1,
+    }));
+    const ui = new UIManager();
+    const dialog = mount(await ui.createMatchSelectionHTML(CREATURE, matches, 1));
+    ui.setupMatchSelectionHandlers(dialog);
+    const count = () => document.querySelector('.result-count').textContent;
+    const tiles = () => document.querySelectorAll('.match-option').length;
+
+    // The first page, before any timer runs: jsdom has no IntersectionObserver,
+    // so the rest comes in chunks between yields.
+    await vi.waitFor(() => expect(tiles()).toBe(200));
+    expect(count()).toBe('Showing 200 of 450 matches');
+
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(tiles()).toBe(450);
+    expect(count()).toBe('Showing 450 of 450 matches');
+  });
+
+  it('tells the user the filter takes wildcards', async () => {
+    await openMatchSelection(new UIManager(), [GOBLIN]);
+
+    expect(filterInput().title).toBe(englishFor('TOKEN_REPLACER_FA.ui.filterHint'));
+    expect(filterInput().placeholder).toContain('*');
+  });
+
+  it('filters with wildcards', async () => {
+    await openMatchSelection(new UIManager(), [GOBLIN, WOLF]);
+
+    await typeFilter('w?lf');
+
+    expect(tile(GOBLIN.path).hidden).toBe(true);
+    expect(tile(WOLF.path).hidden).toBe(false);
+  });
+
   it('exposes the assignment mode as pressed toggle buttons', async () => {
     await openMatchSelection(new UIManager(), [GOBLIN, WOLF], 2);
     const random = document.querySelector('.mode-btn[data-mode="random"]');

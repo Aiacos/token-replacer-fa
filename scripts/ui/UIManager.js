@@ -221,6 +221,7 @@ export class UIManager {
       showMultiSelect: tokenCount > 1,
       filterLabel: t('ui.filterLabel'),
       filterPlaceholder: t('ui.filterPlaceholder'),
+      filterHint: t('ui.filterHint'),
       clearFilterLabel: t('dialog.clearFilter'),
       matchGridLabel: t('ui.matchGridLabel'),
       noFilterResultsLabel: t('ui.noFilterResults'),
@@ -230,6 +231,8 @@ export class UIManager {
       multiSelectHintLabel: t('ui.multiSelectHint'),
       selectionCountLabel: '',
       applyLabel: t('ui.apply'),
+      applyToRemainingLabel: t('ui.applyToRemaining'),
+      applyToRemainingHint: t('ui.applyToRemainingHint'),
       skipLabel: t('dialog.skip'),
     };
   }
@@ -239,7 +242,7 @@ export class UIManager {
   /**
    * Run the match selection screen currently in the dialog.
    * @param {HTMLElement} dialogElement - The dialog window element
-   * @returns {Promise<{paths: string[], mode: string}|null>} The choice, or null for skip/close
+   * @returns {Promise<import('./SelectionPanel.js').SelectionResult|null>} The choice, or null for skip/close
    */
   setupMatchSelectionHandlers(dialogElement) {
     const container = /** @type {HTMLElement|null} */ (
@@ -272,7 +275,7 @@ export class UIManager {
    * @param {Array} localIndex - Passed to the category search
    * @param {number} tokenCount - Tokens sharing the choice
    * @param {import('./NoMatchController.js').CategorySearch} searchByCategory - Lists a category
-   * @returns {Promise<{paths: string[], mode: string}|null>} The choice, or null for skip/close
+   * @returns {Promise<import('./SelectionPanel.js').SelectionResult|null>} The choice, or null for skip/close
    */
   setupNoMatchHandlers(dialogElement, _creatureInfo, localIndex, tokenCount, searchByCategory) {
     const container = /** @type {HTMLElement|null} */ (
