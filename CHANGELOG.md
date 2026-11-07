@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A damaged cached index made every search come back empty**: it is now detected on load, discarded and rebuilt.
+- **One unreadable TVA cache location stopped the whole index build**: the next location is now tried instead.
 - **Creatures shown another creature's token art**: when several creature types were searched at once on the local index, they could all receive the results of whichever search finished first.
 - **Hill Giants, Awakened Trees, Corpse Flowers and Cave Bears were never found**: their file names contained words meant to filter out scenery (`hill`, `tree`, `flower`, `cave`).
 - **A failed index refresh discarded a working index**: when the weekly refresh failed, searches lost the cached index for the whole session. The cached index is now kept.

@@ -329,7 +329,7 @@ class IndexWorkerRuntime {
     this._reportProgress(paths.length, paths.length, imagesFound);
 
     // Build termIndex from allPaths (O(1) search term lookups on main thread)
-    // Uses same tokenization regex as IndexService.tokenizeSearchText() — keep in sync
+    // SYNC: Keep in sync with scripts/services/index/TermIndex.js tokenize()
     const termIndex = {};
     for (let id = 0; id < pathList.length; id++) {
       if (id > 0 && id % YIELD_EVERY === 0) await this._yieldToMessages();

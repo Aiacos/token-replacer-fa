@@ -9,7 +9,6 @@ import { localizer as defaultLocalizer } from '../core/Localizer.js';
 import { StoppableNotification } from './StoppableNotification.js';
 
 /** IndexedDB key of the persisted category index (owned by IndexService). */
-const DEFAULT_INDEX_CACHE_KEY = 'token-replacer-fa-index-v3';
 
 /**
  * Runs the `ready`-hook startup: load Fuse.js, report companion modules, then —
@@ -51,7 +50,9 @@ export class IndexBootstrapper {
     isGM = () => game.user.isGM,
     getUi = () => ui,
     logger = new DebugLogger('IndexBootstrapper'),
-    indexCacheKey = DEFAULT_INDEX_CACHE_KEY,
+    // The index owns its storage key; reading it from the service's class keeps
+    // one source of truth instead of a copied string.
+    indexCacheKey = indexService?.constructor?.CACHE_KEY,
   }) {
     this._companions = companions;
     this._fuseLoader = fuseLoader;
