@@ -6,7 +6,7 @@ Only the latest release receives security fixes.
 
 ## 🔒 Reporting a vulnerability
 
-[Open an issue](https://github.com/Aiacos/token-replacer-fa/issues) asking for a private contact channel. Do not include the details of the vulnerability in the public issue.
+Report it privately through [GitHub's private vulnerability reporting](https://github.com/Aiacos/token-replacer-fa/security/advisories/new) (the **Security → Report a vulnerability** tab). Do not open a public issue for a vulnerability.
 
 ## 🔒 Guarantees
 

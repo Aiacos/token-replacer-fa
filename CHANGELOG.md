@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Vulnerabilities are reported privately** through GitHub's private vulnerability reporting (see `SECURITY.md`).
+- **Templates render only through Foundry v13's `foundry.applications.handlebars`**: the deprecated v12 globals are no longer a fallback, and a missing namespace is reported as an error.
+- **Removed `MIGRATION_V13.md`**: v13 is the supported floor and its last open item (the v12 template fallback) is done. Planning state under `.planning/` is no longer tracked.
 - **Much faster search on large local libraries**: a subtype search over a 50,000-image index dropped from about half a second to about 30 ms, because exclusion rules now run only on images that already match.
 - **Constitution in `CLAUDE.md`** extended to cover architecture and design, security, test meaningfulness, debugging workflow, automatic pre-commit checks, cleanup routine and agent tooling. `TODO.md` and `SECURITY.md` added.
 - **Every commit runs `npm run check`** through a versioned pre-commit hook, activated by `npm install`.

@@ -4,44 +4,64 @@
  */
 
 /**
- * Renders and preloads the module's Handlebars templates.
+ * Renders and preloads the module's Handlebars templates. Handlebars
+ * auto-escaping is the module's XSS boundary, so every dialog goes through here.
  *
- * Foundry v13 moved the template API under `foundry.applications.handlebars`
- * and deprecated the globals; the globals remain as a defensive fallback
- * (Constitution, Article VI.1). Handlebars auto-escaping is the module's XSS
- * boundary, so every dialog goes through here.
+ * Only the v13 namespace is used. v13 is the supported floor and deprecated the
+ * `renderTemplate` / `loadTemplates` globals, so falling back to them would
+ * only hide a broken environment behind an API Foundry is removing: a missing
+ * namespace is reported as an error instead (Constitution, Article VI.1).
  *
  * @see https://foundryvtt.com/api/v13/functions/foundry.applications.handlebars.renderTemplate.html
+ * @see https://foundryvtt.com/api/v13/functions/foundry.applications.handlebars.loadTemplates.html
  *
  * @pattern Facade — one narrow entry point over Foundry's template API, so the
- * v12/v13 split lives in a single place.
+ * dialogs never touch Foundry's namespaces directly.
  */
 export class TemplateRenderer {
   /**
-   * Render a Handlebars template (v12/v13 compatible)
+   * @param {function(): (Object|undefined)} [getHandlebars] - Returns
+   *   `foundry.applications.handlebars` (default: read from Foundry at call time)
+   */
+  constructor(
+    getHandlebars = () =>
+      typeof foundry === 'undefined' ? undefined : foundry.applications?.handlebars
+  ) {
+    this._getHandlebars = getHandlebars;
+  }
+
+  /**
+   * Render a Handlebars template.
    * @param {string} path - Template path
    * @param {Object} data - Template data
    * @returns {Promise<string>} Rendered HTML
    */
   async render(path, data) {
-    if (foundry?.applications?.handlebars?.renderTemplate) {
-      return foundry.applications.handlebars.renderTemplate(path, data);
-    }
-    return renderTemplate(path, data);
+    return this._api('renderTemplate').renderTemplate(path, data);
   }
 
   /**
-   * Preload Handlebars templates (v12/v13 compatible)
+   * Preload Handlebars templates.
    * @param {string[]} paths - Template paths to preload
    * @returns {Promise<void>}
    */
   async preload(paths) {
-    if (foundry?.applications?.handlebars?.loadTemplates) {
-      // @ts-expect-error Foundry v13 loadTemplates returns template array, not void
-      return foundry.applications.handlebars.loadTemplates(paths);
+    await this._api('loadTemplates').loadTemplates(paths);
+  }
+
+  /**
+   * @param {string} method - The function the caller needs
+   * @returns {any} The handlebars namespace
+   * @private
+   */
+  _api(method) {
+    const handlebars = this._getHandlebars();
+    if (typeof handlebars?.[method] !== 'function') {
+      throw new Error(
+        `foundry.applications.handlebars.${method} is unavailable (Foundry v13+ required)`
+      );
     }
-    // @ts-expect-error Foundry v12 loadTemplates returns template array, not void per fvtt-types
-    return loadTemplates(paths);
+    return handlebars;
   }
 }
 

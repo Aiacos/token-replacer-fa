@@ -47,3 +47,6 @@ security-scan/
 
 # Agent worktrees: full checkouts nested in this one
 .claude/worktrees/
+
+# Planning and session state (Constitution, Article VIII.1)
+.planning/

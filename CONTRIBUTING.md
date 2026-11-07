@@ -201,6 +201,11 @@ confidence as any other code.
 4. Add a `## [Unreleased]` entry to `CHANGELOG.md` for any user-visible change
 5. Submit a Pull Request against the `develop` branch
 
+`main` and `develop` are covered by the ruleset _Protect main and develop_: no
+force-push and no deletion. It deliberately requires neither a PR nor green
+checks, because `release.yml` pushes its release commit straight to `main`; the
+pre-commit hook and CI are the gate instead.
+
 ### PR Guidelines
 
 - Keep PRs focused on a single change
