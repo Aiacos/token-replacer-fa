@@ -48,6 +48,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 })();
 
 import { StorageService, storageService } from '../../scripts/services/StorageService.js';
+import { IndexedDbBackend } from '../../scripts/services/storage/IndexedDbBackend.js';
 
 /**
  * Clear all localStorage keys.
@@ -57,14 +58,17 @@ function clearLocalStorage() {
 }
 
 // ---------------------------------------------------------------------------
-// IndexedDB path (isIndexedDBSupported = true, default with fake-indexeddb)
+// IndexedDB path (default with fake-indexeddb)
 // ---------------------------------------------------------------------------
 describe('StorageService - IndexedDB path', () => {
   /** @type {StorageService} */
   let service;
+  /** @type {IndexedDbBackend} */
+  let primary;
 
   beforeEach(() => {
-    service = new StorageService();
+    primary = new IndexedDbBackend();
+    service = new StorageService({ primary });
   });
 
   afterEach(async () => {
@@ -77,7 +81,7 @@ describe('StorageService - IndexedDB path', () => {
     });
   });
 
-  describe('openDatabase()', () => {
+  describe('connection', () => {
     it('opens a connection', async () => {
       const result = await service.testConnection();
       expect(result).toBe(true);
@@ -86,10 +90,10 @@ describe('StorageService - IndexedDB path', () => {
     it('reuses cached connection on second call', async () => {
       // First call opens
       await service.testConnection();
-      const db1 = service.db;
+      const db1 = primary.connection;
       // Second call reuses
       await service.testConnection();
-      const db2 = service.db;
+      const db2 = primary.connection;
       expect(db1).toBe(db2);
     });
   });
@@ -98,9 +102,9 @@ describe('StorageService - IndexedDB path', () => {
     it('returns true and database info is accessible', async () => {
       const result = await service.testConnection();
       expect(result).toBe(true);
-      expect(service.db).not.toBeNull();
-      expect(service.db.name).toBe('token-replacer-fa');
-      expect(service.db.version).toBe(1);
+      expect(primary.connection).not.toBeNull();
+      expect(primary.connection.name).toBe('token-replacer-fa');
+      expect(primary.connection.version).toBe(1);
     });
   });
 
@@ -127,7 +131,7 @@ describe('StorageService - IndexedDB path', () => {
       const after = Date.now();
 
       // Read raw record from IndexedDB
-      const db = await service.openDatabase();
+      const db = await primary.open();
       const tx = db.transaction(['index'], 'readonly');
       const store = tx.objectStore('index');
       const record = await new Promise((resolve, reject) => {
@@ -202,19 +206,23 @@ describe('StorageService - IndexedDB path', () => {
   });
 
   describe('close()', () => {
-    it('nullifies db and dbPromise', async () => {
+    it('drops the connection, and the next call opens a new one', async () => {
       await service.testConnection();
-      expect(service.db).not.toBeNull();
+      const first = primary.connection;
+      expect(first).not.toBeNull();
 
       service.close();
-      expect(service.db).toBeNull();
-      expect(service.dbPromise).toBeNull();
+      expect(primary.connection).toBeNull();
+
+      await service.testConnection();
+      expect(primary.connection).not.toBeNull();
+      expect(primary.connection).not.toBe(first);
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// localStorage fallback (isIndexedDBSupported set to false)
+// localStorage fallback (IndexedDB unavailable)
 // ---------------------------------------------------------------------------
 describe('StorageService - localStorage fallback', () => {
   /** @type {StorageService} */
@@ -222,8 +230,7 @@ describe('StorageService - localStorage fallback', () => {
 
   beforeEach(() => {
     clearLocalStorage();
-    service = new StorageService();
-    service.isIndexedDBSupported = false;
+    service = new StorageService({ primary: new IndexedDbBackend({ getFactory: () => null }) });
   });
 
   afterEach(() => {
@@ -380,10 +387,13 @@ describe('StorageService - Migration', () => {
 describe('StorageService - Error scenarios', () => {
   /** @type {StorageService} */
   let service;
+  /** @type {IndexedDbBackend} */
+  let primary;
 
   beforeEach(() => {
     clearLocalStorage();
-    service = new StorageService();
+    primary = new IndexedDbBackend();
+    service = new StorageService({ primary });
   });
 
   afterEach(async () => {
@@ -397,8 +407,8 @@ describe('StorageService - Error scenarios', () => {
   });
 
   it('IndexedDB open failure falls through to localStorage for save/load/remove', async () => {
-    // Spy on openDatabase to simulate failure
-    vi.spyOn(service, 'openDatabase').mockRejectedValue(new Error('DB open failed'));
+    // Spy on the IndexedDB open to simulate failure
+    vi.spyOn(primary, 'open').mockRejectedValue(new Error('DB open failed'));
 
     // save should fall through to localStorage
     const saveResult = await service.save('fallback-key', { fallback: true });
@@ -418,7 +428,7 @@ describe('StorageService - Error scenarios', () => {
 
   it('transaction abort on save does not silently lose data (falls through to localStorage)', async () => {
     // Open the database first so we can spy on transaction
-    const db = await service.openDatabase();
+    const db = await primary.open();
 
     const originalTransaction = db.transaction.bind(db);
     vi.spyOn(db, 'transaction').mockImplementation((...args) => {

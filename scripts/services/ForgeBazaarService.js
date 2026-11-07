@@ -35,6 +35,9 @@ const CATEGORY_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours for category results
  *
  * NOTE: This service is not functional due to lack of public API.
  * All methods return empty results or throw not-implemented errors.
+ *
+ * @pattern Null Object — stands in for a Forge Bazaar source that has no
+ * public API, so callers keep one code path and simply get no results.
  */
 export class ForgeBazaarService {
   constructor() {

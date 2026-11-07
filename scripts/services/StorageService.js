@@ -1,26 +1,43 @@
 /**
  * Token Replacer FA - Storage Service
- * IndexedDB wrapper for token index storage
- * Features: Automatic connection management, version control, localStorage fallback
+ * Persists the token index and the parsed TVA cache in the browser.
  * @module services/StorageService
  */
 
 import { MODULE_ID } from '../core/Constants.js';
-
-const DB_NAME = 'token-replacer-fa';
-const DB_VERSION = 1;
-const STORE_NAME = 'index';
+import { DataSanitizer } from './storage/DataSanitizer.js';
+import { IndexedDbBackend } from './storage/IndexedDbBackend.js';
+import { LocalStorageBackend } from './storage/LocalStorageBackend.js';
 
 /**
- * StorageService - IndexedDB wrapper with localStorage fallback
- * Provides async storage API for token index data
- * Handles connection pooling to avoid repeated database open calls
+ * One storage API over two backends: IndexedDB first, `localStorage` when
+ * IndexedDB is missing or a call to it fails (Constitution, Article IV.5).
+ *
+ * The fallback is decided per call, so one failed transaction does not demote
+ * the whole session to the 4.5MB `localStorage`. Every load is sanitized,
+ * whichever backend answered, because persisted data is untrusted (Article
+ * I.7). Every boolean returned reports what actually happened: `true` only
+ * when some backend did the work.
+ *
+ * @pattern Facade — callers see save/load/has/remove/clear/migrate; the choice
+ * of backend, the fallback and the sanitizing stay behind it.
  */
 export class StorageService {
-  constructor() {
-    this.db = null;
-    this.dbPromise = null;
-    this.isIndexedDBSupported = this.checkIndexedDBSupport();
+  /**
+   * @param {Object} [deps={}] - Dependency overrides for testing
+   * @param {DataSanitizer} [deps.sanitizer] - Cleans loaded data
+   * @param {IndexedDbBackend} [deps.primary] - Preferred backend (default: IndexedDB)
+   * @param {LocalStorageBackend} [deps.fallback] - Backend used when the primary is unavailable or fails
+   */
+  constructor(deps = {}) {
+    const {
+      sanitizer = new DataSanitizer(),
+      primary = new IndexedDbBackend(),
+      fallback = new LocalStorageBackend({ sanitizer }),
+    } = deps;
+    this._sanitizer = sanitizer;
+    this._primary = primary;
+    this._fallback = fallback;
 
     if (!this.isIndexedDBSupported) {
       console.warn(`${MODULE_ID} | IndexedDB not supported, falling back to localStorage`);
@@ -28,140 +45,24 @@ export class StorageService {
   }
 
   /**
-   * Check if IndexedDB is supported in this browser
-   * @private
-   * @returns {boolean} True if IndexedDB is available
+   * @returns {boolean} True if the IndexedDB backend is available in this browser
    */
-  checkIndexedDBSupport() {
-    try {
-      return (
-        typeof window !== 'undefined' &&
-        typeof window.indexedDB !== 'undefined' &&
-        window.indexedDB !== null
-      );
-    } catch (error) {
-      console.warn(`${MODULE_ID} | IndexedDB support check failed:`, error);
-      return false;
-    }
+  get isIndexedDBSupported() {
+    return this._primary.isAvailable();
   }
 
   /**
-   * Open IndexedDB connection with connection pooling
-   * Reuses existing connection if already open
-   * @private
-   * @returns {Promise<IDBDatabase>} Database instance
-   */
-  async openDatabase() {
-    // Return cached connection if available
-    if (this.db) {
-      return this.db;
-    }
-
-    // Return pending connection if already opening
-    if (this.dbPromise) {
-      return this.dbPromise;
-    }
-
-    // Create new connection
-    this.dbPromise = new Promise((resolve, reject) => {
-      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-
-      // Grace period before giving up on a blocked open (another tab holds an older version)
-      const BLOCKED_TIMEOUT_MS = 10_000;
-      let blockedTimeoutId = null;
-
-      request.onerror = () => {
-        clearTimeout(blockedTimeoutId);
-        const error = request.error;
-        console.error(`${MODULE_ID} | Failed to open IndexedDB:`, error);
-        this.dbPromise = null;
-        reject(error);
-      };
-
-      request.onsuccess = () => {
-        clearTimeout(blockedTimeoutId);
-        this.db = request.result;
-        console.log(`${MODULE_ID} | IndexedDB connection opened successfully`);
-
-        // Handle unexpected close events
-        this.db.onclose = () => {
-          console.warn(`${MODULE_ID} | IndexedDB connection closed unexpectedly`);
-          this.db = null;
-          this.dbPromise = null;
-        };
-
-        // Handle version change (if database is deleted in another tab)
-        this.db.onversionchange = () => {
-          console.warn(`${MODULE_ID} | IndexedDB version change detected, closing connection`);
-          this.db.close();
-          this.db = null;
-          this.dbPromise = null;
-        };
-
-        resolve(this.db);
-      };
-
-      request.onupgradeneeded = (event) => {
-        /** @type {IDBDatabase} */
-        const db = /** @type {IDBRequest} */ (event.target).result;
-        const oldVersion = event.oldVersion || 0;
-
-        console.log(`${MODULE_ID} | IndexedDB upgrade: v${oldVersion} → v${DB_VERSION}`);
-
-        // Incremental migrations — each case falls through to apply all needed upgrades
-        switch (oldVersion) {
-          case 0:
-            // Fresh install: create the object store
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-              db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-              console.log(`${MODULE_ID} | Created IndexedDB object store: ${STORE_NAME}`);
-            }
-            break;
-          // Future migrations: add cases here with fallthrough
-          // case 1:
-          //   // v1 → v2: add indexes, transform data, etc.
-          //   // falls through to case 2 if needed
-        }
-      };
-
-      request.onblocked = () => {
-        console.warn(`${MODULE_ID} | IndexedDB open request blocked - close other tabs or wait`);
-        // The block may clear if the other tab closes (onsuccess then fires). Reject only if
-        // it persists past the grace period so callers don't hang forever in multi-tab setups.
-        if (blockedTimeoutId) return;
-        blockedTimeoutId = setTimeout(() => {
-          this.dbPromise = null;
-          reject(
-            new Error(
-              `${MODULE_ID} | IndexedDB open blocked for ${BLOCKED_TIMEOUT_MS / 1000}s — close other Foundry tabs and reload`
-            )
-          );
-        }, BLOCKED_TIMEOUT_MS);
-      };
-    });
-
-    try {
-      const db = await this.dbPromise;
-      return db;
-    } catch (error) {
-      this.dbPromise = null;
-      throw error;
-    }
-  }
-
-  /**
-   * Test database connection
-   * Useful for verification and debugging
-   * @returns {Promise<boolean>} True if connection successful
+   * Verify that storage works: opens IndexedDB, or probes `localStorage` when
+   * IndexedDB is missing.
+   * @returns {Promise<boolean>} True if a backend is usable
    */
   async testConnection() {
+    if (!this.isIndexedDBSupported) {
+      console.log(`${MODULE_ID} | IndexedDB not supported, testing localStorage fallback`);
+      return this._fallback.isAvailable();
+    }
     try {
-      if (!this.isIndexedDBSupported) {
-        console.log(`${MODULE_ID} | IndexedDB not supported, using localStorage fallback`);
-        return true; // localStorage fallback is always available
-      }
-
-      const db = await this.openDatabase();
+      const db = await this._primary.open();
       console.log(`${MODULE_ID} | Database connection test successful`);
       console.log(`${MODULE_ID} | Database name: ${db.name}, version: ${db.version}`);
       console.log(`${MODULE_ID} | Object stores:`, Array.from(db.objectStoreNames));
@@ -173,395 +74,95 @@ export class StorageService {
   }
 
   /**
-   * Check if a key exists in storage without loading full data
-   * Uses IDBObjectStore.count() for lightweight check
-   * @param {string} key - Storage key to check
-   * @returns {Promise<boolean>} True if key exists
+   * Check if a key exists without loading its data.
+   * @param {string} key - Storage key
+   * @returns {Promise<boolean>} True if the key exists
    */
   async has(key) {
-    if (this.isIndexedDBSupported) {
-      try {
-        const db = await this.openDatabase();
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const objectStore = transaction.objectStore(STORE_NAME);
-        const request = objectStore.count(IDBKeyRange.only(key));
-
-        const count = await new Promise((resolve, reject) => {
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-          transaction.onerror = () => reject(transaction.error);
-          transaction.onabort = () => reject(transaction.error || new Error('Transaction aborted'));
-        });
-
-        return count > 0;
-      } catch (_error) {
-        console.debug(
-          `${MODULE_ID} | IndexedDB has() failed, falling back to localStorage:`,
-          _error
-        );
-      }
-    }
-
-    return localStorage.getItem(key) !== null;
+    return this._withFallback('has', (backend) => backend.has(key), false);
   }
 
   /**
-   * Save data to storage (IndexedDB or localStorage fallback)
-   * @param {string} key - Storage key (used as record ID)
-   * @param {*} data - Data to store (must be serializable to JSON)
-   * @returns {Promise<boolean>} True if saved successfully
+   * Save data under a key.
+   * @param {string} key - Storage key
+   * @param {*} data - Data to store (structured-cloneable, and JSON-serializable for the fallback)
+   * @returns {Promise<boolean>} True if a backend stored it
    */
   async save(key, data) {
-    // IndexedDB path
-    if (this.isIndexedDBSupported) {
-      try {
-        const db = await this.openDatabase();
-
-        // Create transaction and object store
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const objectStore = transaction.objectStore(STORE_NAME);
-
-        // Prepare data with id (keyPath)
-        const record = {
-          id: key,
-          data: data,
-          timestamp: Date.now(),
-        };
-
-        // Put data into object store
-        objectStore.put(record);
-
-        await new Promise((resolve, reject) => {
-          transaction.oncomplete = () => {
-            console.log(`${MODULE_ID} | Saved to IndexedDB: ${key}`);
-            resolve();
-          };
-          transaction.onabort = () => {
-            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
-            reject(transaction.error || new Error('Transaction aborted'));
-          };
-          transaction.onerror = () => {
-            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
-            reject(transaction.error);
-          };
-        });
-
+    return this._withFallback(
+      'save',
+      async (backend) => {
+        await backend.write(key, data);
         return true;
-      } catch (error) {
-        console.warn(`${MODULE_ID} | IndexedDB save failed, falling back to localStorage:`, error);
-        // Fall through to localStorage fallback
-      }
-    }
-
-    // localStorage fallback
-    try {
-      const json = JSON.stringify({
-        data: data,
-        timestamp: Date.now(),
-      });
-
-      // Check size limit (~5MB for localStorage)
-      if (json.length > 4.5 * 1024 * 1024) {
-        console.warn(
-          `${MODULE_ID} | Data too large for localStorage (${(json.length / 1024 / 1024).toFixed(1)}MB)`
-        );
-        return false;
-      }
-
-      localStorage.setItem(key, json);
-      console.log(
-        `${MODULE_ID} | Saved to localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`
-      );
-      return true;
-    } catch (error) {
-      console.error(`${MODULE_ID} | localStorage save failed:`, error);
-      return false;
-    }
+      },
+      false
+    );
   }
 
   /**
-   * Load data from storage (IndexedDB or localStorage fallback)
-   * Data is sanitized on load: __proto__/constructor keys are stripped from JSON,
-   * and the result is validated against an expected shape if provided.
-   * @param {string} key - Storage key (used as record ID)
-   * @returns {Promise<*>} Stored data, or null if not found/invalid
+   * Load the data saved under a key, with prototype-polluting keys removed.
+   * @param {string} key - Storage key
+   * @returns {Promise<*>} Stored data, or null if missing or unreadable
    */
   async load(key) {
-    // IndexedDB path
-    if (this.isIndexedDBSupported) {
-      try {
-        const db = await this.openDatabase();
-
-        // Create transaction and object store
-        const transaction = db.transaction([STORE_NAME], 'readonly');
-        const objectStore = transaction.objectStore(STORE_NAME);
-
-        // Get data from object store
-        const request = objectStore.get(key);
-
-        const record = await new Promise((resolve, reject) => {
-          request.onsuccess = () => {
-            resolve(request.result);
-          };
-          request.onerror = () => {
-            console.error(`${MODULE_ID} | Failed to load from IndexedDB:`, request.error);
-            reject(request.error);
-          };
-          transaction.onerror = () => {
-            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
-            reject(transaction.error);
-          };
-          transaction.onabort = () => {
-            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
-            reject(transaction.error || new Error('Transaction aborted'));
-          };
-        });
-
-        if (record) {
-          console.log(`${MODULE_ID} | Loaded from IndexedDB: ${key}`);
-          return StorageService._sanitizeData(record.data);
-        }
-
-        console.log(`${MODULE_ID} | No data found in IndexedDB: ${key}`);
-        return null;
-      } catch (error) {
-        console.warn(`${MODULE_ID} | IndexedDB load failed, falling back to localStorage:`, error);
-        // Fall through to localStorage fallback
-      }
-    }
-
-    // localStorage fallback
-    try {
-      const json = localStorage.getItem(key);
-      if (!json) {
-        console.log(`${MODULE_ID} | No data found in localStorage: ${key}`);
-        return null;
-      }
-
-      const record = JSON.parse(json, StorageService._jsonReviver);
-      console.log(
-        `${MODULE_ID} | Loaded from localStorage: ${key} (${(json.length / 1024).toFixed(0)}KB)`
-      );
-      return StorageService._sanitizeData(record.data);
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Failed to load from localStorage:`, error);
-      return null;
-    }
+    const data = await this._withFallback('load', (backend) => backend.read(key), null);
+    return data === null ? null : this._sanitizer.sanitize(data);
   }
 
   /**
-   * JSON.parse reviver that strips prototype-polluting keys from parsed objects.
-   * Prevents __proto__ and constructor.prototype injection from tampered localStorage data.
-   * @param {string} key - JSON key being parsed
-   * @param {*} value - Parsed value
-   * @returns {*} The value, or undefined to strip the key
-   */
-  static _jsonReviver(key, value) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-      return undefined;
-    }
-    return value;
-  }
-
-  /**
-   * Sanitize data loaded from storage by stripping prototype-polluting keys.
-   * Applied to IndexedDB data (which bypasses JSON.parse reviver).
-   * Optimized: skips arrays of primitives (strings, numbers) since they can't
-   * carry __proto__ pollution. Only recurses into objects and arrays-of-objects.
-   * @param {*} data - Data to sanitize
-   * @param {WeakMap} [seen] - Original → cleaned copy (internal, do not pass)
-   * @returns {*} Sanitized data
-   */
-  static _sanitizeData(data, seen = new WeakMap()) {
-    if (data === null || data === undefined || typeof data !== 'object') {
-      return data;
-    }
-
-    // Returning the cleaned copy, not the original, matters beyond cycles: the
-    // TVA cache shares each image object between two structures, and handing
-    // back the original skipped sanitizing every second reference.
-    if (seen.has(data)) return seen.get(data);
-
-    if (Array.isArray(data)) {
-      if (data.length === 0) return data;
-      // Check if ANY element is an object (not just data[0]) to avoid bypassing mixed arrays
-      const hasObjects = data.some((item) => item !== null && typeof item === 'object');
-      if (!hasObjects) return data;
-      const cleanedArray = [];
-      seen.set(data, cleanedArray);
-      for (const item of data) cleanedArray.push(StorageService._sanitizeData(item, seen));
-      return cleanedArray;
-    }
-
-    const cleaned = {};
-    seen.set(data, cleaned);
-    for (const key of Object.keys(data)) {
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-        continue;
-      }
-      cleaned[key] = StorageService._sanitizeData(data[key], seen);
-    }
-    return cleaned;
-  }
-
-  /**
-   * Remove data from storage (IndexedDB or localStorage fallback)
-   * @param {string} key - Storage key to remove
-   * @returns {Promise<boolean>} True if removed successfully
+   * Remove the data saved under a key.
+   * @param {string} key - Storage key
+   * @returns {Promise<boolean>} True if a backend removed it
    */
   async remove(key) {
-    // IndexedDB path
-    if (this.isIndexedDBSupported) {
-      try {
-        const db = await this.openDatabase();
-
-        // Create transaction and object store
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const objectStore = transaction.objectStore(STORE_NAME);
-
-        // Delete data from object store
-        const request = objectStore.delete(key);
-
-        await new Promise((resolve, reject) => {
-          transaction.oncomplete = () => {
-            console.log(`${MODULE_ID} | Removed from IndexedDB: ${key}`);
-            resolve();
-          };
-          request.onerror = () => {
-            console.error(`${MODULE_ID} | Failed to remove from IndexedDB:`, request.error);
-            reject(request.error);
-          };
-          transaction.onerror = () => {
-            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
-            reject(transaction.error);
-          };
-          transaction.onabort = () => {
-            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
-            reject(transaction.error || new Error('Transaction aborted'));
-          };
-        });
-
+    return this._withFallback(
+      'remove',
+      async (backend) => {
+        await backend.remove(key);
         return true;
-      } catch (error) {
-        console.warn(
-          `${MODULE_ID} | IndexedDB remove failed, falling back to localStorage:`,
-          error
-        );
-        // Fall through to localStorage fallback
-      }
-    }
-
-    // localStorage fallback
-    try {
-      localStorage.removeItem(key);
-      console.log(`${MODULE_ID} | Removed from localStorage: ${key}`);
-      return true;
-    } catch (error) {
-      console.error(`${MODULE_ID} | localStorage remove failed:`, error);
-      return false;
-    }
+      },
+      false
+    );
   }
 
   /**
-   * Clear all data from storage (IndexedDB or localStorage fallback)
-   * @returns {Promise<boolean>} True if cleared successfully
+   * Remove all of this module's data.
+   * @returns {Promise<boolean>} True if a backend cleared it
    */
   async clear() {
-    // IndexedDB path
-    if (this.isIndexedDBSupported) {
-      try {
-        const db = await this.openDatabase();
-
-        // Create transaction and object store
-        const transaction = db.transaction([STORE_NAME], 'readwrite');
-        const objectStore = transaction.objectStore(STORE_NAME);
-
-        // Clear all data from object store
-        const request = objectStore.clear();
-
-        await new Promise((resolve, reject) => {
-          request.onsuccess = () => {
-            console.log(`${MODULE_ID} | Cleared all data from IndexedDB`);
-            resolve();
-          };
-          request.onerror = () => {
-            console.error(`${MODULE_ID} | Failed to clear IndexedDB:`, request.error);
-            reject(request.error);
-          };
-          transaction.onerror = () => {
-            console.error(`${MODULE_ID} | Transaction error:`, transaction.error);
-            reject(transaction.error);
-          };
-          transaction.onabort = () => {
-            console.error(`${MODULE_ID} | Transaction aborted:`, transaction.error);
-            reject(transaction.error || new Error('Transaction aborted'));
-          };
-        });
-
+    return this._withFallback(
+      'clear',
+      async (backend) => {
+        await backend.clear();
         return true;
-      } catch (error) {
-        console.warn(`${MODULE_ID} | IndexedDB clear failed, falling back to localStorage:`, error);
-        // Fall through to localStorage fallback
-      }
-    }
-
-    // localStorage fallback - only clear module-specific keys
-    try {
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('token-replacer-fa')) {
-          keysToRemove.push(key);
-        }
-      }
-
-      for (const key of keysToRemove) {
-        localStorage.removeItem(key);
-      }
-
-      console.log(`${MODULE_ID} | Cleared ${keysToRemove.length} keys from localStorage`);
-      return true;
-    } catch (error) {
-      console.error(`${MODULE_ID} | localStorage clear failed:`, error);
-      return false;
-    }
+      },
+      false
+    );
   }
 
   /**
-   * Check if migration from localStorage to IndexedDB is needed
-   * Migration is needed when:
-   * 1. Old data exists in localStorage
-   * 2. New storage location is empty
-   * @param {string} oldKey - localStorage key to check
-   * @param {string} newKey - IndexedDB/storage key to check
+   * Check whether pre-IndexedDB data in `localStorage` still has to be moved:
+   * the old key exists and the new location is empty.
+   * @param {string} oldKey - localStorage key to migrate from
+   * @param {string} newKey - Storage key to migrate to
    * @returns {Promise<boolean>} True if migration is needed
    */
   async needsMigration(oldKey, newKey) {
     try {
-      // Check if old localStorage data exists
-      const hasLocalStorageData = localStorage.getItem(oldKey) !== null;
-
-      if (!hasLocalStorageData) {
+      if (!(await this._fallback.has(oldKey))) {
         console.log(
           `${MODULE_ID} | No migration needed: no localStorage data found for key "${oldKey}"`
         );
         return false;
       }
-
-      // Check if new storage location is empty
-      const newData = await this.load(newKey);
-      const hasNewData = newData !== null;
-
-      if (hasNewData) {
+      if ((await this.load(newKey)) !== null) {
         console.log(
           `${MODULE_ID} | No migration needed: data already exists in new storage for key "${newKey}"`
         );
         return false;
       }
-
-      // Migration needed: old data exists but new storage is empty
       console.log(
-        `${MODULE_ID} | Migration needed: localStorage data found for "${oldKey}", but "${newKey}" is empty in IndexedDB`
+        `${MODULE_ID} | Migration needed: localStorage data found for "${oldKey}", but "${newKey}" is empty`
       );
       return true;
     } catch (error) {
@@ -571,61 +172,37 @@ export class StorageService {
   }
 
   /**
-   * Migrate data from localStorage to IndexedDB/new storage
+   * Move data from a `localStorage` key into storage, then delete the old key
+   * so the migration does not run again on every start.
    * @param {string} oldKey - localStorage key to migrate from
    * @param {string} newKey - Storage key to migrate to
-   * @returns {Promise<boolean>} True if migration succeeded, false otherwise
+   * @returns {Promise<boolean>} True if migration succeeded
    */
   async migrateFromLocalStorage(oldKey, newKey) {
     try {
       console.log(
         `${MODULE_ID} | Starting migration from localStorage "${oldKey}" to storage "${newKey}"`
       );
-
-      // Read data from localStorage
-      const json = localStorage.getItem(oldKey);
-      if (!json) {
+      const data = await this._fallback.read(oldKey);
+      if (!data) {
         console.warn(
-          `${MODULE_ID} | Migration failed: no data found in localStorage for key "${oldKey}"`
+          `${MODULE_ID} | Migration failed: no valid data in localStorage for key "${oldKey}"`
         );
         return false;
       }
 
-      // Parse JSON wrapper {data, timestamp} — strip prototype-polluting keys
-      const record = JSON.parse(json, StorageService._jsonReviver);
-      if (!record || !record.data) {
-        console.warn(
-          `${MODULE_ID} | Migration failed: invalid data format in localStorage for key "${oldKey}"`
-        );
-        return false;
-      }
-
-      const dataSize = (json.length / 1024).toFixed(0);
-      console.log(
-        `${MODULE_ID} | Migrating ${dataSize}KB of data from localStorage to IndexedDB...`
-      );
-
-      // Save to new storage (IndexedDB or localStorage fallback)
-      const success = await this.save(newKey, record.data);
-
-      if (success) {
-        console.log(
-          `${MODULE_ID} | Migration successful: ${dataSize}KB migrated from "${oldKey}" to "${newKey}"`
-        );
-        // Remove old localStorage data to prevent needsMigration from returning true on every call
-        try {
-          localStorage.removeItem(oldKey);
-          console.log(
-            `${MODULE_ID} | Removed old localStorage key "${oldKey}" after successful migration`
-          );
-        } catch (e) {
-          console.warn(`${MODULE_ID} | Failed to remove old localStorage key "${oldKey}":`, e);
-        }
-        return true;
-      } else {
+      if (!(await this.save(newKey, data))) {
         console.warn(`${MODULE_ID} | Migration failed: could not save data to new storage`);
         return false;
       }
+      console.log(`${MODULE_ID} | Migration successful: "${oldKey}" → "${newKey}"`);
+
+      try {
+        await this._fallback.remove(oldKey);
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Failed to remove old localStorage key "${oldKey}":`, error);
+      }
+      return true;
     } catch (error) {
       console.error(`${MODULE_ID} | Migration failed with error:`, error);
       console.log(`${MODULE_ID} | Continuing with empty cache - index will rebuild automatically`);
@@ -634,15 +211,39 @@ export class StorageService {
   }
 
   /**
-   * Close database connection
-   * Should be called when service is no longer needed
+   * Close the IndexedDB connection; the next call reopens it.
+   * @returns {void}
    */
   close() {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
-      this.dbPromise = null;
-      console.log(`${MODULE_ID} | IndexedDB connection closed`);
+    this._primary.close();
+  }
+
+  /**
+   * Run an operation on the primary backend when it is available, and on the
+   * fallback when it is not or when it fails. Both failures are logged.
+   * @template T
+   * @param {string} operation - Operation name for the log
+   * @param {function(IndexedDbBackend|LocalStorageBackend): Promise<T>} run - The operation
+   * @param {T} failed - Value returned when both backends fail
+   * @returns {Promise<T>}
+   * @private
+   */
+  async _withFallback(operation, run, failed) {
+    if (this.isIndexedDBSupported) {
+      try {
+        return await run(this._primary);
+      } catch (error) {
+        console.warn(
+          `${MODULE_ID} | IndexedDB ${operation} failed, falling back to localStorage:`,
+          error
+        );
+      }
+    }
+    try {
+      return await run(this._fallback);
+    } catch (error) {
+      console.error(`${MODULE_ID} | localStorage ${operation} failed:`, error);
+      return failed;
     }
   }
 }

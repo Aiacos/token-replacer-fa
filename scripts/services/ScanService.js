@@ -6,28 +6,72 @@
 
 import { MODULE_ID, MAX_SCAN_DEPTH } from '../core/Constants.js';
 import { Scheduler } from '../core/Scheduler.js';
-import { pathFilter } from '../core/PathFilter.js';
+import { pathFilter as defaultPathFilter } from '../core/PathFilter.js';
 import { HtmlSanitizer } from '../core/HtmlSanitizer.js';
+import { Settings } from '../core/Settings.js';
+import { DirectoryWalker } from './scan/DirectoryWalker.js';
+
+/** Folders where token packs usually live, checked when no TVA cache exists. */
+const COMMON_TOKEN_PATHS = Object.freeze([
+  'modules/fa-nexus',
+  'modules/forgotten-adventures',
+  'modules/token-variants',
+  'tokens',
+  'assets/tokens',
+]);
+
+/** Broad TVA queries used to enumerate its images through the public API. */
+const BROAD_TVA_SEARCHES = Object.freeze(['token', 'creature', 'monster', 'npc', 'character']);
 
 /**
- * ScanService class for directory scanning operations
+ * The fallback image source when TVA's static cache is unavailable: scans the
+ * configured and common token folders through FilePicker, or asks TVA's
+ * public search API for broad terms.
+ *
+ * @pattern Facade — main.js asks for "the local token index"; the folder
+ * discovery, the recursive walk (DirectoryWalker) and the de-duplication stay
+ * behind it.
  */
 export class ScanService {
-  constructor() {
-    this.imageExtensions = ['.webp', '.png', '.jpg', '.jpeg', '.gif', '.svg'];
+  /**
+   * @param {Object} [deps={}] - Dependency overrides for testing
+   * @param {function(string): Promise<{files?: string[], dirs?: string[]}|null>} [deps.browse] - Lists a directory (default: FilePicker)
+   * @param {function(string, string): *} [deps.getSetting] - Settings accessor (default: game.settings.get)
+   * @param {function(): Object|null} [deps.getTvaAPI] - Returns the TVA API (default: game.modules)
+   * @param {{isExcluded: function(string): boolean}} [deps.pathFilter] - Excluded-path filter
+   * @param {DirectoryWalker} [deps.walker] - Recursive directory walk
+   */
+  constructor(deps = {}) {
+    const {
+      browse = (path) => DirectoryWalker.filePicker().browse('data', path),
+      getSetting = Settings.defaultGetter(),
+      getTvaAPI = () => game.modules.get('token-variants')?.api,
+      pathFilter = defaultPathFilter,
+    } = deps;
+    this._browse = browse;
+    this._getSetting = getSetting;
+    this._getTvaAPI = getTvaAPI;
+    this._pathFilter = pathFilter;
+    this._walker = deps.walker ?? new DirectoryWalker({ browse, pathFilter });
   }
 
   /**
-   * Discover token paths from module settings
+   * @returns {readonly string[]} Image extensions the scan accepts
+   */
+  get imageExtensions() {
+    return this._walker.imageExtensions;
+  }
+
+  /**
+   * Discover token paths from module settings and the common pack folders.
    * @returns {Promise<string[]>} Array of paths to search
    */
   async discoverTokenPaths() {
     const paths = [];
 
-    // Get additional paths from settings
     /** @type {string} */
     const additionalPathsSetting =
-      /** @type {any} */ (game.settings.get(MODULE_ID, 'additionalPaths')) || '';
+      /** @type {any} */ (this._getSetting(MODULE_ID, 'additionalPaths')) || '';
     if (additionalPathsSetting) {
       const additionalPaths = additionalPathsSetting
         .split(',')
@@ -36,22 +80,11 @@ export class ScanService {
       paths.push(...additionalPaths);
     }
 
-    // Add common token paths
-    const commonPaths = [
-      'modules/fa-nexus',
-      'modules/forgotten-adventures',
-      'modules/token-variants',
-      'tokens',
-      'assets/tokens',
-    ];
-
-    for (const path of commonPaths) {
+    for (const path of COMMON_TOKEN_PATHS) {
       try {
-        const result = await FilePicker.browse('data', path);
+        const result = await this._browse(path);
         if (result && (result.dirs?.length > 0 || result.files?.length > 0)) {
-          if (!paths.includes(path)) {
-            paths.push(path);
-          }
+          if (!paths.includes(path)) paths.push(path);
         }
       } catch (e) {
         console.warn(`${MODULE_ID} | Path check failed for "${path}":`, e);
@@ -63,12 +96,12 @@ export class ScanService {
   }
 
   /**
-   * Scan a directory recursively for images
+   * Scan a directory recursively for images.
    * @param {string} path - Directory path
-   * @param {number} depth - Current depth
-   * @param {number} maxDepth - Maximum depth
-   * @param {Function} progressCallback - Progress callback
-   * @param {string} category - Category name from parent folder
+   * @param {number} [depth=0] - Depth of `path`
+   * @param {number} [maxDepth] - Deepest level browsed (default: MAX_SCAN_DEPTH)
+   * @param {function(Object): void|null} [progressCallback=null] - Called per browsed directory
+   * @param {string|null} [category=null] - Category for the root's files (default: its folder name)
    * @returns {Promise<Array>} Array of image objects
    */
   async scanDirectoryForImages(
@@ -78,87 +111,22 @@ export class ScanService {
     progressCallback = null,
     category = null
   ) {
-    if (depth > maxDepth) return [];
-
     const images = [];
-
-    try {
-      const result = await FilePicker.browse('data', path);
-      if (!result) return [];
-
-      // Update progress
-      if (progressCallback) {
-        progressCallback({
-          currentDir: path,
-          depth: depth,
-          filesFound: result.files?.length || 0,
-          dirsFound: result.dirs?.length || 0,
-        });
-      }
-
-      // Extract category from path if not set
-      const pathParts = path.split('/');
-      const folderName = pathParts[pathParts.length - 1];
-      const currentCategory = category || folderName;
-
-      // Process files
-      if (result.files) {
-        for (const file of result.files) {
-          // Skip files from excluded folders
-          if (pathFilter.isExcluded(file)) continue;
-
-          const ext = '.' + file.split('.').pop().toLowerCase();
-          if (this.imageExtensions.includes(ext)) {
-            const fileName = file.split('/').pop();
-            const name = fileName
-              .replace(/\.[^/.]+$/, '')
-              .replace(/[-_]/g, ' ')
-              .trim();
-            images.push({
-              path: file,
-              name: name,
-              fileName: fileName,
-              category: currentCategory,
-              source: 'local',
-            });
-          }
-        }
-      }
-
-      // Yield to main thread periodically for UI responsiveness
-      if (images.length > 0 && images.length % 30 === 0) {
-        await Scheduler.yieldToMain(50);
-      }
-
-      // Recursively scan subdirectories
-      if (result.dirs) {
-        for (const dir of result.dirs) {
-          // Skip excluded folders (assets, props, textures, etc.)
-          if (pathFilter.isExcluded(dir)) continue;
-
-          // Use folder name as category for subdirectories
-          const subCategory = dir.split('/').pop();
-          const subImages = await this.scanDirectoryForImages(
-            dir,
-            depth + 1,
-            maxDepth,
-            progressCallback,
-            subCategory
-          );
-          images.push(...subImages);
-        }
-      }
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Error scanning directory ${path}:`, error);
+    for await (const image of this._walker.walk(path, {
+      startDepth: depth,
+      maxDepth,
+      onProgress: progressCallback,
+      category,
+    })) {
+      images.push(image);
     }
-
     return images;
   }
 
   /**
    * Build local token index from configured paths
    * @param {Object} _progressDialog - Optional progress dialog
-   * @returns {Promise<Array>} Image index array
+   * @returns {Promise<Array>} Image index array, one entry per path
    */
   async buildLocalTokenIndex(_progressDialog = null) {
     console.log(`${MODULE_ID} | Building local token index...`);
@@ -169,33 +137,18 @@ export class ScanService {
       return [];
     }
 
-    const allImages = [];
-    let dirsScanned = 0;
-
-    const progressCallback = (info) => {
-      if (info.currentDir) {
-        dirsScanned++;
-      }
-    };
-
-    for (const basePath of paths) {
-      console.log(`${MODULE_ID} | Scanning: ${basePath}`);
-      const images = await this.scanDirectoryForImages(
-        basePath,
-        0,
-        MAX_SCAN_DEPTH,
-        progressCallback
-      );
-      allImages.push(...images);
-    }
-
-    // Remove duplicates
     const uniqueImages = [];
     const seenPaths = new Set();
-    for (const img of allImages) {
-      if (!seenPaths.has(img.path)) {
-        seenPaths.add(img.path);
-        uniqueImages.push(img);
+    let dirsScanned = 0;
+    const onProgress = () => dirsScanned++;
+
+    // Roots can overlap (a setting path inside a common one): de-duplicate across walks.
+    for (const basePath of paths) {
+      console.log(`${MODULE_ID} | Scanning: ${basePath}`);
+      for await (const image of this._walker.walk(basePath, { onProgress })) {
+        if (seenPaths.has(image.path)) continue;
+        seenPaths.add(image.path);
+        uniqueImages.push(image);
       }
     }
 
@@ -206,76 +159,36 @@ export class ScanService {
   }
 
   /**
-   * Get all images from TVA cache
+   * Get images from TVA through its public search API (slow path).
    * @returns {Promise<Array>} Array of image objects
    */
   async getAllTVAImages() {
-    const tvaAPI = game.modules.get('token-variants')?.api;
+    const tvaAPI = this._getTvaAPI();
     if (!tvaAPI) return [];
 
     const results = [];
-    const seenPaths = new Set(); // Use Set for O(1) duplicate check
+    const seenPaths = new Set();
 
-    try {
-      // Try to get images using doImageSearch with broad search
-      const broadSearches = ['token', 'creature', 'monster', 'npc', 'character'];
-
-      for (const term of broadSearches) {
-        try {
-          const searchResults = await tvaAPI.doImageSearch(term, {
-            searchType: 'Portrait',
-            simpleResults: false,
-          });
-
-          if (searchResults && Array.isArray(searchResults)) {
-            for (const item of searchResults) {
-              let imagePath = null;
-              let name = 'Unknown';
-
-              // Extract path
-              if (typeof item === 'string') {
-                imagePath = item;
-              } else if (typeof item === 'object' && item !== null) {
-                /** @type {any} - TVA result item with dynamic properties */
-                const tvaItem = item;
-                imagePath =
-                  tvaItem.path ||
-                  tvaItem.route ||
-                  tvaItem.img ||
-                  tvaItem.src ||
-                  tvaItem.image ||
-                  tvaItem.uri;
-                name = tvaItem.name || tvaItem.label || tvaItem.title || 'Unknown';
-              }
-
-              // Skip if no path, already seen, or from excluded folder
-              if (imagePath && !seenPaths.has(imagePath) && !pathFilter.isExcluded(imagePath)) {
-                seenPaths.add(imagePath);
-                if (name === 'Unknown' && imagePath) {
-                  name =
-                    imagePath
-                      .split('/')
-                      .pop()
-                      ?.replace(/\.[^/.]+$/, '')
-                      .replace(/[-_]/g, ' ')
-                      .trim() || 'Unknown';
-                }
-                results.push({
-                  path: imagePath,
-                  name: name,
-                  source: 'tva',
-                });
-              }
+    for (const term of BROAD_TVA_SEARCHES) {
+      try {
+        const searchResults = await tvaAPI.doImageSearch(term, {
+          searchType: 'Portrait',
+          simpleResults: false,
+        });
+        if (Array.isArray(searchResults)) {
+          for (const item of searchResults) {
+            const image = this._fromTvaResult(item);
+            if (image && !seenPaths.has(image.path) && !this._pathFilter.isExcluded(image.path)) {
+              seenPaths.add(image.path);
+              results.push(image);
             }
           }
-        } catch (e) {
-          console.warn(`${MODULE_ID} | TVA search failed for term:`, e);
         }
-
-        await Scheduler.yieldToMain(50);
+      } catch (e) {
+        console.warn(`${MODULE_ID} | TVA search failed for term "${term}":`, e);
       }
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Error getting TVA images:`, error);
+
+      await Scheduler.yieldToMain(50);
     }
 
     console.log(`${MODULE_ID} | Retrieved ${results.length} images from TVA cache`);
@@ -293,23 +206,47 @@ export class ScanService {
 
     const categoryLower = categoryType.toLowerCase();
     return images.filter((img) => {
-      // Skip excluded paths first
-      if (pathFilter.isExcluded(img.path)) return false;
+      if (this._pathFilter.isExcluded(img.path)) return false;
 
       const path = img.path?.toLowerCase() || '';
       const name = img.name?.toLowerCase() || '';
-
-      // Check if path contains category
-      const pathParts = path.split('/');
-      for (const part of pathParts) {
-        if (part.includes(categoryLower)) return true;
-      }
-
-      // Check if name matches
-      if (name.includes(categoryLower)) return true;
-
-      return false;
+      return (
+        path.split('/').some((part) => part.includes(categoryLower)) || name.includes(categoryLower)
+      );
     });
+  }
+
+  /**
+   * Convert one TVA search result (a path string or an object with one of
+   * several path/name fields, depending on TVA version) to an image.
+   * @param {*} item - TVA result item
+   * @returns {{path: string, name: string, source: 'tva'}|null}
+   * @private
+   */
+  _fromTvaResult(item) {
+    let imagePath = null;
+    let name = 'Unknown';
+    if (typeof item === 'string') {
+      imagePath = item;
+    } else if (typeof item === 'object' && item !== null) {
+      /** @type {any} - TVA result item with dynamic properties */
+      const tvaItem = item;
+      imagePath =
+        tvaItem.path || tvaItem.route || tvaItem.img || tvaItem.src || tvaItem.image || tvaItem.uri;
+      name = tvaItem.name || tvaItem.label || tvaItem.title || 'Unknown';
+    }
+    if (!imagePath) return null;
+
+    if (name === 'Unknown') {
+      name =
+        imagePath
+          .split('/')
+          .pop()
+          ?.replace(/\.[^/.]+$/, '')
+          .replace(/[-_]/g, ' ')
+          .trim() || 'Unknown';
+    }
+    return { path: imagePath, name, source: 'tva' };
   }
 }
 
