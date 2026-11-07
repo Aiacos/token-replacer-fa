@@ -8,10 +8,13 @@
  * this wrong at startup is worse than having no control at all, so the failure
  * modes are what these tests pin.
  *
- * @module tests/core/stop-indexing
+ * @module tests/app/StoppableNotification
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { showStoppableIndexingNotification } from '../../scripts/main.js';
+import { StoppableNotification } from '../../scripts/app/StoppableNotification.js';
+
+const showStoppableIndexingNotification = (message, onStop) =>
+  new StoppableNotification().show(message, onStop);
 
 let container;
 
@@ -34,7 +37,7 @@ function appendNotificationElement() {
   return element;
 }
 
-describe('showStoppableIndexingNotification', () => {
+describe('StoppableNotification.show', () => {
   it('wires the stop control to the v13 Notification element', () => {
     const element = document.createElement('li');
     const remove = vi.fn();

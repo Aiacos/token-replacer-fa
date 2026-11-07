@@ -54,3 +54,30 @@ describe('token replacement without an active scene', () => {
     expect(tokenReplacerApp.isProcessing).toBe(false);
   });
 });
+
+describe('main.js entry point', () => {
+  it('registers the hooks and exposes the app to macros', async () => {
+    vi.resetModules();
+    Hooks.once.mockClear();
+    Hooks.on.mockClear();
+    const { tokenReplacerApp, TokenReplacerApp } = await import('../../scripts/main.js');
+
+    expect(tokenReplacerApp).toBeInstanceOf(TokenReplacerApp);
+    expect(window.TokenReplacerFA).toBe(tokenReplacerApp);
+    expect(Hooks.once.mock.calls.map(([name]) => name)).toEqual(['init', 'ready']);
+    expect(Hooks.on.mock.calls.map(([name]) => name)).toEqual(['getSceneControlButtons']);
+  });
+
+  it('registers the settings on init', async () => {
+    vi.resetModules();
+    Hooks.once.mockClear();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await import('../../scripts/main.js');
+    const [, init] = Hooks.once.mock.calls.find(([name]) => name === 'init');
+
+    await init();
+
+    const keys = game.settings.register.mock.calls.map(([, key]) => key);
+    expect(keys).toEqual(expect.arrayContaining(['debugMode', 'autoReplace', 'useTVACache']));
+  });
+});
