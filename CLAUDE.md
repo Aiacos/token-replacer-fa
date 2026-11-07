@@ -38,8 +38,9 @@ repairable.
    imports across the worker boundary.
 5. Dead code is deleted, not commented out. Git remembers.
 6. Simplicity, quality, correctness, security, readability and maintainability
-   come before cleverness and delivery speed. Choose the simplest solution that
-   is correct and secure; correctness and security are never traded for the rest.
+   come before cleverness and delivery speed. Simplicity works inside Article XII:
+   the simplest correct and secure design that is object-oriented and names its
+   pattern; correctness and security are never traded for the rest.
 7. Everything crossing a trust boundary is untrusted until validated: TVA cache
    contents, file paths, CDN code, persisted data. Secrets never enter the
    repository. `SECURITY.md` records the resulting guarantees and known limits.
@@ -283,16 +284,27 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
 ### Article XII — 🧠 Architecture & design
 
 1. Plan before implementing. Anything beyond a local fix starts from a stated
-   design: responsibilities, data flow, failure modes, and which existing service
-   it belongs to.
-2. Apply a design pattern only when it solves a problem this code has now. The
-   facade over `SearchOrchestrator`/`TVACacheService` and the injected service
-   dependencies earn their place; a pattern added for symmetry does not.
-3. Use classes where they provide clear benefits: owned state, a lifecycle (the
-   worker), or injectable dependencies for testing. Stateless logic stays a plain
-   function, and inheritance needs a concrete reason.
-4. **Enforced by:** review, and Article II.3 — a design that cannot be tested
-   through its public behaviour goes back to the drawing board.
+   design: responsibilities, data flow, failure modes, and the class that owns it.
+2. Object-oriented design is mandatory for runtime code under `scripts/`. Every
+   responsibility lives in a class with one reason to change; module-level
+   functions and mutable module state are not allowed, except the duplicated
+   worker helpers that Article I.4 pins byte-for-byte. State that outlives a call
+   (a cache, a worker, a listener set) is owned and encapsulated by an instance.
+3. Design patterns are mandatory and deliberate. Each class names the pattern it
+   applies and the problem it solves in its JSDoc (`@pattern Strategy — …`). The
+   catalogue in use: Facade (`SearchService`), Strategy (search sources), Chain of
+   Responsibility (TVA path sources), Repository (persisted index and cache),
+   Command (worker messages), Observer (progress), Factory (errors, workers),
+   Singleton (module-wide services), Value Object (filter queries).
+4. Composition over inheritance; dependencies are injected through constructors,
+   so every class is testable without Foundry globals. Inheritance is reserved for
+   true is-a relations (`ModuleError extends Error`, Foundry base classes).
+5. Well-written means efficient too: a pattern must not add a hot-path cost. No
+   per-call allocation of strategies, no wrapper layers on the search loop, and
+   Article IV's numbers hold after every structural change.
+6. **Enforced by:** review, Article II.3 — a design that cannot be tested through
+   its public behaviour goes back to the drawing board — and the `@pattern` tag on
+   every exported class.
 
 ## 🎮 Development Commands
 
