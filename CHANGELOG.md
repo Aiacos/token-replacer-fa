@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A filter that matched nothing left an empty grid frame** above the "no match" message.
 - **Spacing was missing under the "no match" message and the progress titles**, and the creature-type field was taller than the controls beside it.
 - **"1 selezionati"** in Italian: one selected match now has its own singular label.
+- **Empty frames on the no-match screen**: the results grid no longer shows an empty box while a category search runs, and the screen no longer nests the grid inside a second framed box.
 - **Cancel could be undone by the next progress screen**: a later screen covered the cancelled one with a Cancel button that did nothing.
 - **Upgrading could lose the saved index** when IndexedDB refused the write during the one-time move out of localStorage.
 - **A TVA cache entry with a non-text name failed the whole load**; such entries now use the file name.
@@ -57,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The token art assignment choice sits below the grid on both selection screens**, next to Apply, instead of above it on one and below it on the other.
 - **Vulnerabilities are reported privately** through GitHub's private vulnerability reporting (see `SECURITY.md`).
 - **Templates render only through Foundry v13's `foundry.applications.handlebars`**: the deprecated v12 globals are no longer a fallback, and a missing namespace is reported as an error.
 - **Removed `MIGRATION_V13.md`**: v13 is the supported floor and its last open item (the v12 template fallback) is done. Planning state under `.planning/` is no longer tracked.

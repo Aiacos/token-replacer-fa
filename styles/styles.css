@@ -440,6 +440,12 @@
   margin-bottom: 10px;
 }
 
+/* No tiles yet (a search still running, or one that found nothing): no frame.
+   A filter that hides every tile sets [hidden] from MatchGrid instead. */
+.token-replacer-fa-match-select:empty {
+  display: none;
+}
+
 .token-replacer-fa-match-select .match-option {
   position: relative;
   display: flex;
@@ -940,11 +946,9 @@
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 12px;
-  background: var(--trfa-surface);
-  border-radius: var(--trfa-radius);
-  border: 1px solid var(--trfa-border);
-  margin-bottom: 4px;
+  /* Unframed, like the match-selection screen: the results grid inside is the
+     framed region, and a box around it would nest one card in another. */
+  margin-bottom: 14px;
 }
 
 .token-replacer-fa-no-match .no-match-message {

@@ -22,6 +22,9 @@
   <div class="result-count" aria-live="polite">{{resultCountLabel}}</div>
 </div>
 
+<div class="token-replacer-fa-match-select" role="group" aria-label="{{matchGridLabel}}" data-multiselect="{{showMultiSelect}}"></div>
+<p class="match-grid-empty" hidden>{{noFilterResultsLabel}}</p>
+
 {{#if showMultiSelect}}
   <div class="token-replacer-fa-mode-toggle">
     <span class="mode-label" id="trfa-mode-label">{{variantAssignmentLabel}}</span>
@@ -35,12 +38,6 @@
     </div>
     <span class="mode-hint">{{multiSelectHintLabel}}</span>
   </div>
-{{/if}}
-
-<div class="token-replacer-fa-match-select" role="group" aria-label="{{matchGridLabel}}" data-multiselect="{{showMultiSelect}}"></div>
-<p class="match-grid-empty" hidden>{{noFilterResultsLabel}}</p>
-
-{{#if showMultiSelect}}
   <div class="token-replacer-fa-selection-info">
     <span class="selection-count" aria-live="polite">{{selectionCountLabel}}</span>
   </div>
