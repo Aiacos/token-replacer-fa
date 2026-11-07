@@ -1,303 +1,84 @@
-// @ts-nocheck — UIManager has 51 DOM type narrowing errors (Element vs HTMLElement).
-// Full DOM typing provides no immediate value; pragmatic exclusion for Phase 9.
 /**
- * Token Replacer FA - UI Manager
- * Handles all dialog creation, HTML generation, and event handling
+ * Token Replacer FA - UI entry point
  * @module ui/UIManager
  */
 
-import {
-  MODULE_ID,
-  CREATURE_TYPE_MAPPINGS,
-  MAX_DISPLAY_RESULTS,
-  FALLBACK_IMAGE,
-} from '../core/Constants.js';
-import { HtmlSanitizer } from '../core/HtmlSanitizer.js';
-import { FilterQuery } from '../core/FilterQuery.js';
+import { MODULE_ID } from '../core/Constants.js';
+import { localizer as defaultLocalizer } from '../core/Localizer.js';
 import { templateRenderer } from '../core/TemplateRenderer.js';
+import { DisplayLabels } from './DisplayLabels.js';
+import { FilterTermStore } from './FilterTermStore.js';
+import { MatchSelectionController } from './MatchSelectionController.js';
+import { NoMatchController } from './NoMatchController.js';
+import { ProgressView } from './ProgressView.js';
+import { TokenReplacerDialog } from './TokenReplacerDialog.js';
 
-// i18n cache to avoid repeated localization lookups
-const I18N_CACHE = new Map();
-
-// Cache statistics for debugging
-const I18N_CACHE_STATS = {
-  hits: 0,
-  misses: 0,
-};
-
-// Filter persistence key for session-only localStorage
-const FILTER_CACHE_KEY = 'token-replacer-fa-filter-term';
-
-/**
- * Get localized string
- * Caches base strings to avoid repeated game.i18n.localize() calls
- * @param {string} key - Localization key
- * @param {Object} data - Replacement data
- * @returns {string} Localized string
- */
-function i18n(key, data = {}) {
-  // Check cache first
-  let str = I18N_CACHE.get(key);
-
-  if (!str) {
-    // Cache miss - localize and store
-    str = game.i18n.localize(`TOKEN_REPLACER_FA.${key}`);
-    I18N_CACHE.set(key, str);
-    I18N_CACHE_STATS.misses++;
-  } else {
-    // Cache hit
-    I18N_CACHE_STATS.hits++;
-  }
-
-  // Apply placeholder replacements (replaceAll handles repeated placeholders)
-  for (const [k, v] of Object.entries(data)) {
-    str = str.replaceAll(`{${k}}`, v);
-  }
-  return str;
-}
+const TEMPLATES = Object.freeze({
+  matchSelection: `modules/${MODULE_ID}/templates/match-selection.hbs`,
+  noMatch: `modules/${MODULE_ID}/templates/no-match.hbs`,
+});
 
 /**
- * Log i18n cache statistics
- */
-function logI18nCacheStats() {
-  const total = I18N_CACHE_STATS.hits + I18N_CACHE_STATS.misses;
-  const hitRate = total > 0 ? ((I18N_CACHE_STATS.hits / total) * 100).toFixed(1) : 0;
-  console.log(
-    `${MODULE_ID} | UIManager i18n cache stats: ${I18N_CACHE.size} entries, ${I18N_CACHE_STATS.hits} hits, ${I18N_CACHE_STATS.misses} misses (${hitRate}% hit rate)`
-  );
-}
-
-/**
- * Save filter term to localStorage for session persistence
- * @param {string} filterTerm - Filter term to save
- */
-function saveFilterTerm(filterTerm) {
-  try {
-    if (filterTerm && filterTerm.trim().length > 0) {
-      localStorage.setItem(FILTER_CACHE_KEY, filterTerm);
-    } else {
-      localStorage.removeItem(FILTER_CACHE_KEY);
-    }
-  } catch (error) {
-    console.warn(`${MODULE_ID} | Failed to save filter term:`, error);
-  }
-}
-
-/**
- * Load filter term from localStorage
- * @returns {string} Saved filter term or empty string
- */
-function loadFilterTerm() {
-  try {
-    const term = localStorage.getItem(FILTER_CACHE_KEY) || '';
-    return term.length <= 200 ? term : term.slice(0, 200);
-  } catch (error) {
-    console.warn(`${MODULE_ID} | Failed to load filter term:`, error);
-    return '';
-  }
-}
-
-/**
- * Clear filter term from localStorage
- */
-function clearFilterTerm() {
-  try {
-    localStorage.removeItem(FILTER_CACHE_KEY);
-  } catch (error) {
-    console.warn(`${MODULE_ID} | Failed to clear filter term:`, error);
-  }
-}
-
-/**
- * Localized "Showing X of Y results" label.
+ * The one object main.js talks to for anything on screen: it opens the dialog,
+ * renders each screen and runs the selection dialogs, delegating the work to
+ * ProgressView, MatchSelectionController, NoMatchController and
+ * TokenReplacerDialog.
  *
- * The counts used to live in two bare <span>s that JS rewrote individually,
- * which left the surrounding words untranslatable — word order differs between
- * languages, so the sentence has to be formatted as a whole.
- * @param {number} visible - Results currently rendered
- * @param {number} total - Results matching the filter
- * @param {boolean} capped - Whether the render cap truncated the list
- * @returns {string} Localized label
- */
-function resultCountLabel(visible, total, capped = false) {
-  return i18n(capped ? 'ui.showingResultsCapped' : 'ui.showingResults', { visible, total });
-}
-
-/**
- * TokenReplacerDialog - ApplicationV2-based dialog for Token Replacer FA
- * Replaces deprecated V1 Dialog API with modern ApplicationV2
- * Compatible with Foundry VTT v12-v13
- */
-class TokenReplacerDialog extends foundry.applications.api.ApplicationV2 {
-  /**
-   * @param {Object} options - Dialog options
-   * @param {string} options.content - HTML content for the dialog
-   * @param {Function} options.onClose - Callback when dialog closes
-   */
-  constructor(options = {}) {
-    super(options);
-    this._dialogContent = options.content || '';
-    this._onCloseCallback = options.onClose;
-    this._onRenderCallback = options.onRender;
-  }
-
-  static DEFAULT_OPTIONS = {
-    id: 'token-replacer-fa-dialog',
-    classes: ['token-replacer-fa-dialog'],
-    window: {
-      title: 'Token Replacer FA',
-      resizable: true,
-      minimizable: false,
-    },
-    position: {
-      width: 500,
-      height: 'auto',
-    },
-  };
-
-  /**
-   * Prepare rendering context data
-   * @param {Object} options - Render options
-   * @returns {Promise<Object>} Context data for template
-   */
-  async _prepareContext(_options) {
-    return { content: this._dialogContent };
-  }
-
-  /**
-   * Render the dialog content as an HTMLElement
-   * ApplicationV2 requires _renderHTML to return DOM elements, not strings
-   * @param {Object} context - Rendering context
-   * @param {Object} options - Rendering options
-   * @returns {Promise<HTMLElement>} Rendered DOM element
-   */
-  async _renderHTML(context, _options) {
-    const wrapper = document.createElement('div');
-    wrapper.classList.add('dialog-content');
-    wrapper.innerHTML = context.content;
-    return wrapper;
-  }
-
-  /**
-   * Replace the dialog content in the DOM
-   * Required by ApplicationV2 to handle both initial render and re-renders
-   * @param {HTMLElement} result - New content from _renderHTML
-   * @param {HTMLElement} content - The application's content element
-   * @param {Object} options - Rendering options
-   */
-  _replaceHTML(result, content, _options) {
-    const existing = content.querySelector('.dialog-content');
-    if (existing) {
-      existing.replaceWith(result);
-    } else {
-      content.appendChild(result);
-    }
-  }
-
-  /**
-   * Actions performed after the dialog is rendered.
-   *
-   * The initial render draws content that was never passed through
-   * updateDialogContent(), so anything that wires listeners to that content has
-   * to run from here too — otherwise the first screen's buttons are inert.
-   * @param {Object} context - Render context
-   * @param {Object} options - Render options
-   */
-  async _onRender(context, options) {
-    await super._onRender(context, options);
-    this._onRenderCallback?.();
-  }
-
-  /**
-   * Actions performed when the dialog is closed
-   * @param {Object} options - Close options
-   */
-  async _onClose(options) {
-    await super._onClose(options);
-    this._onCloseCallback?.();
-  }
-
-  /**
-   * Update dialog content directly via DOM manipulation
-   * Avoids full re-render cycle for better performance during frequent updates
-   * @param {string} html - New HTML content
-   */
-  updateContent(html) {
-    this._dialogContent = html;
-    if (!this.rendered) return;
-    const el = this.element?.querySelector('.dialog-content');
-    if (el) {
-      el.innerHTML = html;
-    }
-  }
-
-  /**
-   * Get the dialog's root element
-   * @returns {HTMLElement|null} The dialog element
-   */
-  getDialogElement() {
-    return this.element;
-  }
-
-  /**
-   * Check if dialog is currently rendered and open
-   * @returns {boolean} True if dialog is rendered
-   */
-  isOpen() {
-    return this.rendered;
-  }
-}
-
-/**
- * UIManager class for handling all UI operations
+ * It owns the run-level UI state: the open dialog, the Cancel callback, the
+ * matches waiting for their selection dialog, and the selection dialog in
+ * progress — so closing the window can settle that dialog with null instead of
+ * leaving processTokenReplacement() waiting forever.
+ *
+ * @pattern Facade — keeps main.js's call sites (create*HTML, setup*Handlers,
+ * updateDialogContent, closeDialog, …) stable while the work behind them is
+ * split across focused classes.
  */
 export class UIManager {
-  constructor() {
-    this.mainDialog = null;
-    this.cancelCallback = null;
-    this._currentMatches = null;
-    this._pendingResolve = null; // Resolve function for pending selection Promise
-  }
-
   /**
-   * Attach image load/error event delegation to a container element
-   * Handles skeleton loader reveal on load and fallback image on error
-   * @param {HTMLElement} container - Container to attach listeners to
-   * @param {AbortSignal} signal - AbortController signal for cleanup
-   * @private
+   * @param {Object} [deps] - Collaborators; the defaults are the page-wide instances
+   * @param {{localize: function(string, Object=): string, stats?: Object}} [deps.localizer]
+   * @param {{render: function(string, Object): Promise<string>}} [deps.renderer]
+   * @param {FilterTermStore} [deps.filterStore]
+   * @param {DisplayLabels} [deps.labels]
+   * @param {ProgressView} [deps.progressView]
    */
-  _attachImageDelegation(container, signal) {
-    container.addEventListener(
-      'load',
-      (e) => {
-        if (e.target.tagName === 'IMG') {
-          e.target.parentElement?.classList.add('loaded');
-        }
-      },
-      { signal, capture: true }
-    );
+  constructor({
+    localizer = defaultLocalizer,
+    renderer = templateRenderer,
+    filterStore = new FilterTermStore(),
+    labels = new DisplayLabels(localizer),
+    progressView = new ProgressView({ renderer, localizer }),
+  } = {}) {
+    this._localizer = localizer;
+    this._renderer = renderer;
+    this._filterStore = filterStore;
+    this._labels = labels;
+    this._progressView = progressView;
 
-    container.addEventListener(
-      'error',
-      (e) => {
-        if (e.target.tagName === 'IMG' && !e.target.dataset.fallback) {
-          e.target.dataset.fallback = '1';
-          e.target.src = FALLBACK_IMAGE;
-        }
-      },
-      { signal, capture: true }
-    );
+    /** @type {TokenReplacerDialog|null} */
+    this.mainDialog = null;
+    /** @type {Function|null} */
+    this.cancelCallback = null;
+    /** Matches rendered by createMatchSelectionHTML, awaiting their handlers. */
+    this._pendingMatches = null;
+    /** @type {{cancel: function(): void}|null} The selection dialog in progress */
+    this._activeSelection = null;
+    /** @type {AbortController|null} Detaches the window-level Cancel/Close listener */
+    this._actionsAbort = null;
+    /** @type {HTMLElement|null} The window element that listener is on */
+    this._boundWindow = null;
   }
 
+  // ── screens ────────────────────────────────────────────────────────────────
+
   /**
-   * Create scan progress HTML
-   * @param {string} currentDir - Current directory being scanned
-   * @param {number} dirsScanned - Number of directories scanned
-   * @param {number} imagesFound - Number of images found
-   * @param {number} filesInDir - Files in current directory
-   * @param {number} subDirs - Subdirectories count
-   * @param {string} currentFile - Current file being processed
-   * @returns {Promise<string>} HTML string
+   * @param {string} currentDir
+   * @param {number} dirsScanned
+   * @param {number} imagesFound
+   * @param {number} filesInDir
+   * @param {number} subDirs
+   * @param {string|null} [currentFile]
+   * @returns {Promise<string>} HTML
    */
   async createScanProgressHTML(
     currentDir,
@@ -307,952 +88,381 @@ export class UIManager {
     subDirs,
     currentFile = null
   ) {
-    const shortDir =
-      currentDir.length > 50 ? '...' + currentDir.substring(currentDir.length - 47) : currentDir;
-
-    return await templateRenderer.render(`modules/${MODULE_ID}/templates/scan-progress.hbs`, {
+    return this._progressView.scan(
       currentDir,
-      shortDir,
       dirsScanned,
       imagesFound,
       filesInDir,
       subDirs,
-      currentFile,
-      showDirInfo: filesInDir > 0,
-      scanningLabel: i18n('ui.scanningArtwork'),
-      directoriesLabel: i18n('ui.directories'),
-      imagesFoundLabel: i18n('ui.imagesFound'),
-      currentDirectoryLabel: i18n('ui.currentDirectory'),
-      filesLabel: i18n('ui.filesCount', { count: filesInDir }),
-      subdirectoriesLabel: i18n('ui.subdirectoriesCount', { count: subDirs }),
-      cancelLabel: i18n('dialog.cancel'),
-    });
+      currentFile
+    );
   }
 
   /**
-   * Create parallel search progress HTML
-   * @param {number} completed - Completed searches
-   * @param {number} total - Total searches
-   * @param {number} uniqueTypes - Unique creature types
-   * @param {number} totalTokens - Total tokens
-   * @param {string[]} currentBatch - Currently searching batch
-   * @returns {Promise<string>} HTML string
+   * @param {number} completed
+   * @param {number} total
+   * @param {number} uniqueTypes
+   * @param {number} totalTokens
+   * @param {string[]} [currentBatch]
+   * @returns {Promise<string>} HTML
    */
   async createParallelSearchHTML(completed, total, uniqueTypes, totalTokens, currentBatch = []) {
-    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-    return await templateRenderer.render(`modules/${MODULE_ID}/templates/parallel-search.hbs`, {
-      percent,
+    return this._progressView.parallelSearch(
       completed,
       total,
       uniqueTypes,
       totalTokens,
-      currentBatch,
-      hasBatch: currentBatch.length > 0,
-      titleLabel: i18n('ui.parallelSearchTitle'),
-      uniqueCreaturesLabel: i18n('ui.uniqueCreatures'),
-      totalTokensLabel: i18n('ui.totalTokens'),
-      progressLabel: i18n('ui.creatureTypesSearched', { completed, total }),
-      currentlySearchingLabel: i18n('ui.currentlySearching'),
-      sharedResultsLabel: i18n('ui.sharedResultsInfo'),
-      cancelLabel: i18n('dialog.cancel'),
-    });
+      currentBatch
+    );
   }
 
   /**
-   * Create match selection HTML
-   * @param {Object} creatureInfo - Creature information
-   * @param {Array} matches - Match results
-   * @param {number} tokenCount - Number of tokens
-   * @returns {Promise<string>} HTML string
-   */
-  async createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
-    const showMultiSelect = tokenCount > 1;
-    const totalCount = matches.length;
-
-    // Store full dataset for filtering (filter searches all, not just rendered subset)
-    this._currentMatches = matches;
-
-    // Cap displayed results to prevent UI freeze (12K+ results = DOM + image loading storm)
-    const displayMatches =
-      matches.length > MAX_DISPLAY_RESULTS ? matches.slice(0, MAX_DISPLAY_RESULTS) : matches;
-    const isCapped = matches.length > MAX_DISPLAY_RESULTS;
-
-    // Transform matches array with computed fields
-    const transformedMatches = displayMatches.map((match, idx) => {
-      const scoreDisplay =
-        match.score !== undefined ? `${Math.round((1 - match.score) * 100)}%` : match.source || '';
-      return {
-        index: idx,
-        path: match.path,
-        name: match.name,
-        nameLower: match.name.toLowerCase(),
-        scoreDisplay,
-        isFirst: idx === 0,
-      };
-    });
-
-    // Restore filter term from localStorage for session persistence
-    const savedFilterTerm = loadFilterTerm();
-
-    return await templateRenderer.render(`modules/${MODULE_ID}/templates/match-selection.hbs`, {
-      currentImage: creatureInfo.currentImage,
-      actorName: creatureInfo.actorName,
-      type: creatureInfo.type || 'Unknown',
-      subtype: creatureInfo.subtype || '',
-      tokenCount,
-      showTokenCount: tokenCount > 1,
-      showMultiSelect,
-      totalCount,
-      displayCount: displayMatches.length,
-      isCapped,
-      matches: transformedMatches,
-      skipLabel: i18n('dialog.skip'),
-      savedFilterTerm,
-      tokenCountLabel: i18n('ui.tokenCount', { count: tokenCount }),
-      filterPlaceholder: i18n('ui.filterPlaceholder'),
-      clearFilterLabel: i18n('dialog.clearFilter'),
-      resultCountLabel: resultCountLabel(displayMatches.length, totalCount, isCapped),
-      variantAssignmentLabel: i18n('ui.variantAssignment'),
-      sequentialLabel: i18n('ui.modeSequential'),
-      randomLabel: i18n('ui.modeRandom'),
-      multiSelectHintLabel: i18n('ui.multiSelectHint'),
-      selectionCountLabel: i18n('ui.selectedCount', { count: 1 }),
-      applyLabel: i18n('ui.apply'),
-    });
-  }
-
-  /**
-   * Create no-match HTML with category browser
-   * @param {Object} creatureInfo - Creature information
-   * @param {number} tokenCount - Number of tokens
-   * @returns {Promise<string>} HTML string
-   */
-  async createNoMatchHTML(creatureInfo, tokenCount = 1) {
-    const showMultiSelect = tokenCount > 1;
-
-    // Transform creature types array with display names
-    const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS)
-      .sort()
-      .map((type) => ({
-        displayName: type.charAt(0).toUpperCase() + type.slice(1),
-      }));
-
-    // Restore filter term from localStorage for session persistence
-    const savedFilterTerm = loadFilterTerm();
-
-    return await templateRenderer.render(`modules/${MODULE_ID}/templates/no-match.hbs`, {
-      currentImage: creatureInfo.currentImage,
-      actorName: creatureInfo.actorName,
-      type: creatureInfo.type || 'Unknown',
-      subtype: creatureInfo.subtype || '',
-      tokenCount,
-      showTokenCount: tokenCount > 1,
-      showMultiSelect,
-      noMatchMessage: i18n('dialog.noMatch', { name: creatureInfo.actorName }),
-      browseByTypeLabel: i18n('dialog.browseByType'),
-      searchCategoryLabel: i18n('dialog.searchCategory'),
-      typeValue: creatureInfo.type || '',
-      creatureTypes,
-      skipLabel: i18n('dialog.skip'),
-      savedFilterTerm,
-      tokenCountLabel: i18n('ui.tokenCount', { count: tokenCount }),
-      creatureTypePlaceholder: i18n('ui.creatureTypePlaceholder'),
-      filterPlaceholder: i18n('ui.filterPlaceholder'),
-      clearFilterLabel: i18n('dialog.clearFilter'),
-      emptyResultCountLabel: resultCountLabel(0, 0, false),
-      variantAssignmentLabel: i18n('ui.variantAssignment'),
-      sequentialLabel: i18n('ui.modeSequential'),
-      randomLabel: i18n('ui.modeRandom'),
-      emptySelectionCountLabel: i18n('ui.selectedCount', { count: 0 }),
-      applyLabel: i18n('ui.apply'),
-    });
-  }
-
-  /**
-   * Create search progress HTML
-   * @param {string} categoryType - Category being searched
-   * @param {Object} progress - Progress information
-   * @returns {Promise<string>} HTML string
+   * @param {string} categoryType
+   * @param {{current: number, total: number, term?: string, resultsFound: number}} progress
+   * @returns {Promise<string>} HTML
    */
   async createSearchProgressHTML(categoryType, progress) {
-    const { current, total, term, resultsFound } = progress;
-    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-
-    return await templateRenderer.render(`modules/${MODULE_ID}/templates/search-progress.hbs`, {
-      categoryType,
-      percent,
-      current,
-      total,
-      term: term || '',
-      resultsFound,
-      headerLabel: i18n('ui.searchingCategory', { category: categoryType }),
-      searchingTermLabel: i18n('ui.searchingTerm'),
-      termsProgressLabel: i18n('ui.termsProgress', { current, total }),
-      resultsFoundLabel: i18n('ui.resultsFoundCount', { count: resultsFound }),
-      cancelLabel: i18n('dialog.cancel'),
-    });
+    return this._progressView.categorySearch(categoryType, progress);
   }
 
   /**
-   * Create progress HTML with results
-   * @param {number} current - Current progress
-   * @param {number} total - Total items
-   * @param {string} status - Status message
-   * @param {Array} results - Results array
-   * @returns {Promise<string>} HTML string
+   * @param {number} current
+   * @param {number} total
+   * @param {string} status
+   * @param {Array} results
+   * @returns {Promise<string>} HTML
    */
   async createProgressHTML(current, total, status, results) {
-    const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-    const counts = results.reduce(
-      (acc, r) => {
-        if (r.status === 'success') acc.success++;
-        else if (r.status === 'failed') acc.failed++;
-        else if (r.status === 'skipped') acc.skipped++;
-        return acc;
-      },
-      { success: 0, failed: 0, skipped: 0 }
-    );
-    const { success: successCount, failed: failedCount, skipped: skippedCount } = counts;
-
-    // Transform results array with icon classes
-    const transformedResults = results.map((r) => ({
-      name: r.name,
-      match: r.match || null,
-      status: r.status,
-      iconClass:
-        r.status === 'success' ? 'fa-check' : r.status === 'failed' ? 'fa-times' : 'fa-forward',
-    }));
-
-    return await templateRenderer.render(`modules/${MODULE_ID}/templates/progress.hbs`, {
-      percent,
-      current,
-      total,
-      status,
-      successCount,
-      failedCount,
-      skippedCount,
-      hasResults: results.length > 0,
-      results: transformedResults,
-      progressLabel: i18n('ui.progressStatus', { current, total, status }),
-      replacedLabel: i18n('ui.replacedLabel'),
-      noMatchLabel: i18n('ui.noMatchLabel'),
-      skippedLabel: i18n('ui.skippedLabel'),
-    });
+    return this._progressView.summary(current, total, status, results);
   }
 
   /**
-   * Create TVA cache loading HTML
-   * @param {boolean} refreshing - Whether refreshing cache
-   * @param {string} customMessage - Optional custom status message
-   * @returns {Promise<string>} HTML string
+   * @param {boolean} [refreshing=false]
+   * @param {string|null} [customMessage]
+   * @returns {Promise<string>} HTML
    */
   async createTVACacheHTML(refreshing = false, customMessage = null) {
-    const templatePath = `modules/${MODULE_ID}/templates/tva-cache.hbs`;
-    const statusMessage = customMessage || i18n('ui.usingTvaCache');
-    return await templateRenderer.render(templatePath, {
-      refreshing,
-      statusMessage,
-      refreshingLabel: i18n('ui.refreshingCache'),
-      refreshingHintLabel: i18n('ui.refreshingCacheHint'),
-      tvaCacheInfoLabel: i18n('ui.tvaCacheInfo'),
-      cancelLabel: i18n('dialog.cancel'),
-    });
+    return this._progressView.tvaCache(refreshing, customMessage);
   }
 
   /**
-   * Create error HTML
-   * @param {Object|string} errorData - Error object or message string
-   * @param {string} errorData.errorType - Error type (e.g., "error", "warning")
-   * @param {string} errorData.message - Error message
-   * @param {string} [errorData.details] - Technical details (optional)
-   * @param {string[]} [errorData.recoverySuggestions] - Recovery suggestions array (optional)
-   * @returns {Promise<string>} HTML string
+   * @param {Object|string} errorData - ModuleError-shaped object or a message
+   * @returns {Promise<string>} HTML
    */
   async createErrorHTML(errorData) {
-    const templatePath = `modules/${MODULE_ID}/templates/error.hbs`;
+    return this._progressView.error(errorData);
+  }
 
-    // Support backward compatibility: accept string or object
-    const data =
-      typeof errorData === 'string' ? { errorType: 'error', message: errorData } : errorData;
-
-    return await templateRenderer.render(templatePath, {
-      errorType: data.errorType || 'error',
-      message: data.message,
-      details: data.details,
-      recoverySuggestions: data.recoverySuggestions,
-      showDetailsLabel: i18n('ui.showDetails'),
-      howToFixLabel: i18n('ui.howToFix'),
+  /**
+   * The match selection screen. The tiles are rendered by
+   * setupMatchSelectionHandlers(), which needs the matches kept here.
+   * @param {Object} creatureInfo - From TokenService
+   * @param {Array} matches - Every match, in rank order
+   * @param {number} [tokenCount=1]
+   * @returns {Promise<string>} HTML
+   */
+  async createMatchSelectionHTML(creatureInfo, matches, tokenCount = 1) {
+    this._pendingMatches = matches;
+    return this._renderer.render(TEMPLATES.matchSelection, {
+      ...this._headerData(creatureInfo, tokenCount),
+      ...this._selectionLabels(tokenCount),
+      savedFilterTerm: this._filterStore.load(),
+      resultCountLabel: '',
     });
   }
 
   /**
-   * Render match grid HTML and attach click/dblclick handlers
-   * Reused by both initial render and filter re-renders
-   * @param {Array} matches - Match objects to render
-   * @param {HTMLElement} gridEl - The .token-replacer-fa-match-select container
-   * @param {boolean} multiSelectEnabled - Whether multi-select is active
-   * @param {Function} resolve - Promise resolve for dblclick quick-apply
-   * @param {Function} updateSelectionCount - Callback to update selection count display
+   * The no-match screen with its category browser.
+   * @param {Object} creatureInfo - From TokenService
+   * @param {number} [tokenCount=1]
+   * @returns {Promise<string>} HTML
    */
-  _renderMatchGrid(matches, gridEl, multiSelectEnabled, resolve, updateSelectionCount) {
-    // Note: innerHTML rebuild is mitigated by 150ms debounce and MAX_DISPLAY_RESULTS cap.
-    // CSS visibility toggling would avoid image re-downloads but adds complexity for limited gain.
-    gridEl.innerHTML = matches
-      .map((match, idx) => {
-        const safeMatchName = HtmlSanitizer.escape(match.name);
-        const safePath = HtmlSanitizer.escape(match.path);
-        const scoreDisplay =
-          match.score !== undefined
-            ? `${Math.round((1 - match.score) * 100)}%`
-            : HtmlSanitizer.escape(match.source || '');
-        return `
-        <div class="match-option${idx === 0 ? ' selected' : ''}" data-index="${idx}" data-path="${safePath}" data-name="${safeMatchName.toLowerCase()}">
-          <div class="skeleton-loader skeleton-72">
-            <img src="${safePath}" alt="${safeMatchName}" loading="lazy">
-          </div>
-          <div class="match-name">${safeMatchName}</div>
-          <div class="match-score">${scoreDisplay}</div>
-          <div class="match-check"><i class="fas fa-check"></i></div>
-        </div>
-      `;
-      })
-      .join('');
-
-    // Event delegation with AbortController: fresh closures on each render,
-    // old listeners automatically cleaned up via abort signal
-    if (gridEl._delegateAbort) gridEl._delegateAbort.abort();
-    const ac = new AbortController();
-    gridEl._delegateAbort = ac;
-
-    this._attachImageDelegation(gridEl, ac.signal);
-
-    gridEl.addEventListener(
-      'click',
-      (e) => {
-        const option = e.target.closest('.match-option');
-        if (!option) return;
-        const options = gridEl.querySelectorAll('.match-option');
-        if (multiSelectEnabled) {
-          option.classList.toggle('selected');
-          const selectedCount = gridEl.querySelectorAll('.match-option.selected').length;
-          if (selectedCount === 0) option.classList.add('selected');
-          updateSelectionCount();
-        } else {
-          options.forEach((o) => o.classList.remove('selected'));
-          option.classList.add('selected');
-        }
-      },
-      { signal: ac.signal }
-    );
-
-    gridEl.addEventListener(
-      'dblclick',
-      (e) => {
-        const option = e.target.closest('.match-option');
-        if (!option) return;
-        this._pendingResolve = null;
-        resolve({
-          paths: [option.dataset.path],
-          mode: 'sequential',
-        });
-      },
-      { signal: ac.signal }
-    );
-
-    updateSelectionCount();
+  async createNoMatchHTML(creatureInfo, tokenCount = 1) {
+    const t = (key, data) => this._localizer.localize(key, data);
+    return this._renderer.render(TEMPLATES.noMatch, {
+      ...this._headerData(creatureInfo, tokenCount),
+      ...this._selectionLabels(tokenCount),
+      savedFilterTerm: this._filterStore.load(),
+      noMatchMessage: t('dialog.noMatch', { name: creatureInfo.actorName }),
+      browseByTypeLabel: t('dialog.browseByType'),
+      searchCategoryLabel: t('dialog.searchCategory'),
+      creatureTypePlaceholder: t('ui.creatureTypePlaceholder'),
+      noResultsLabel: t('dialog.noResultsInCategory'),
+      typeValue: creatureInfo.type ? this._labels.creatureType(creatureInfo.type) : '',
+      creatureTypes: this._labels.creatureTypeOptions(),
+    });
   }
 
   /**
-   * Setup match selection event handlers
-   * @param {HTMLElement} dialogElement - Dialog element
-   * @returns {Promise<Object|null>} Selection result
+   * @param {Object} creatureInfo
+   * @param {number} tokenCount
+   * @returns {Object} Template data for the token preview header
+   * @private
+   */
+  _headerData(creatureInfo, tokenCount) {
+    return {
+      currentImage: creatureInfo.currentImage,
+      actorName: creatureInfo.actorName,
+      typeLabel: this._labels.creatureType(creatureInfo.type),
+      subtype: creatureInfo.subtype || '',
+      showTokenCount: tokenCount > 1,
+      tokenCountLabel: this._localizer.localize('ui.tokenCount', { count: tokenCount }),
+    };
+  }
+
+  /**
+   * @param {number} tokenCount
+   * @returns {Object} Labels shared by both selection screens
+   * @private
+   */
+  _selectionLabels(tokenCount) {
+    const t = (key, data) => this._localizer.localize(key, data);
+    return {
+      showMultiSelect: tokenCount > 1,
+      filterLabel: t('ui.filterLabel'),
+      filterPlaceholder: t('ui.filterPlaceholder'),
+      clearFilterLabel: t('dialog.clearFilter'),
+      matchGridLabel: t('ui.matchGridLabel'),
+      noFilterResultsLabel: t('ui.noFilterResults'),
+      variantAssignmentLabel: t('ui.variantAssignment'),
+      sequentialLabel: t('ui.modeSequential'),
+      randomLabel: t('ui.modeRandom'),
+      multiSelectHintLabel: t('ui.multiSelectHint'),
+      selectionCountLabel: '',
+      applyLabel: t('ui.apply'),
+      skipLabel: t('dialog.skip'),
+    };
+  }
+
+  // ── selection dialogs ──────────────────────────────────────────────────────
+
+  /**
+   * Run the match selection screen currently in the dialog.
+   * @param {HTMLElement} dialogElement - The dialog window element
+   * @returns {Promise<{paths: string[], mode: string}|null>} The choice, or null for skip/close
    */
   setupMatchSelectionHandlers(dialogElement) {
-    return new Promise((resolve) => {
-      // Store resolve so dialog close can trigger it (prevents Promise from hanging)
-      this._pendingResolve = resolve;
-
-      const container = dialogElement.querySelector('.dialog-content');
-      if (!container) {
-        console.warn(`${MODULE_ID} | No dialog-content found`);
-        this._pendingResolve = null;
-        resolve(null);
-        return;
-      }
-
-      // AbortController for cleanup — abort on dialog close
-      if (container._dialogAbort) container._dialogAbort.abort();
-      const ac = new AbortController();
-      container._dialogAbort = ac;
-
-      this._attachImageDelegation(container, ac.signal);
-
-      let assignmentMode = 'sequential';
-      const matchGrid = container.querySelector('.token-replacer-fa-match-select');
-      const multiSelectEnabled = matchGrid?.dataset.multiselect === 'true';
-
-      const updateSelectionCount = () => {
-        const selectedCount = container.querySelectorAll('.match-option.selected').length;
-        const countEl = container.querySelector('.selection-count');
-        if (countEl) {
-          countEl.textContent = i18n('ui.selectedCount', { count: selectedCount });
-        }
-      };
-
-      // Setup search filter
-      const searchInput = container.querySelector('.search-filter-input');
-      const searchClearBtn = container.querySelector('.search-clear-btn');
-      const resultCountEl = container.querySelector('.result-count');
-      if (searchInput) {
-        let debounceTimer = null;
-
-        // Toggle clear button visibility based on input value
-        const toggleClearButton = () => {
-          if (searchClearBtn) {
-            if (searchInput.value.trim().length > 0) {
-              searchClearBtn.classList.add('visible');
-            } else {
-              searchClearBtn.classList.remove('visible');
-            }
-          }
-        };
-
-        toggleClearButton();
-
-        searchInput.addEventListener('input', () => {
-          toggleClearButton();
-
-          // Save filter term to localStorage for session persistence
-          saveFilterTerm(searchInput.value);
-
-          clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            const query = FilterQuery.parse(searchInput.value);
-
-            // Filter the FULL dataset in memory, not just rendered DOM
-            const fullData = this._currentMatches || [];
-            const filtered = query.isEmpty
-              ? fullData
-              : fullData.filter((m) => query.matches((m.name || '') + ' ' + (m.path || '')));
-
-            // Cap for rendering
-            const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
-
-            // Re-render the grid with filtered results
-            this._renderMatchGrid(
-              display,
-              matchGrid,
-              multiSelectEnabled,
-              resolve,
-              updateSelectionCount
-            );
-
-            // Update counts
-            if (resultCountEl) {
-              resultCountEl.textContent = resultCountLabel(
-                display.length,
-                filtered.length,
-                filtered.length > MAX_DISPLAY_RESULTS
-              );
-            }
-          }, 150);
-        });
-
-        // Clear button click handler
-        if (searchClearBtn) {
-          searchClearBtn.addEventListener('click', () => {
-            searchInput.value = '';
-            searchInput.dispatchEvent(new Event('input'));
-            searchInput.focus();
-          });
-        }
-      }
-
-      // Handle mode toggle buttons
-      const modeButtons = container.querySelectorAll('.mode-btn');
-      modeButtons.forEach((btn) => {
-        btn.addEventListener('click', () => {
-          modeButtons.forEach((b) => b.classList.remove('active'));
-          btn.classList.add('active');
-          assignmentMode = btn.dataset.mode;
-        });
-      });
-
-      // Set up event delegation on initial match grid via _renderMatchGrid
-      // This uses the same AbortController pattern as filter re-renders (single code path)
-      if (matchGrid) {
-        const initialMatches = (this._currentMatches || []).slice(0, MAX_DISPLAY_RESULTS);
-        this._renderMatchGrid(
-          initialMatches,
-          matchGrid,
-          multiSelectEnabled,
-          resolve,
-          updateSelectionCount
-        );
-      }
-
-      // A filter term restored from localStorage is applied last: dispatched any
-      // earlier, it reached no listener, or the unfiltered first render won.
-      if (searchInput && searchInput.value.trim().length > 0) {
-        searchInput.dispatchEvent(new Event('input'));
-      }
-
-      // Handle button clicks
-      const selectBtn = container.querySelector('.select-btn');
-      const skipBtn = container.querySelector('.skip-btn');
-
-      if (selectBtn) {
-        selectBtn.addEventListener('click', () => {
-          const selectedOptions = container.querySelectorAll('.match-option.selected');
-          const paths = Array.from(selectedOptions).map((opt) => opt.dataset.path);
-          this._pendingResolve = null;
-          if (paths.length > 0) {
-            resolve({ paths, mode: assignmentMode });
-          } else {
-            resolve(null);
-          }
-        });
-      }
-
-      if (skipBtn) {
-        skipBtn.addEventListener('click', () => {
-          this._pendingResolve = null;
-          resolve(null);
-        });
-      }
-    });
+    const container = /** @type {HTMLElement|null} */ (
+      dialogElement.querySelector('.dialog-content')
+    );
+    if (!container) {
+      console.warn(`${MODULE_ID} | No dialog-content found`);
+      return Promise.resolve(null);
+    }
+    const grid = /** @type {HTMLElement|null} */ (
+      container.querySelector('.token-replacer-fa-match-select')
+    );
+    return this._run(
+      new MatchSelectionController({
+        container,
+        matches: this._pendingMatches || [],
+        multiSelect: grid?.dataset.multiselect === 'true',
+        localizer: this._localizer,
+        labels: this._labels,
+        renderer: this._renderer,
+        filterStore: this._filterStore,
+      })
+    );
   }
 
   /**
-   * Setup no-match handlers
-   * @param {HTMLElement} dialogElement - Dialog element
-   * @param {Object} creatureInfo - Creature information
-   * @param {Array} localIndex - Local image index
-   * @param {number} tokenCount - Token count
-   * @param {Function} searchByCategory - Search function
-   * @returns {Promise<Object|null>} Selection result
+   * Run the no-match screen currently in the dialog.
+   * @param {HTMLElement} dialogElement - The dialog window element
+   * @param {Object} _creatureInfo - Unused; kept for main.js's call signature
+   * @param {Array} localIndex - Passed to the category search
+   * @param {number} tokenCount - Tokens sharing the choice
+   * @param {import('./NoMatchController.js').CategorySearch} searchByCategory - Lists a category
+   * @returns {Promise<{paths: string[], mode: string}|null>} The choice, or null for skip/close
    */
-  setupNoMatchHandlers(dialogElement, creatureInfo, localIndex, tokenCount, searchByCategory) {
-    return new Promise((resolve) => {
-      // Store resolve so dialog close can trigger it (prevents Promise from hanging)
-      this._pendingResolve = resolve;
-
-      const container = dialogElement.querySelector('.dialog-content');
-      if (!container) {
-        this._pendingResolve = null;
-        resolve(null);
-        return;
-      }
-
-      // AbortController for cleanup — abort on dialog close
-      if (container._dialogAbort) container._dialogAbort.abort();
-      const ac = new AbortController();
-      container._dialogAbort = ac;
-
-      this._attachImageDelegation(container, ac.signal);
-
-      let assignmentMode = 'sequential';
-      const multiSelectEnabled = tokenCount > 1;
-
-      const typeInput = container.querySelector('.category-type-input');
-      const searchBtn = container.querySelector('.search-category-btn');
-      const resultsContainer = container.querySelector('.category-results');
-      const matchGrid = container.querySelector('.token-replacer-fa-match-select');
-      const loadingEl = container.querySelector('.category-results-loading');
-      const selectBtn = container.querySelector('.select-btn');
-      const skipBtn = container.querySelector('.skip-btn');
-      const modeToggle = container.querySelector('.token-replacer-fa-mode-toggle');
-      const selectionInfo = container.querySelector('.token-replacer-fa-selection-info');
-
-      const updateSelectionCount = () => {
-        const selectedCount = container.querySelectorAll('.match-option.selected').length;
-        const countEl = container.querySelector('.selection-count');
-        if (countEl) {
-          countEl.textContent = i18n('ui.selectedCount', { count: selectedCount });
-        }
-        if (selectBtn) {
-          selectBtn.disabled = selectedCount === 0;
-        }
-      };
-
-      const setupModeButtons = (signal) => {
-        const modeButtons = container.querySelectorAll('.mode-btn');
-        modeButtons.forEach((btn) => {
-          btn.addEventListener(
-            'click',
-            () => {
-              modeButtons.forEach((b) => b.classList.remove('active'));
-              btn.classList.add('active');
-              assignmentMode = btn.dataset.mode;
-            },
-            { signal }
-          );
-        });
-      };
-
-      // Full category results stored for filtering across the entire dataset
-      let fullCategoryResults = [];
-      // displayResults() runs once per search and wires listeners each time, so
-      // each search gets its own controller and aborts the previous one.
-      let resultsAbort = null;
-      ac.signal.addEventListener('abort', () => resultsAbort?.abort());
-
-      const displayResults = (results) => {
-        resultsAbort?.abort();
-        resultsAbort = new AbortController();
-        const resultsSignal = resultsAbort.signal;
-        if (loadingEl) loadingEl.style.display = 'none';
-
-        const categoryFilter = container.querySelector('.category-filter');
-        const categoryResultCount = container.querySelector('.category-result-count');
-        const categorySearchInput = container.querySelector('.category-search-filter-input');
-
-        // Store full dataset for filtering
-        fullCategoryResults = results;
-
-        if (results.length === 0) {
-          if (categoryFilter) categoryFilter.style.display = 'none';
-          if (matchGrid)
-            matchGrid.innerHTML = `
-            <div class="no-results-message">
-              <i class="fas fa-folder-open"></i>
-              <span>${HtmlSanitizer.escape(i18n('dialog.noResultsInCategory'))}</span>
-            </div>
-          `;
-          return;
-        }
-
-        // Cap displayed results to prevent UI freeze
-        const displayItems = results.slice(0, MAX_DISPLAY_RESULTS);
-
-        if (categoryFilter) {
-          categoryFilter.style.display = 'block';
-          if (categoryResultCount) {
-            categoryResultCount.textContent = resultCountLabel(
-              displayItems.length,
-              results.length,
-              results.length > MAX_DISPLAY_RESULTS
-            );
-          }
-          if (categorySearchInput) categorySearchInput.value = '';
-        }
-
-        if (!matchGrid) return;
-
-        // Render grid and attach handlers via shared helper
-        this._renderMatchGrid(
-          displayItems,
-          matchGrid,
-          multiSelectEnabled,
-          resolve,
-          updateSelectionCount
-        );
-
-        if (multiSelectEnabled) {
-          if (modeToggle) modeToggle.style.display = 'flex';
-          if (selectionInfo) selectionInfo.style.display = 'block';
-          setupModeButtons(resultsSignal);
-        }
-
-        // Setup category filter with AND logic on full dataset
-        if (categorySearchInput) {
-          const categoryClearBtn = container.querySelector('.category-filter .search-clear-btn');
-          let debounceTimer = null;
-
-          const toggleClearButton = () => {
-            if (categoryClearBtn) {
-              if (categorySearchInput.value.trim().length > 0) {
-                categoryClearBtn.classList.add('visible');
-              } else {
-                categoryClearBtn.classList.remove('visible');
-              }
-            }
-          };
-
-          toggleClearButton();
-
-          categorySearchInput.addEventListener(
-            'input',
-            () => {
-              toggleClearButton();
-              saveFilterTerm(categorySearchInput.value);
-
-              clearTimeout(debounceTimer);
-              debounceTimer = setTimeout(() => {
-                const query = FilterQuery.parse(categorySearchInput.value);
-
-                // Filter the FULL dataset, not just rendered DOM elements
-                const filtered = query.isEmpty
-                  ? fullCategoryResults
-                  : fullCategoryResults.filter((m) =>
-                      query.matches((m.name || '') + ' ' + (m.path || ''))
-                    );
-
-                const display = filtered.slice(0, MAX_DISPLAY_RESULTS);
-
-                // Re-render grid with filtered results
-                this._renderMatchGrid(
-                  display,
-                  matchGrid,
-                  multiSelectEnabled,
-                  resolve,
-                  updateSelectionCount
-                );
-
-                if (categoryResultCount) {
-                  categoryResultCount.textContent = resultCountLabel(
-                    display.length,
-                    filtered.length,
-                    filtered.length > MAX_DISPLAY_RESULTS
-                  );
-                }
-              }, 150);
-            },
-            { signal: resultsSignal }
-          );
-
-          if (categoryClearBtn) {
-            categoryClearBtn.addEventListener(
-              'click',
-              () => {
-                categorySearchInput.value = '';
-                categorySearchInput.dispatchEvent(new Event('input'));
-                categorySearchInput.focus();
-              },
-              { signal: resultsSignal }
-            );
-          }
-        }
-      };
-
-      // Handle search button click
-      if (searchBtn) {
-        searchBtn.addEventListener('click', async () => {
-          const searchTerm = typeInput?.value?.trim().toLowerCase();
-          if (!searchTerm) {
-            ui.notifications.warn(i18n('dialog.selectTypeFirst'));
-            return;
-          }
-
-          // Check if it matches a known creature type, otherwise use as direct search
-          const creatureTypes = Object.keys(CREATURE_TYPE_MAPPINGS);
-          const selectedType = creatureTypes.find((t) => t === searchTerm) || searchTerm;
-
-          if (resultsContainer) resultsContainer.style.display = 'block';
-          if (loadingEl) {
-            loadingEl.style.display = 'block';
-            loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, {
-              current: 0,
-              total: 1,
-              term: i18n('ui.initializing'),
-              resultsFound: 0,
-            });
-          }
-          if (matchGrid) matchGrid.innerHTML = '';
-          if (selectBtn) selectBtn.disabled = true;
-
-          let results;
-          try {
-            results = await searchByCategory(selectedType, localIndex, null, async (progress) => {
-              if (loadingEl)
-                loadingEl.innerHTML = await this.createSearchProgressHTML(selectedType, progress);
-            });
-          } catch (error) {
-            console.warn(`${MODULE_ID} | Category search failed:`, error);
-            if (loadingEl) loadingEl.style.display = 'none';
-            ui.notifications.error(i18n('notifications.categorySearchFailed'));
-            return;
-          }
-          displayResults(results);
-        });
-      }
-
-      // Handle Enter key in search input
-      if (typeInput) {
-        typeInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            searchBtn?.click();
-          }
-        });
-      }
-
-      // Handle select button
-      if (selectBtn) {
-        selectBtn.addEventListener('click', () => {
-          const selectedOptions = container.querySelectorAll('.match-option.selected');
-          const paths = Array.from(selectedOptions).map((opt) => opt.dataset.path);
-          this._pendingResolve = null;
-          if (paths.length > 0) {
-            resolve({ paths, mode: assignmentMode });
-          } else {
-            resolve(null);
-          }
-        });
-      }
-
-      // Handle skip button
-      if (skipBtn) {
-        skipBtn.addEventListener('click', () => {
-          this._pendingResolve = null;
-          resolve(null);
-        });
-      }
-    });
+  setupNoMatchHandlers(dialogElement, _creatureInfo, localIndex, tokenCount, searchByCategory) {
+    const container = /** @type {HTMLElement|null} */ (
+      dialogElement.querySelector('.dialog-content')
+    );
+    if (!container) {
+      console.warn(`${MODULE_ID} | No dialog-content found`);
+      return Promise.resolve(null);
+    }
+    return this._run(
+      new NoMatchController({
+        container,
+        tokenCount,
+        localIndex,
+        searchByCategory,
+        renderProgress: (type, progress) => this.createSearchProgressHTML(type, progress),
+        localizer: this._localizer,
+        labels: this._labels,
+        renderer: this._renderer,
+        filterStore: this._filterStore,
+      })
+    );
   }
 
   /**
-   * Create main dialog
-   * @param {string} initialContent - Initial content
-   * @param {Function} onClose - Close callback
-   * @returns {TokenReplacerDialog} TokenReplacerDialog instance
+   * Make a controller the active selection dialog until it settles; a newer
+   * one supersedes it, settling it with null.
+   * @param {MatchSelectionController|NoMatchController} controller
+   * @returns {Promise<Object|null>}
+   * @private
+   */
+  _run(controller) {
+    this._activeSelection?.cancel();
+    this._activeSelection = controller;
+    return controller.start().then((result) => {
+      if (this._activeSelection === controller) this._activeSelection = null;
+      return result;
+    });
+  }
+
+  // ── the dialog window ──────────────────────────────────────────────────────
+
+  /**
+   * Open a fresh dialog, closing any previous one first.
+   * @param {string} initialContent - First screen
+   * @param {Function} [onClose] - Called when the window closes
+   * @returns {Promise<TokenReplacerDialog>} Not yet rendered: call render({ force: true })
    */
   async createMainDialog(initialContent, onClose) {
-    // Close existing dialog if still in DOM (prevents duplicate ID conflicts in ApplicationV2)
     if (this.mainDialog) {
-      // Detach _pendingResolve BEFORE closing to prevent the old dialog's onClose
-      // from resolving the new dialog's Promise (race condition)
-      const oldResolve = this._pendingResolve;
-      this._pendingResolve = null;
-      if (oldResolve) oldResolve(null);
-
+      // Settle the old dialog's selection before closing it, so its onClose
+      // cannot reach the new dialog's state.
+      this._activeSelection?.cancel();
+      this._activeSelection = null;
       try {
-        if (this.mainDialog.rendered) {
-          await this.mainDialog.close();
-        }
-      } catch (e) {
-        console.warn('token-replacer-fa | Failed to close existing dialog:', e);
+        if (this.mainDialog.rendered) await this.mainDialog.close();
+      } catch (error) {
+        console.warn(`${MODULE_ID} | Failed to close existing dialog:`, error);
       }
       this.mainDialog = null;
     }
 
-    this.mainDialog = new TokenReplacerDialog({
+    const dialog = new TokenReplacerDialog({
       content: initialContent,
-      onRender: () => this._wireCancelButton(),
+      onRender: () => this._bindWindowActions(dialog),
       onClose: () => {
-        // Resolve any pending selection Promise so processTokenReplacement doesn't hang
-        if (this._pendingResolve) {
-          this._pendingResolve(null);
-          this._pendingResolve = null;
-        }
-        // Clear filter term on dialog close (session-only persistence)
-        clearFilterTerm();
+        this._activeSelection?.cancel();
+        this._activeSelection = null;
+        this._actionsAbort?.abort();
+        this._boundWindow = null;
+        this._filterStore.clear();
         onClose?.();
-        this.mainDialog = null;
+        if (this.mainDialog === dialog) this.mainDialog = null;
       },
       window: {
-        title: i18n('dialog.title'),
+        title: this._localizer.localize('dialog.title'),
         resizable: true,
         positioned: true,
         minimizable: false,
       },
-      position: {
-        width: 500,
-        height: 'auto',
-      },
+      position: { width: 640, height: 'auto' },
     });
-    return this.mainDialog;
+    this.mainDialog = dialog;
+    return dialog;
   }
 
   /**
-   * Set cancel callback for ongoing operations
-   * @param {Function|null} callback - Cancel callback function
+   * @param {Function|null} callback - Run when the user presses Cancel
    */
   setCancelCallback(callback) {
     this.cancelCallback = callback;
   }
 
   /**
-   * Update main dialog content
-   * @param {string} content - New content
+   * @param {string} content - New screen (template output)
    */
   updateDialogContent(content) {
     if (!this.mainDialog) return;
-
     try {
       this.mainDialog.updateContent(content);
-      this._wireCancelButton();
-    } catch (_e) {
-      console.debug(`${MODULE_ID} | Dialog content update failed (may be in transition):`, _e);
+    } catch (error) {
+      console.debug(`${MODULE_ID} | Dialog content update failed (may be in transition):`, error);
     }
   }
 
   /**
-   * Wire up cancel button event listener
+   * Cancel and Close appear on many screens; one delegated listener on the
+   * window serves them all, whatever the content swaps do.
+   * @param {TokenReplacerDialog} dialog
    * @private
    */
-  _wireCancelButton() {
-    if (!this.mainDialog) return;
+  _bindWindowActions(dialog) {
+    const element = dialog.getDialogElement();
+    if (!element || element === this._boundWindow) return;
+    this._actionsAbort?.abort();
+    this._actionsAbort = new AbortController();
+    this._boundWindow = element;
 
-    const dialogEl = this.mainDialog.getDialogElement();
-    if (!dialogEl) return;
-
-    const cancelBtn = dialogEl.querySelector('.cancel-btn[data-action="cancel"]');
-    if (!cancelBtn) return;
-
-    // Already wired — skip (AbortController handles cleanup on dialog close)
-    if (cancelBtn._cancelWired) return;
-    cancelBtn._cancelWired = true;
-
-    cancelBtn.addEventListener('click', async () => {
-      if (this.cancelCallback) {
-        console.log(`${MODULE_ID} | Cancel button clicked`);
-        cancelBtn.disabled = true;
-        cancelBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${HtmlSanitizer.escape(i18n('ui.cancelling'))}`;
-
-        try {
-          await this.cancelCallback();
-          this.updateDialogContent(await this.createErrorHTML(i18n('ui.cancelled')));
-        } catch (e) {
-          console.error(`${MODULE_ID} | Error during cancellation:`, e);
-          this.updateDialogContent(await this.createErrorHTML(i18n('ui.cancelFailed')));
-        }
-
-        this.cancelCallback = null;
-      }
-    });
+    element.addEventListener(
+      'click',
+      (event) => {
+        const button = /** @type {HTMLButtonElement|null} */ (
+          /** @type {Element} */ (event.target).closest?.('[data-action]')
+        );
+        if (!button) return;
+        if (button.dataset.action === 'cancel') this._cancel(button);
+        else if (button.dataset.action === 'close') this.closeDialog();
+      },
+      { signal: this._actionsAbort.signal }
+    );
   }
 
   /**
-   * Get main dialog element
-   * @returns {HTMLElement|null} Dialog element
+   * @param {HTMLButtonElement} button - The Cancel button pressed
+   * @private
    */
+  async _cancel(button) {
+    const callback = this.cancelCallback;
+    if (!callback) return;
+    this.cancelCallback = null;
+
+    console.log(`${MODULE_ID} | Cancel button clicked`);
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    const label = button.querySelector('.btn-label');
+    if (label && button.dataset.busyLabel) label.textContent = button.dataset.busyLabel;
+    button.querySelector('i')?.setAttribute('class', 'fas fa-spinner fa-spin');
+
+    try {
+      await callback();
+      this.updateDialogContent(
+        await this.createErrorHTML({
+          errorType: 'info',
+          message: this._localizer.localize('ui.cancelled'),
+        })
+      );
+    } catch (error) {
+      console.error(`${MODULE_ID} | Error during cancellation:`, error);
+      this.updateDialogContent(
+        await this.createErrorHTML(this._localizer.localize('ui.cancelFailed'))
+      );
+    }
+  }
+
+  /** @returns {HTMLElement|null} The dialog window element */
   getDialogElement() {
     return this.mainDialog?.getDialogElement() || null;
   }
 
-  /**
-   * Check if dialog is open
-   * @returns {boolean} True if dialog is open
-   */
+  /** @returns {boolean} True while the dialog is open */
   isDialogOpen() {
     return this.mainDialog?.isOpen() || false;
   }
 
-  /**
-   * Close main dialog
-   */
+  /** Close the dialog, settling any selection in progress with null. */
   async closeDialog() {
-    // Resolve any pending selection Promise
-    if (this._pendingResolve) {
-      this._pendingResolve(null);
-      this._pendingResolve = null;
-    }
+    this._activeSelection?.cancel();
+    this._activeSelection = null;
     if (this.mainDialog) {
       try {
         await this.mainDialog.close();
-      } catch (_e) {
-        // Dialog might already be closed
+      } catch (error) {
+        console.debug(`${MODULE_ID} | Dialog already closed:`, error);
       }
       this.mainDialog = null;
     }
-    this._currentMatches = null;
-    // Clear filter term on dialog close (session-only persistence)
-    clearFilterTerm();
+    this._pendingMatches = null;
+    this._filterStore.clear();
   }
 }
 
-// Export singleton instance and utility functions
+/** The page-wide instance main.js uses. */
 export const uiManager = new UIManager();
-export { logI18nCacheStats };

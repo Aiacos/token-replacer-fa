@@ -1,10 +1,10 @@
 <div class="token-replacer-fa-token-preview">
-  <div class="skeleton-loader skeleton-52">
-    <img src="{{currentImage}}" alt="{{actorName}}">
-  </div>
+  <span class="skeleton-loader skeleton-52">
+    <img src="{{currentImage}}" alt="" width="52" height="52">
+  </span>
   <div class="token-info">
     <div class="token-name">{{actorName}}</div>
-    <div class="token-type">{{type}} {{subtype}}</div>
+    <div class="token-type">{{typeLabel}} {{subtype}}</div>
     {{#if showTokenCount}}
       <div class="token-count">{{tokenCountLabel}}</div>
     {{/if}}
@@ -12,69 +12,79 @@
 </div>
 
 <div class="token-replacer-fa-no-match">
-  <div class="no-match-message">
-    <i class="fas fa-search-minus"></i>
+  <p class="no-match-message">
+    <i class="fas fa-search-minus" aria-hidden="true"></i>
     <span>{{noMatchMessage}}</span>
-  </div>
+  </p>
 
   <div class="category-search">
-    <label>{{browseByTypeLabel}}</label>
-    <div class="search-input-wrapper category-type-search">
-      <i class="fas fa-search"></i>
-      <input type="text"
-             class="category-type-input"
-             placeholder="{{creatureTypePlaceholder}}"
-             value="{{typeValue}}"
-             autocomplete="off"
-             list="creature-type-suggestions">
-      <datalist id="creature-type-suggestions">
-        {{#each creatureTypes}}
-          <option value="{{displayName}}">
-        {{/each}}
-      </datalist>
+    <label for="trfa-category-type">{{browseByTypeLabel}}</label>
+    <div class="category-search-row">
+      <div class="search-input-wrapper category-type-search">
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <input type="text"
+               id="trfa-category-type"
+               class="category-type-input"
+               placeholder="{{creatureTypePlaceholder}}"
+               value="{{typeValue}}"
+               autocomplete="off"
+               list="trfa-creature-types">
+        <datalist id="trfa-creature-types">
+          {{#each creatureTypes}}
+            <option value="{{label}}"></option>
+          {{/each}}
+        </datalist>
+      </div>
+      <button type="button" class="search-category-btn">
+        <i class="fas fa-search" aria-hidden="true"></i> {{searchCategoryLabel}}
+      </button>
     </div>
-    <button type="button" class="search-category-btn">
-      <i class="fas fa-search"></i> {{searchCategoryLabel}}
-    </button>
   </div>
 
-  <div class="category-results" style="display: none;">
-    <div class="category-results-loading" style="display: none;"></div>
-    <div class="token-replacer-fa-search-filter category-filter" style="display: none;">
+  <div class="category-results" hidden>
+    <div class="category-results-loading" hidden></div>
+    <p class="no-results-message" hidden>
+      <i class="fas fa-folder-open" aria-hidden="true"></i>
+      <span>{{noResultsLabel}}</span>
+    </p>
+    <div class="token-replacer-fa-search-filter category-filter" hidden>
       <div class="search-input-wrapper">
-        <i class="fas fa-search"></i>
-        <input type="text" class="category-search-filter-input" placeholder="{{filterPlaceholder}}" autocomplete="off" value="{{savedFilterTerm}}">
-        <i class="fas fa-times search-clear-btn" title="{{clearFilterLabel}}"></i>
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <input type="search" class="category-search-filter-input" aria-label="{{filterLabel}}" placeholder="{{filterPlaceholder}}" autocomplete="off" value="{{savedFilterTerm}}">
+        <button type="button" class="search-clear-btn" aria-label="{{clearFilterLabel}}" title="{{clearFilterLabel}}" hidden>
+          <i class="fas fa-times" aria-hidden="true"></i>
+        </button>
       </div>
-      <div class="result-count category-result-count">{{emptyResultCountLabel}}</div>
+      <div class="result-count category-result-count" aria-live="polite"></div>
     </div>
-    <div class="token-replacer-fa-match-select" data-multiselect="{{showMultiSelect}}">
-    </div>
+    <div class="token-replacer-fa-match-select" role="group" aria-label="{{matchGridLabel}}" data-multiselect="{{showMultiSelect}}"></div>
+    <p class="match-grid-empty" hidden>{{noFilterResultsLabel}}</p>
   </div>
 </div>
 
 {{#if showMultiSelect}}
-<div class="token-replacer-fa-mode-toggle" style="display: none;">
-  <span class="mode-label">{{variantAssignmentLabel}}</span>
-  <div class="mode-buttons">
-    <button type="button" class="mode-btn active" data-mode="sequential">
-      <i class="fas fa-arrow-right"></i> {{sequentialLabel}}
-    </button>
-    <button type="button" class="mode-btn" data-mode="random">
-      <i class="fas fa-random"></i> {{randomLabel}}
-    </button>
+  <div class="token-replacer-fa-mode-toggle" hidden>
+    <span class="mode-label" id="trfa-mode-label">{{variantAssignmentLabel}}</span>
+    <div class="mode-buttons" role="group" aria-labelledby="trfa-mode-label">
+      <button type="button" class="mode-btn active" data-mode="sequential" aria-pressed="true">
+        <i class="fas fa-arrow-right" aria-hidden="true"></i> {{sequentialLabel}}
+      </button>
+      <button type="button" class="mode-btn" data-mode="random" aria-pressed="false">
+        <i class="fas fa-random" aria-hidden="true"></i> {{randomLabel}}
+      </button>
+    </div>
+    <span class="mode-hint">{{multiSelectHintLabel}}</span>
   </div>
-</div>
-<div class="token-replacer-fa-selection-info" style="display: none;">
-  <span class="selection-count">{{emptySelectionCountLabel}}</span>
-</div>
+  <div class="token-replacer-fa-selection-info" hidden>
+    <span class="selection-count" aria-live="polite">{{selectionCountLabel}}</span>
+  </div>
 {{/if}}
 
 <div class="token-replacer-fa-selection-buttons">
   <button type="button" class="select-btn" data-action="select" disabled>
-    <i class="fas fa-check"></i> {{applyLabel}}
+    <i class="fas fa-check" aria-hidden="true"></i> {{applyLabel}}
   </button>
   <button type="button" class="skip-btn" data-action="skip">
-    <i class="fas fa-forward"></i> {{skipLabel}}
+    <i class="fas fa-forward" aria-hidden="true"></i> {{skipLabel}}
   </button>
 </div>

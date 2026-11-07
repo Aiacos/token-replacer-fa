@@ -1,27 +1,30 @@
 <div class='token-replacer-fa-scan-progress'>
   {{#if refreshing}}
-    <div class='scan-status'>
-      <i class='fas fa-sync fa-spin'></i>
+    <p class='scan-status' data-announce>
+      <i class='fas fa-sync fa-spin' aria-hidden='true'></i>
       <span>{{refreshingLabel}}</span>
-    </div>
-    <p style='text-align: center; color: #888; margin-top: 10px;'>
-      {{refreshingHintLabel}}
     </p>
+    <p class='scan-hint'>{{refreshingHintLabel}}</p>
   {{else}}
-    <div class='scan-status'>
-      <i class='fas fa-bolt'></i>
+    <p class='scan-status' data-announce>
+      <i class='fas fa-bolt' aria-hidden='true'></i>
       <span>{{statusMessage}}</span>
-    </div>
-    <div class='optimization-info'>
-      <i class='fas fa-info-circle'></i>
+    </p>
+    <p class='optimization-info'>
+      <i class='fas fa-info-circle' aria-hidden='true'></i>
       <span>{{tvaCacheInfoLabel}}</span>
-    </div>
+    </p>
   {{/if}}
 
   <div class='token-replacer-fa-progress-buttons'>
-    <button type='button' class='cancel-btn' data-action='cancel'>
-      <i class='fas fa-times'></i>
-      {{cancelLabel}}
+    <button
+      type='button'
+      class='cancel-btn'
+      data-action='cancel'
+      data-busy-label='{{cancellingLabel}}'
+    >
+      <i class='fas fa-times' aria-hidden='true'></i>
+      <span class='btn-label'>{{cancelLabel}}</span>
     </button>
   </div>
 </div>

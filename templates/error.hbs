@@ -1,27 +1,19 @@
-<div class='token-replacer-fa-error'>
-  <div class='error-status {{errorType}}'>
-    <i class='fas fa-exclamation-triangle'></i>
+<div class='token-replacer-fa-error {{toneClass}}' role='{{role}}'>
+  <p class='error-status' data-announce>
+    {{#if isInfo}}
+      <i class='fas fa-info-circle' aria-hidden='true'></i>
+    {{else}}
+      <i class='fas fa-exclamation-triangle' aria-hidden='true'></i>
+    {{/if}}
     <span>{{message}}</span>
-  </div>
-
-  {{#if details}}
-    <div class='error-details'>
-      <button class='error-details-toggle' type='button'>
-        <i class='fas fa-chevron-down'></i>
-        <span>{{showDetailsLabel}}</span>
-      </button>
-      <div class='error-details-content' style='display: none;'>
-        <pre>{{details}}</pre>
-      </div>
-    </div>
-  {{/if}}
+  </p>
 
   {{#if recoverySuggestions}}
     <div class='error-recovery'>
-      <div class='recovery-title'>
-        <i class='fas fa-lightbulb'></i>
+      <p class='recovery-title'>
+        <i class='fas fa-lightbulb' aria-hidden='true'></i>
         <span>{{howToFixLabel}}</span>
-      </div>
+      </p>
       <ul class='recovery-suggestions'>
         {{#each recoverySuggestions}}
           <li>{{this}}</li>
@@ -29,4 +21,18 @@
       </ul>
     </div>
   {{/if}}
+
+  {{#if details}}
+    <details class='error-details'>
+      <summary>{{showDetailsLabel}}</summary>
+      <pre>{{details}}</pre>
+    </details>
+  {{/if}}
+</div>
+
+<div class='token-replacer-fa-progress-buttons'>
+  <button type='button' class='close-btn' data-action='close'>
+    <i class='fas fa-check' aria-hidden='true'></i>
+    <span class='btn-label'>{{closeLabel}}</span>
+  </button>
 </div>
