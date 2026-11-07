@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Token art with a perfect match score was ranked behind weaker matches.**
 - **A damaged cached index made every search come back empty**: it is now detected on load, discarded and rebuilt.
 - **One unreadable TVA cache location stopped the whole index build**: the next location is now tried instead.
 - **Creatures shown another creature's token art**: when several creature types were searched at once on the local index, they could all receive the results of whichever search finished first.
@@ -43,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Much faster search on large local libraries**: a subtype search over a 50,000-image index dropped from about half a second to about 30 ms, because exclusion rules now run only on images that already match.
 - **Constitution in `CLAUDE.md`** extended to cover architecture and design, security, test meaningfulness, debugging workflow, automatic pre-commit checks, cleanup routine and agent tooling. `TODO.md` and `SECURITY.md` added.
 - **Every commit runs `npm run check`** through a versioned pre-commit hook, activated by `npm install`.
 - **Releases build and verify the package before pushing** the release commit and tag, so a failed build no longer leaves a version with no release.

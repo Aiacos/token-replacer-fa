@@ -394,68 +394,88 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 
 ## 🧠 Architecture
 
+Every runtime class names its pattern in a `@pattern` JSDoc tag (Article XII);
+`tests/core/architecture.test.js` fails on a class without one, on module-level
+`let`/`var`, and on top-level functions other than the worker-pinned helpers.
+
 ```
 scripts/
-├── main.js              # Entry point: Hooks (init, ready), settings, processTokenReplacement()
-├── core/
-│   ├── Constants.js     # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), EXCLUDED_FOLDERS
-│   ├── ModuleError.js   # Error subclass + factories: of(type, details, keys), cancelled()
-│   ├── DebugLogger.js   # Opt-in debugMode logger; never throws before settings exist
-│   ├── Settings.js      # Settings.defaultGetter(): lazy default for injected getSetting
-│   ├── Localizer.js     # localizer singleton: cached localize(), declared orEnglish() fallback
-│   ├── FuseLoader.js    # fuseLoader singleton: lazy CDN load + _validateFuseShape (SYNC)
-│   ├── PathFilter.js    # pathFilter singleton: isExcluded() with memo cache (SYNC)
-│   ├── TvaResultParser.js # Adapter: TVA result shapes → path / display name
-│   ├── FilterQuery.js   # Immutable AND-of-terms match filter (value object)
-│   ├── CreatureTerms.js # Subtype terms, generic-subtype test, result cache key
-│   ├── TemplateRenderer.js # templateRenderer singleton: facade over Foundry's template API
-│   ├── HtmlSanitizer.js # escape() for innerHTML, sanitizePath() for scan paths
-│   ├── Scheduler.js     # yieldToMain() for long main-thread loops
-│   └── ManagedWorker.js # Worker lifecycle owner: ensure/post/teardown (not yet adopted)
+├── main.js                   # Entry point only: builds TokenReplacerApp, registers Foundry hooks
+├── app/                      # Application layer
+│   ├── TokenReplacerApp.js   # Composition root — Facade + Mediator; owns the current run
+│   ├── TokenReplacementWorkflow.js # One run = one object — Command + Template Method
+│   ├── IndexBootstrapper.js  # ready hook: GM guard, Fuse, TVA cache, background index build
+│   ├── VariantAssignment.js  # Sequential / Random (Fisher–Yates) — Strategy + Factory
+│   ├── ModuleSettings.js     # All game.settings as one table — Registry
+│   ├── StoppableNotification.js # v13 Notification element / v12 id — Adapter
+│   ├── SceneControls.js      # v13 scene-control payload — Adapter
+│   ├── CompanionModules.js   # TVA / FA Nexus presence — Adapter
+│   └── TokenImageWriter.js   # TVA updateTokenImage or core update — Strategy
+├── core/                     # Shared building blocks, no Foundry access at construction
+│   ├── Constants.js          # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), exclusions (data)
+│   ├── ModuleError.js        # Error subclass: of(type, details, keys), cancelled() — Factory
+│   ├── DebugLogger.js · Settings.js · Localizer.js (localizer: localize(), orEnglish())
+│   ├── FuseLoader.js         # fuseLoader: lazy CDN load + shape check (SYNC with worker)
+│   ├── PathFilter.js         # pathFilter: isExcluded() + memo cache (SYNC with worker)
+│   ├── TvaResultParser.js · FilterQuery.js (Value Object) · CreatureTerms.js
+│   ├── TemplateRenderer.js · HtmlSanitizer.js · Scheduler.js
+│   └── ManagedWorker.js      # Lazy worker lifecycle: ensure/post/teardown — used by index + search
 ├── services/
-│   ├── SearchService.js      # Thin facade delegating to SearchOrchestrator and TVACacheService
-│   ├── SearchOrchestrator.js # Search logic: TVA search, category search, parallel batching
-│   ├── TVACacheService.js    # TVA cache loading, direct cache search, IndexedDB persistence
-│   ├── IndexService.js       # Hierarchical category index, Web Worker + IndexedDB caching
-│   ├── TokenService.js       # Extract creature info from D&D 5e actors (instance class with DI)
-│   ├── StorageService.js     # IndexedDB/localStorage abstraction layer
-│   ├── ScanService.js        # Directory scanning (fallback when TVA unavailable)
-│   └── ForgeBazaarService.js # Forge Bazaar API stub (non-functional, placeholder)
+│   ├── SearchService.js      # Facade over search + TVA cache
+│   ├── SearchOrchestrator.js # Search flows — Facade + Mediator
+│   ├── search/               # SearchPlan (priority rules), Index/TvaCache/LocalIndex/ForgeBazaar
+│   │                         #   sources (Strategy), ResultRanker, ResultCollector,
+│   │                         #   SearchResultCache (LRU), WorkerSearchClient (one search in
+│   │                         #   flight, on ManagedWorker), ParallelSearchRunner (batches)
+│   ├── IndexService.js       # Category + term index — Facade; only it decides worker fallback
+│   ├── index/                # TermIndex, IndexRepository (CACHE_KEY, VERSION), TvaPathSourceChain
+│   │                         #   (Chain of Responsibility), Worker/Direct/TvaSearch builders
+│   │                         #   (Strategy), IndexBuildProgress (~10% steps), CancellationToken
+│   ├── TVACacheService.js    # Facade: load with de-duplication, reload, direct search
+│   ├── tva/                  # TvaCacheParser (Adapter), TvaCacheRepository, CategoryCache
+│   ├── StorageService.js     # Facade: IndexedDB first, localStorage fallback per call
+│   ├── storage/              # IndexedDbBackend / LocalStorageBackend (Strategy), DataSanitizer
+│   ├── TokenService.js · token/CreatureInfoExtractor.js (only reader of actor.system)
+│   ├── ScanService.js · scan/DirectoryWalker.js (async-generator Iterator over FilePicker)
+│   └── ForgeBazaarService.js # Non-functional stub — Null Object; do not refactor
 ├── workers/
-│   └── IndexWorker.js   # Web Worker for background index building (non-blocking)
+│   └── IndexWorker.js        # IndexWorkerRuntime — Command registry; protocol is fixed
 └── ui/
-    └── UIManager.js     # Dialog generation, match selection UI, progress tracking
-templates/
-├── error.hbs            # Error message dialog
-├── tva-cache.hbs        # TVA cache loading progress
-├── scan-progress.hbs    # Directory scanning progress
-├── search-progress.hbs  # Category search progress
-├── parallel-search.hbs  # Parallel token search progress
-├── progress.hbs         # Final results summary
-├── match-selection.hbs  # Token variant selection dialog
-└── no-match.hbs         # No match found with category browser
-tools/                   # CI/CD logic — plain Node, unit-tested, no YAML branching
-├── validate-manifest.mjs    # npm run validate: manifest, runtime assets, i18n, parity
-├── bump-version.mjs         # Version bump + CHANGELOG promotion (exports pure helpers)
-├── publish-foundry.mjs      # Foundry package registry announcement
-├── check-foundry-version.mjs # Newest Foundry generation vs compatibility.verified
-├── install-hooks.mjs        # npm install: points git at the versioned .githooks/
-└── dependabot-triage.mjs    # merge/hold decision per Dependabot PR
-.github/
-├── dependabot.yml       # Weekly grouped updates: actions + npm dev deps
-└── workflows/           # ci · release · foundry-compat · dependabot-auto-merge
+    ├── UIManager.js          # Facade used by the app layer
+    ├── TokenReplacerDialog.js # ApplicationV2 subclass; focus restore, aria-live region
+    ├── MatchSelectionController.js · NoMatchController.js # one per dialog — Mediator
+    ├── SelectionPanel.js     # grid + mode + Apply/Skip, resolves once — Mediator
+    ├── MatchGrid.js          # Set-based selection, keyed tiles, <button aria-pressed> — Observer
+    ├── FilterBox.js · FilterTermStore.js (Repository) · ProgressView.js · DisplayLabels.js
+templates/                    # *.hbs, incl. match-grid.hbs (tiles); only the grid scrolls
+tools/                        # CI/CD logic — plain Node, unit-tested, no YAML branching
+├── validate-manifest.mjs     # npm run validate: manifest, runtime assets, i18n, parity, labels
+├── bump-version.mjs · publish-foundry.mjs · check-foundry-version.mjs · dependabot-triage.mjs
+└── install-hooks.mjs         # npm install: points git at the versioned .githooks/
 tests/
-├── core/ services/ ui/ integration/ helpers/ setup/   # Module suite
-└── tools/               # CI tooling suite (bump, triage, manifest validation)
+├── app/ core/ services/ ui/ integration/ helpers/ setup/   # Module suite
+└── tools/                    # CI tooling suite
 ```
+
+### Where a change goes
+
+| To change…                                      | Edit                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------ |
+| which sources run, in which order, per priority | `services/search/SearchPlan.js`                                    |
+| how matches are ordered                         | `services/search/ResultRanker.js`                                  |
+| a new place to find TVA image paths             | a new source in `services/index/TvaPathSources.js`, not a new `if` |
+| how the persisted index is versioned            | `IndexRepository.VERSION` (bump to invalidate caches)              |
+| a step of the replacement run                   | `app/TokenReplacementWorkflow.js`                                  |
+| how selected token art is spread over tokens    | a new `VariantAssignment` strategy                                 |
+| dialog behaviour                                | the dialog's controller in `ui/`; markup in `templates/`           |
 
 ### Key Data Flow
 
-1. `main.js` → `processTokenReplacement()` triggered by scene control button
-2. `TokenService` extracts creature type/subtype from selected tokens
-3. `SearchService.loadTVACache()` reads TVA's static cache file directly
-4. `IndexService.build()` creates hierarchical category index from cache
-5. `UIManager` displays matches for user selection
+1. `main.js` registers hooks; `ready` → `IndexBootstrapper.run()` (GM only) loads Fuse and starts the background TVA-cache + index build
+2. The scene control → `TokenReplacerApp.processTokenReplacement()` → a new `TokenReplacementWorkflow`
+3. `TokenService` extracts creature info; tokens are grouped by creature
+4. `SearchOrchestrator` runs the `SearchPlan` sources per group through `ParallelSearchRunner`; one failing group does not stop the others
+5. `UIManager` shows matches; the chosen `VariantAssignment` maps token art to tokens; `TokenImageWriter` applies it
 
 ### Template System
 
@@ -483,7 +503,7 @@ The module uses Handlebars templates (preloaded in `main.js` init hook) to separ
 
 ### TVA Integration
 
-The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather than using the slower `doImageSearch` API. Cache format:
+`TvaCacheParser` reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather than using the slower `doImageSearch` API. Cache format:
 
 ```javascript
 // TVA cache JSON: { category: [ path | [path, name] | [path, name, tags] ] }
@@ -492,27 +512,11 @@ The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather
 
 ### Web Worker Architecture
 
-Index building uses Web Workers to prevent main thread blocking:
+Index building and local fuzzy search run in `IndexWorker.js` so the main thread never blocks (Article IV.1).
 
-**IndexWorker.js** - Runs in background thread, processes thousands of images at full speed without UI freezing
-
-- Receives `indexPaths` command with image paths and categorization rules
-- Yields to its message queue every few thousand items, so a cancel can arrive mid-build
-- Sends progress updates every 1000 items via `postMessage`
-- Returns categorized index structure when complete
-
-**IndexService** - Manages worker lifecycle and fallback
-
-- Creates the worker lazily on first use (`_ensureWorker()`), never in the constructor
-- Uses `indexPathsWithWorker()` when worker available (non-blocking)
-- Falls back to `indexPathsDirectly()` with 10ms yields if worker unavailable
-- Properly terminates worker with `terminate()` method
-
-**Benefits:**
-
-- Main thread remains completely responsive during large index builds
-- Near full-speed processing in the worker: its rare yields carry no fixed delay
-- Graceful fallback for browsers without Worker support
+- **The worker** (`IndexWorkerRuntime`) dispatches `indexPaths`, `fuzzySearch`, `setSearchIndex`, `cancel`, `ping` from a `Map` registry. It yields to its message queue every 5000 items, so a cancel can arrive mid-build, and reports progress every 1000. Its `CancellationToken` is reset by each new command — the main thread relies on that.
+- **Index builds**: `WorkerIndexBuilder` owns the worker through `ManagedWorker`; `DirectIndexBuilder` is the main-thread fallback with 10 ms yields. Builders reject, they never fall back: only `IndexService` decides to fall back, on a worker failure and never on a cancel.
+- **Searches**: `WorkerSearchClient` keeps exactly one fuzzy search in flight (replies carry no request id), captures its worker per search, sends the index once by identity via `setSearchIndex`, and tears the worker down after a 60 s timeout.
 
 ### Critical: CDN Path Handling
 
