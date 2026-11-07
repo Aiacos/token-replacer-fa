@@ -212,7 +212,7 @@ class IndexWorkerRuntime {
     // with different settings reuse the old exclusions.
     const compiledCategorizer = compileCategorizer(creatureTypeMappings);
     const excludedFolderSet = new Set(excludedFolders);
-    // Matches Utils.js behavior: \b${term}\b (full word boundary on both sides)
+    // Matches PathFilter.js: \b${term}\b (full word boundary on both sides)
     const excludedPatterns = excludedFilenameTerms.map((term) => new RegExp(`\\b${term}\\b`, 'i'));
 
     // Initialize empty index structure

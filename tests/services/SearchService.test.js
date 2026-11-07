@@ -60,7 +60,7 @@ describe('SearchService', () => {
       expect(searchOrchestrator.setDependencies).toHaveBeenCalledTimes(1);
     });
 
-    it('wraps init errors in createModuleError with errorType "unknown"', () => {
+    it('wraps init errors in a ModuleError with errorType "unknown"', () => {
       tvaCacheService.init.mockImplementationOnce(() => {
         throw new Error('boom');
       });
@@ -122,20 +122,20 @@ describe('SearchService', () => {
       expect(result).toBe(expected);
     });
 
-    it('throws createModuleError with search_failed for empty string categoryType', async () => {
+    it('throws a ModuleError with search_failed for empty string categoryType', async () => {
       await expect(svc.searchByCategory('', [])).rejects.toMatchObject({
         errorType: 'search_failed',
       });
     });
 
-    it('throws createModuleError when localIndex is not an array', async () => {
+    it('throws a ModuleError when localIndex is not an array', async () => {
       await expect(svc.searchByCategory('beast', 'notArray')).rejects.toMatchObject({
         errorType: 'search_failed',
         details: expect.stringContaining('array'),
       });
     });
 
-    it('wraps unexpected orchestrator errors in createModuleError', async () => {
+    it('wraps unexpected orchestrator errors in a ModuleError', async () => {
       searchOrchestrator.searchByCategory.mockRejectedValueOnce(new Error('network'));
 
       await expect(svc.searchByCategory('beast', [])).rejects.toMatchObject({
@@ -172,7 +172,7 @@ describe('SearchService', () => {
       expect(result).toBe(expected);
     });
 
-    it('throws createModuleError when groups is not a Map', async () => {
+    it('throws a ModuleError when groups is not a Map', async () => {
       await expect(svc.parallelSearchCreatures({}, [])).rejects.toMatchObject({
         errorType: 'search_failed',
         details: expect.stringContaining('Map'),
@@ -187,7 +187,7 @@ describe('SearchService', () => {
       expect(searchOrchestrator.parallelSearchCreatures).not.toHaveBeenCalled();
     });
 
-    it('wraps unexpected orchestrator errors in createModuleError', async () => {
+    it('wraps unexpected orchestrator errors in a ModuleError', async () => {
       const groups = new Map([['beast', { type: 'beast' }]]);
       searchOrchestrator.parallelSearchCreatures.mockRejectedValueOnce(new Error('timeout'));
 
