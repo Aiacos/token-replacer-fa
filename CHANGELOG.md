@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The match grid loads more as you scroll**, replacing the 200-match cap: every match is reachable without filtering.
 - **The "Fallback to Full Search" setting now works**: a creature with no category match falls back to a name search across the whole library.
 - **Token appearance settings**: optionally set the token's scale, and enable or disable Foundry's dynamic token ring with the new art as its subject, whenever art is applied.
+- **Light theme**: the dialog follows Foundry's light interface theme, and a window themed on its own keeps its theme.
 - **Arrow keys, Home and End move between token art tiles**, loading further pages as needed, so a keyboard user no longer has to Tab through every match to reach Apply.
 
 ### Fixed

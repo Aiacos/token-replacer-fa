@@ -2,12 +2,12 @@
 
 /* ============================================
    TOKENS
-   Every colour the dialog uses lives here, so mapping it onto a Foundry
-   theme later is a one-place change. Defaults are the dark palette the module
-   has always shipped; text and control values meet WCAG AA on these surfaces
-   (text >= 4.5:1, control boundaries >= 3:1).
+   Every colour the dialog uses lives here. Dark is the default palette; the
+   light block below follows Foundry's theme. Both meet WCAG AA on their own
+   surfaces (text >= 4.5:1, control boundaries >= 3:1).
    ============================================ */
-.token-replacer-fa-dialog {
+.token-replacer-fa-dialog,
+.token-replacer-fa-dialog.themed.theme-dark {
   --trfa-bg: #1a1a1a;
   --trfa-surface: #222222;
   --trfa-surface-raised: #2a2a2a;
@@ -35,6 +35,44 @@
   --trfa-success-text: #a7f3d0;
   --trfa-disabled-bg: #2a2a2a;
   --trfa-disabled-text: #8a8a8a;
+}
+
+/* Foundry v13+ marks the interface theme on <body> and a per-window override
+   on the window itself (`.themed.theme-light` / `.themed.theme-dark`), the
+   selectors the official dnd5e system uses. The window override (0,3,0) beats
+   the body theme (0,2,1), so a window forced dark stays dark on a light UI. */
+body.theme-light .token-replacer-fa-dialog,
+.token-replacer-fa-dialog.themed.theme-light {
+  --trfa-bg: #f5f5f4;
+  --trfa-surface: #ffffff;
+  --trfa-surface-raised: #efeeec;
+  --trfa-inset: #e7e5e4;
+  --trfa-border: #d6d3d1;
+  --trfa-border-strong: #a8a29e;
+  --trfa-control-border: #78716c;
+  --trfa-text: #1c1917;
+  --trfa-text-strong: #0c0a09;
+  --trfa-text-muted: #57534e;
+  --trfa-accent: #166534;
+  --trfa-accent-tint: rgba(21, 128, 61, 0.1);
+  --trfa-accent-border: rgba(21, 128, 61, 0.45);
+  --trfa-on-accent: #ffffff;
+  --trfa-primary: #15803d;
+  --trfa-primary-hover: #166534;
+  --trfa-on-primary: #ffffff;
+  --trfa-danger: #b91c1c;
+  --trfa-danger-text: #991b1b;
+  --trfa-danger-tint: rgba(185, 28, 28, 0.08);
+  --trfa-danger-border: rgba(185, 28, 28, 0.35);
+  --trfa-warning: #b45309;
+  --trfa-warning-text: #92400e;
+  --trfa-warning-tint: rgba(180, 83, 9, 0.1);
+  --trfa-success-text: #166534;
+  --trfa-disabled-bg: #e7e5e4;
+  --trfa-disabled-text: #78716c;
+}
+
+.token-replacer-fa-dialog {
   --trfa-radius: 6px;
   --trfa-radius-small: 4px;
   --trfa-ease: cubic-bezier(0.22, 1, 0.36, 1);

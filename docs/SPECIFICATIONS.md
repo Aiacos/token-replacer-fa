@@ -364,14 +364,12 @@ All UI strings use `TOKEN_REPLACER_FA.*` namespace.
 
 ## 9. Known Issues
 
-| Issue                          | Status    | Workaround                                                                      |
-| ------------------------------ | --------- | ------------------------------------------------------------------------------- |
-| Light theme                    | Open      | Colours are module tokens (`--trfa-*`), not yet mapped to Foundry's light theme |
-| Rendered tiles stay in the DOM | By design | Paging renders 200 at a time; filter to narrow very large result sets           |
+| Issue                          | Status    | Workaround                                                            |
+| ------------------------------ | --------- | --------------------------------------------------------------------- |
+| Rendered tiles stay in the DOM | By design | Paging renders 200 at a time; filter to narrow very large result sets |
 
 ---
 
 ## 10. Future Improvements
 
-- [ ] Map the `--trfa-*` colour tokens onto Foundry's light theme
 - [ ] Search and link Forgotten Adventures Live Gallery tokens, pending FA's permission (see `TODO.md`)

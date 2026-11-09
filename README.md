@@ -23,6 +23,7 @@ A Foundry VTT module that automatically replaces NPC token art with matching tok
 - **Large result sets**: The match grid loads more art as you scroll, with no cap on how many matches you can reach
 - **Token appearance**: Optionally set the token's scale and Foundry's dynamic token ring when its art is applied
 - **Configurable**: Adjustable fuzzy threshold, search priority, fallback options, and custom paths
+- **Light and dark themes**: The dialog follows Foundry's interface theme
 - **Localization**: Available in English and Italian
 
 ## 📦 Requirements
@@ -221,7 +222,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ### Recent Highlights
 
-- **Unreleased** — Apply to all remaining, wildcard filter, paged match grid, full-library fallback search, token scale and dynamic ring settings, keyboard navigation, object-oriented architecture, accessibility and performance fixes
+- **Unreleased** — Apply to all remaining, wildcard filter, paged match grid, full-library fallback search, token scale and dynamic ring settings, light theme, keyboard navigation, object-oriented architecture, accessibility and performance fixes
 - **v2.12.4** — Security hardening: protocol validation, CSP-compatible event handlers, credential protection
 - **v2.12.0** — Quality refactor: comprehensive test suite, CI pipeline, constructor DI, structured error handling, Worker lifecycle management
 - **v2.11.0** — ApplicationV2 dialog migration for Foundry v13 compatibility, service decomposition
