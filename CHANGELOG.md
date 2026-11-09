@@ -7,8 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Apply to all remaining**: a button on both selection screens applies the current choice, then gives every remaining creature its best match without further dialogs; creatures with no match are skipped.
+- **Wildcards in the match filter**: `*` stands for any characters and `?` for exactly one, inside any filter word.
+- **The match grid loads more as you scroll**, replacing the 200-match cap: every match is reachable without filtering.
+- **The "Fallback to Full Search" setting now works**: a creature with no category match falls back to a name search across the whole library.
+- **Token appearance settings**: optionally set the token's scale, and enable or disable Foundry's dynamic token ring with the new art as its subject, whenever art is applied.
+- **Light theme**: the dialog follows Foundry's light interface theme, and a window themed on its own keeps its theme.
+- **Arrow keys, Home and End move between token art tiles**, loading further pages as needed, so a keyboard user no longer has to Tab through every match to reach Apply.
+
 ### Fixed
 
+- **The match count read "Showing 1 of 1" while filtering**; it now counts the whole result set ("1 of 12").
+- **A filter that matched nothing left an empty grid frame** above the "no match" message.
+- **Spacing was missing under the "no match" message and the progress titles**, and the creature-type field was taller than the controls beside it.
+- **"1 selezionati"** in Italian: one selected match now has its own singular label.
+- **Empty frames on the no-match screen**: the results grid no longer shows an empty box while a category search runs, and the screen no longer nests the grid inside a second framed box.
+- **Cancel could be undone by the next progress screen**: a later screen covered the cancelled one with a Cancel button that did nothing.
+- **Upgrading could lose the saved index** when IndexedDB refused the write during the one-time move out of localStorage.
+- **A TVA cache entry with a non-text name failed the whole load**; such entries now use the file name.
+- **One actor with unusual creature-type data stopped the whole run.**
+- **"Background worker failed" was shown once per creature** while the worker kept failing; it now appears once until the worker works again.
+- **Token art with a perfect match score was ranked behind weaker matches.**
+- **A damaged cached index made every search come back empty**: it is now detected on load, discarded and rebuilt.
+- **One unreadable TVA cache location stopped the whole index build**: the next location is now tried instead.
 - **Creatures shown another creature's token art**: when several creature types were searched at once on the local index, they could all receive the results of whichever search finished first.
 - **Hill Giants, Awakened Trees, Corpse Flowers and Cave Bears were never found**: their file names contained words meant to filter out scenery (`hill`, `tree`, `flower`, `cave`).
 - **A failed index refresh discarded a working index**: when the weekly refresh failed, searches lost the cached index for the whole session. The cached index is now kept.
@@ -22,12 +45,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **"No active scene" also raised a second, misleading error** about unselected tokens.
 - **Reloading the TVA cache could return the old data** if an earlier load was still running.
 - **Stored data with shared references was only partly sanitized** on load.
+- **A failure applying token art to one creature type no longer aborts the whole run.**
+- **Index-build progress no longer repeats the 100% notification.**
+- **dnd5e creatures with a custom type are now searched by that type**, not by the word "custom".
+- **A TVA cache file with malformed entries now loads**, skipping only those entries.
+- **The match grid could not be used from the keyboard**: each match is now a button you can reach with Tab and pick with Enter or Space, and its selected state is announced to screen readers.
+- **Typing in the filter threw away the selection**: matches picked before filtering stay picked, and Apply uses them even while the filter hides them.
+- **Apply could silently skip a creature**: it is now disabled while nothing is selected, and a filter that matches nothing says so instead of showing an empty grid.
+- **Double-clicking in multi-select discarded the selection** and forced sequential mode; it now applies everything selected in the chosen mode.
+- **The match grid flickered and reloaded every image on each keystroke**: filtering now only shows and hides the tiles.
+- **Keyboard focus was lost from Cancel on every progress update**, and progress was not announced to screen readers.
+- **A cancelled search was shown as an error** and said "Indexing cancelled"; it is now reported as information.
+- **"Show Details" on an error did nothing**; the technical details now expand.
+- **Replacements that failed were counted as "No Match"** in the summary; they are now counted as "Failed", and the summary has a Close button.
+- **The category search progress showed a Cancel button that did nothing**; it is gone.
+- **Creature types, match sources and "Unknown" appeared in English** in the Italian interface; the category browser now also accepts the translated creature type.
+- **The dialog ignored its own size**: forced dimensions stopped it from being resized, and two nested scroll areas competed. Only the match grid scrolls now.
 
 ### Changed
 
+- **The token art assignment choice sits below the grid on both selection screens**, next to Apply, instead of above it on one and below it on the other.
+- **Vulnerabilities are reported privately** through GitHub's private vulnerability reporting (see `SECURITY.md`).
+- **Templates render only through Foundry v13's `foundry.applications.handlebars`**: the deprecated v12 globals are no longer a fallback, and a missing namespace is reported as an error.
+- **Removed `MIGRATION_V13.md`**: v13 is the supported floor and its last open item (the v12 template fallback) is done. Planning state under `.planning/` is no longer tracked.
+- **Much faster search on large local libraries**: a subtype search over a 50,000-image index dropped from about half a second to about 30 ms, because exclusion rules now run only on images that already match.
 - **Constitution in `CLAUDE.md`** extended to cover architecture and design, security, test meaningfulness, debugging workflow, automatic pre-commit checks, cleanup routine and agent tooling. `TODO.md` and `SECURITY.md` added.
 - **Every commit runs `npm run check`** through a versioned pre-commit hook, activated by `npm install`.
 - **Releases build and verify the package before pushing** the release commit and tag, so a failed build no longer leaves a version with no release.
+- **The saved TVA cache is now versioned**, so it is downloaded again once after updating.
+- **Loading the TVA cache builds its category lookup about 27% faster.**
+- **Dialog colours and contrast**: Apply and Search are solid green with white text, Skip and Cancel are outlined, secondary text is larger and lighter, and every colour now comes from one set of `--trfa-*` variables. Animations stop when the system asks for reduced motion.
+- **Wording**: dialogs consistently say _token art_, _match_ and _category_ instead of "artwork", "variants", "images" and "results".
 
 ## [2.13.0] - 2026-08-30
 

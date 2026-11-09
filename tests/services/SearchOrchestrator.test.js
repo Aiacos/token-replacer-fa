@@ -7,14 +7,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Fuse from 'fuse.js';
 import { SearchOrchestrator } from '../../scripts/services/SearchOrchestrator.js';
 
-// Mock loadFuse to return real Fuse.js from devDependency instead of CDN import
-vi.mock('../../scripts/core/Utils.js', async (importOriginal) => {
+// Mock fuseLoader.load() to return real Fuse.js from devDependency instead of CDN import
+vi.mock('../../scripts/core/FuseLoader.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, loadFuse: vi.fn(async () => Fuse) };
+  return { ...actual, fuseLoader: { load: vi.fn(async () => Fuse) } };
 });
 
-// Re-import loadFuse so we can override it per-test when needed
-import { loadFuse } from '../../scripts/core/Utils.js';
+// Re-import fuseLoader so we can override it per-test when needed
+import { fuseLoader } from '../../scripts/core/FuseLoader.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -153,8 +153,8 @@ function createOrchestrator(overrides = {}) {
 describe('SearchOrchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Restore default loadFuse mock
-    vi.mocked(loadFuse).mockResolvedValue(Fuse);
+    // Restore default fuseLoader.load() mock
+    vi.mocked(fuseLoader.load).mockResolvedValue(Fuse);
   });
 
   // -----------------------------------------------------------------------
@@ -270,7 +270,7 @@ describe('SearchOrchestrator', () => {
       });
 
       // Initialize worker
-      orchestrator._ensureWorker();
+      orchestrator._workerClient.ensure();
       expect(orchestrator.worker).toBe(mockWorker);
 
       orchestrator.terminate();
@@ -397,8 +397,8 @@ describe('SearchOrchestrator', () => {
       expect(results).toEqual([]);
     });
 
-    it('returns empty when loadFuse returns null', async () => {
-      vi.mocked(loadFuse).mockResolvedValueOnce(null);
+    it('returns empty when fuseLoader.load() returns null', async () => {
+      vi.mocked(fuseLoader.load).mockResolvedValueOnce(null);
       const { orchestrator } = createOrchestrator();
       const index = createTestIndex();
 
@@ -662,6 +662,25 @@ describe('SearchOrchestrator', () => {
           expect(nameIdx).toBeLessThan(subtypeIdx);
         }
       }
+    });
+
+    it('ranks a perfect score of 0 ahead of a worse score', async () => {
+      // `score || 0.5` turned a perfect 0 into 0.5, ranking it behind a 0.3.
+      const { orchestrator } = createOrchestrator({
+        tvaCacheService: {
+          searchTVACacheDirect: vi.fn(async () => [
+            { path: 'FA_Pack/close.webp', name: 'Close', source: 'tva', score: 0.3 },
+            { path: 'FA_Pack/exact.webp', name: 'Exact', source: 'tva', score: 0 },
+          ]),
+        },
+      });
+
+      const results = await orchestrator.searchTokenArt(
+        { actorName: 'Exact', type: 'beast', subtype: '', searchTerms: ['exact'] },
+        null
+      );
+
+      expect(results.map((r) => r.path)).toEqual(['FA_Pack/exact.webp', 'FA_Pack/close.webp']);
     });
 
     it('filters invalid results (no path, non-string path)', async () => {
@@ -986,8 +1005,8 @@ describe('SearchOrchestrator', () => {
   // -----------------------------------------------------------------------
   describe('Integration: fallback path (INTG-02)', () => {
     it('falls back to category search when fuzzy returns nothing', async () => {
-      // Override loadFuse to return a Fuse stub that always returns empty
-      vi.mocked(loadFuse).mockResolvedValue(
+      // Override fuseLoader.load() to return a Fuse stub that always returns empty
+      vi.mocked(fuseLoader.load).mockResolvedValue(
         class StubFuse {
           search() {
             return [];

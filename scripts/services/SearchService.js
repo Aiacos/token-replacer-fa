@@ -5,18 +5,38 @@
  */
 
 import { MODULE_ID } from '../core/Constants.js';
-import { createModuleError, createDebugLogger } from '../core/Utils.js';
-import { tvaCacheService } from './TVACacheService.js';
-import { forgeBazaarService } from './ForgeBazaarService.js';
-import { searchOrchestrator } from './SearchOrchestrator.js';
+import { ModuleError } from '../core/ModuleError.js';
+import { DebugLogger } from '../core/DebugLogger.js';
+import { tvaCacheService as defaultTVACache } from './TVACacheService.js';
+import { forgeBazaarService as defaultForgeBazaar } from './ForgeBazaarService.js';
+import { searchOrchestrator as defaultOrchestrator } from './SearchOrchestrator.js';
 
 /**
- * SearchService - Initializes sub-services and delegates search operations
+ * The search entry point for the rest of the module: wires the TVA cache and
+ * the Forge Bazaar into the orchestrator once, validates what callers pass,
+ * and turns any unexpected failure into a structured `search_failed` error.
  * Externally called methods: init(), clearCache(), searchByCategory(), parallelSearchCreatures()
+ *
+ * @pattern Facade — one small surface over `SearchOrchestrator` (search flow)
+ * and `TVACacheService` (cache loading); callers never reach past it.
  */
 export class SearchService {
-  constructor() {
-    this._debugLog = createDebugLogger('SearchService');
+  /**
+   * @param {Object} [deps={}] - Injected collaborators (defaults are the module singletons)
+   * @param {Object} [deps.tvaCacheService] - TVACacheService-like
+   * @param {Object} [deps.forgeBazaarService] - ForgeBazaarService-like
+   * @param {Object} [deps.searchOrchestrator] - SearchOrchestrator-like
+   */
+  constructor(deps = {}) {
+    const {
+      tvaCacheService = defaultTVACache,
+      forgeBazaarService = defaultForgeBazaar,
+      searchOrchestrator = defaultOrchestrator,
+    } = deps;
+    this._tvaCacheService = tvaCacheService;
+    this._forgeBazaarService = forgeBazaarService;
+    this._orchestrator = searchOrchestrator;
+    this._logger = new DebugLogger('SearchService');
     this._initialized = false;
   }
 
@@ -27,23 +47,23 @@ export class SearchService {
    */
   init() {
     if (this._initialized) {
-      this._debugLog('Already initialized, skipping');
+      this._logger.log('Already initialized, skipping');
       return;
     }
 
     try {
-      this._debugLog('Initializing SearchService...');
-      tvaCacheService.init();
-      forgeBazaarService.init();
-      searchOrchestrator.setDependencies(tvaCacheService, forgeBazaarService);
+      this._logger.log('Initializing SearchService...');
+      this._tvaCacheService.init();
+      this._forgeBazaarService.init();
+      this._orchestrator.setDependencies(this._tvaCacheService, this._forgeBazaarService);
       this._initialized = true;
       console.log(
         `${MODULE_ID} | SearchService initialized (delegates to TVACacheService, ForgeBazaarService, and SearchOrchestrator)`
       );
-      this._debugLog('SearchService initialization complete');
+      this._logger.log('SearchService initialization complete');
     } catch (error) {
       console.error(`${MODULE_ID} | SearchService initialization failed:`, error);
-      throw createModuleError(
+      throw ModuleError.of(
         'unknown',
         `Failed to initialize SearchService: ${error.message || String(error)}`,
         ['reload_module', 'check_console']
@@ -57,13 +77,13 @@ export class SearchService {
    */
   clearCache() {
     try {
-      this._debugLog('Clearing search cache...');
-      searchOrchestrator.clearCache();
-      forgeBazaarService.clearCache();
-      this._debugLog('Search cache cleared successfully');
+      this._logger.log('Clearing search cache...');
+      this._orchestrator.clearCache();
+      this._forgeBazaarService.clearCache();
+      this._logger.log('Search cache cleared successfully');
     } catch (error) {
       console.warn(`${MODULE_ID} | Failed to clear search cache:`, error);
-      this._debugLog('Cache clear error:', error);
+      this._logger.log('Cache clear error:', error);
     }
   }
 
@@ -73,7 +93,7 @@ export class SearchService {
    * @param {string} categoryType - Creature type category
    * @param {Array} localIndex - Local image index
    * @param {string} directSearchTerm - Optional direct search term
-   * @param {Function} progressCallback - Optional progress callback
+   * @param {function(Object): void} [progressCallback] - Optional progress callback
    * @returns {Promise<Array>} Search results
    * @throws {Object} Structured error if search fails
    */
@@ -85,8 +105,8 @@ export class SearchService {
   ) {
     try {
       if (!categoryType || typeof categoryType !== 'string') {
-        this._debugLog('Invalid category type for searchByCategory:', categoryType);
-        throw createModuleError(
+        this._logger.log('Invalid category type for searchByCategory:', categoryType);
+        throw ModuleError.of(
           'search_failed',
           'Invalid category type provided (must be a non-empty string)',
           ['check_console']
@@ -94,32 +114,30 @@ export class SearchService {
       }
 
       if (localIndex && !Array.isArray(localIndex)) {
-        this._debugLog('Invalid local index for searchByCategory:', typeof localIndex);
-        throw createModuleError(
-          'search_failed',
-          'Invalid local index provided (must be an array)',
-          ['check_console']
-        );
+        this._logger.log('Invalid local index for searchByCategory:', typeof localIndex);
+        throw ModuleError.of('search_failed', 'Invalid local index provided (must be an array)', [
+          'check_console',
+        ]);
       }
 
-      this._debugLog(
+      this._logger.log(
         `Searching by category: "${categoryType}", directSearch: ${directSearchTerm || 'none'}`
       );
-      const results = await searchOrchestrator.searchByCategory(
+      const results = await this._orchestrator.searchByCategory(
         categoryType,
         localIndex,
         directSearchTerm,
         progressCallback
       );
-      this._debugLog(`Category search completed: ${results.length} results found`);
+      this._logger.log(`Category search completed: ${results.length} results found`);
       return results;
     } catch (error) {
       if (error.errorType && error.message && error.recoverySuggestions) {
         throw error;
       }
 
-      this._debugLog('Unexpected error in searchByCategory:', error);
-      throw createModuleError(
+      this._logger.log('Unexpected error in searchByCategory:', error);
+      throw ModuleError.of(
         'search_failed',
         `Unexpected error searching by category "${categoryType}": ${error.message || String(error)}`,
         ['check_console', 'reload_module']
@@ -132,48 +150,46 @@ export class SearchService {
    * Delegates to SearchOrchestrator
    * @param {Map} groups - Creature groups
    * @param {Array} localIndex - Local image index
-   * @param {Function} progressCallback - Progress callback
+   * @param {function(Object): void} [progressCallback] - Progress callback
    * @returns {Promise<Map>} Search results map
    * @throws {Object} Structured error if search fails
    */
   async parallelSearchCreatures(groups, localIndex, progressCallback = null) {
     try {
       if (!groups || !(groups instanceof Map)) {
-        this._debugLog('Invalid groups for parallelSearchCreatures:', groups);
-        throw createModuleError('search_failed', 'Invalid groups provided (must be a Map)', [
+        this._logger.log('Invalid groups for parallelSearchCreatures:', groups);
+        throw ModuleError.of('search_failed', 'Invalid groups provided (must be a Map)', [
           'check_console',
         ]);
       }
 
       if (groups.size === 0) {
-        this._debugLog('Empty groups map provided to parallelSearchCreatures');
+        this._logger.log('Empty groups map provided to parallelSearchCreatures');
         return new Map();
       }
 
       if (localIndex && !Array.isArray(localIndex)) {
-        this._debugLog('Invalid local index for parallelSearchCreatures:', typeof localIndex);
-        throw createModuleError(
-          'search_failed',
-          'Invalid local index provided (must be an array)',
-          ['check_console']
-        );
+        this._logger.log('Invalid local index for parallelSearchCreatures:', typeof localIndex);
+        throw ModuleError.of('search_failed', 'Invalid local index provided (must be an array)', [
+          'check_console',
+        ]);
       }
 
-      this._debugLog(`Starting parallel search for ${groups.size} creature groups`);
-      const results = await searchOrchestrator.parallelSearchCreatures(
+      this._logger.log(`Starting parallel search for ${groups.size} creature groups`);
+      const results = await this._orchestrator.parallelSearchCreatures(
         groups,
         localIndex,
         progressCallback
       );
-      this._debugLog(`Parallel search completed: ${results.size} groups processed`);
+      this._logger.log(`Parallel search completed: ${results.size} groups processed`);
       return results;
     } catch (error) {
       if (error.errorType && error.message && error.recoverySuggestions) {
         throw error;
       }
 
-      this._debugLog('Unexpected error in parallelSearchCreatures:', error);
-      throw createModuleError(
+      this._logger.log('Unexpected error in parallelSearchCreatures:', error);
+      throw ModuleError.of(
         'search_failed',
         `Unexpected error in parallel search: ${error.message || String(error)}`,
         ['check_console', 'reload_module']

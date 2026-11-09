@@ -11,6 +11,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { IndexService } from '../../scripts/services/IndexService.js';
+import { ModuleError } from '../../scripts/core/ModuleError.js';
 
 /**
  * Create an IndexService with a controllable fake worker.
@@ -41,24 +42,28 @@ function createService(overrides = {}) {
 }
 
 describe('cancelOperation', () => {
-  it('raises the cancel flag even when no worker exists', () => {
+  it('raises the cancel flag even when no worker exists', async () => {
     const { service } = createService();
 
     service.cancelOperation();
 
     // The main-thread fallback has no worker to message and is the path most in
     // need of an escape hatch, so the flag must not depend on one.
-    expect(service._cancelRequested).toBe(true);
+    service.index = service.createEmptyIndex();
+    const paths = Array.from({ length: 1500 }, (_, i) => `modules/fa/tokens/goblin-${i}.webp`);
+    await expect(service.indexPathsDirectly(paths)).rejects.toMatchObject({ cancelled: true });
   });
 
-  it('messages the worker when there is one', () => {
+  it('messages the worker when there is one', async () => {
     const { service, worker } = createService();
     service._ensureWorker();
 
     service.cancelOperation();
 
     expect(worker.postMessage).toHaveBeenCalledWith({ command: 'cancel' });
-    expect(service._cancelRequested).toBe(true);
+    await expect(service.indexPathsWithWorker(['a/b.webp'])).rejects.toMatchObject({
+      cancelled: true,
+    });
   });
 });
 
@@ -75,17 +80,6 @@ describe('terminate', () => {
     // the slow main-thread path for the rest of the session.
     service._ensureWorker();
     expect(service.worker).toBe(worker);
-  });
-});
-
-describe('_cancelledError', () => {
-  it('is marked so build() can tell it apart from a worker failure', () => {
-    const { service } = createService();
-
-    const error = service._cancelledError();
-
-    expect(error).toBeInstanceOf(Error);
-    expect(error.cancelled).toBe(true);
   });
 });
 
@@ -107,7 +101,8 @@ describe('indexPathsDirectly', () => {
     const paths = Array.from({ length: 50 }, (_, i) => `modules/fa/tokens/goblin-${i}.webp`);
 
     await expect(service.indexPathsDirectly(paths)).resolves.toEqual(expect.any(Number));
-    expect(service._cancelRequested).toBe(false);
+    // A run that nobody cancelled must not leave a cancel behind for the next one.
+    await expect(service.indexPathsDirectly(paths)).resolves.toEqual(expect.any(Number));
   });
 });
 
@@ -127,15 +122,13 @@ describe('SearchOrchestrator cancellation', () => {
 
     // A second worker runs fuzzy search, separate from the indexing one — a
     // cancel that reaches only the indexer leaves this one running.
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
     orchestrator.cancelOperation();
     expect(orchestrator._cancelRequested).toBe(true);
     expect(worker.postMessage).toHaveBeenCalledWith({ command: 'cancel' });
 
-    expect(orchestrator._cancelledError().cancelled).toBe(true);
-
     orchestrator.terminate();
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
     expect(orchestrator.worker).toBe(worker);
   });
 });
@@ -148,7 +141,7 @@ describe('the cancellation marker survives the wrapping catches', () => {
     // where every caller checks for it.
     service.loadFromCache = vi.fn(async () => false);
     service.buildFromTVA = vi.fn(async () => {
-      throw service._cancelledError();
+      throw ModuleError.cancelled();
     });
 
     await expect(service.build()).rejects.toMatchObject({ cancelled: true });
@@ -165,26 +158,6 @@ describe('the cancellation marker survives the wrapping catches', () => {
   });
 });
 
-describe('worker cancellation is observable', () => {
-  it('yields inside the indexing loops so a cancel message can be dispatched', async () => {
-    const { readFileSync } = await import('node:fs');
-    const source = readFileSync('scripts/workers/IndexWorker.js', 'utf8');
-
-    // A worker is single-threaded: a synchronous loop holds the event loop, the
-    // cancel message never gets dispatched, and every `if (cancelled)` inside
-    // reads a value that cannot have changed. The awaits are what make the
-    // checks mean anything, so they are the thing worth pinning.
-    expect(source).toMatch(/async function handleIndexPaths\(/);
-    expect(source).toMatch(/function yieldToMessages\(\)/);
-
-    const indexingLoop = source.slice(
-      source.indexOf('async function handleIndexPaths('),
-      source.indexOf('function reportProgress(')
-    );
-    expect(indexingLoop).toMatch(/await yieldToMessages\(\)/);
-  });
-});
-
 describe('worker teardown always allows a replacement', () => {
   it('rebuilds after a failed worker build, not just after terminate()', async () => {
     const { service, worker } = createService();
@@ -197,11 +170,10 @@ describe('worker teardown always allows a replacement', () => {
     service.indexPathsWithWorker = vi.fn(async () => {
       throw new Error('worker exploded');
     });
-    service._teardownWorker();
+    service.terminate();
 
     service._ensureWorker();
     expect(service.worker).toBe(worker);
-    expect(service._workerInitialized).toBe(true);
   });
 
   it('survives a terminate() that throws', () => {
@@ -211,24 +183,38 @@ describe('worker teardown always allows a replacement', () => {
       throw new Error('already dead');
     });
 
-    expect(() => service._teardownWorker()).not.toThrow();
+    expect(() => service.terminate()).not.toThrow();
     expect(service.worker).toBeNull();
-    expect(service._workerInitialized).toBe(false);
+    // ...and a later build still gets a fresh one.
+    service._ensureWorker();
+    expect(service.worker).toBe(worker);
   });
 
   it('leaves no path that nulls the worker without clearing the flag', () => {
     const source = readFileSync('scripts/services/IndexService.js', 'utf8');
+    const builder = readFileSync('scripts/services/index/WorkerIndexBuilder.js', 'utf8');
     const orchestrator = readFileSync('scripts/services/SearchOrchestrator.js', 'utf8');
+    const searchClient = readFileSync('scripts/services/search/WorkerSearchClient.js', 'utf8');
 
-    // Only three assignments are legitimate per file: the constructor, the
-    // _ensureWorker() catch (which deliberately leaves the flag false so a
-    // transient factory failure can retry), and _teardownWorker() itself.
+    // The pairing cannot come apart when no service holds the pair: the index
+    // worker lives in a ManagedWorker, where "alive" *is* "a worker is held".
     for (const [name, text] of [
       ['IndexService', source],
-      ['SearchOrchestrator', orchestrator],
+      ['WorkerIndexBuilder', builder],
     ]) {
-      const assignments = text.match(/this\.worker = null/g) ?? [];
-      expect(assignments.length, `${name} gained a teardown path outside the helper`).toBe(3);
+      expect(text, `${name} assigns a worker field again`).not.toMatch(/this\.worker = /);
+      expect(text, `${name} reintroduced the init flag`).not.toMatch(/_workerInitialized/);
     }
+    expect(builder).toMatch(/new ManagedWorker\(/);
+
+    // The search worker lives in a ManagedWorker inside WorkerSearchClient.
+    for (const [name, text] of [
+      ['SearchOrchestrator', orchestrator],
+      ['WorkerSearchClient', searchClient],
+    ]) {
+      expect(text, `${name} assigns a worker field again`).not.toMatch(/this\.worker = /);
+      expect(text, `${name} reintroduced the init flag`).not.toMatch(/_workerInitialized/);
+    }
+    expect(searchClient).toMatch(/new ManagedWorker\(/);
   });
 });

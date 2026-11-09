@@ -1,6 +1,6 @@
 /**
  * Token Replacer FA - Search Orchestrator
- * Handles complex search logic and result aggregation
+ * Coordinates the search sources into one ranked, cached answer per creature
  * @module services/SearchOrchestrator
  */
 
@@ -11,74 +11,134 @@ import {
   PRIMARY_CATEGORY_TERMS,
   SLOW_MODE_BATCH_SIZE,
 } from '../core/Constants.js';
-import {
-  parseSubtypeTerms,
-  hasGenericSubtype,
-  getCreatureCacheKey,
-  isExcludedPath,
-  loadFuse,
-  extractPathFromTVAResult,
-  extractNameFromTVAResult,
-  yieldToMain,
-  createDebugLogger,
-  createDefaultGetSetting,
-  createModuleError,
-  i18nOrEnglish,
-} from '../core/Utils.js';
+import { Scheduler } from '../core/Scheduler.js';
+import { pathFilter as defaultPathFilter } from '../core/PathFilter.js';
+import { CreatureTerms } from '../core/CreatureTerms.js';
+import { localizer } from '../core/Localizer.js';
+import { fuseLoader as defaultFuseLoader } from '../core/FuseLoader.js';
+import { Settings } from '../core/Settings.js';
+import { DebugLogger } from '../core/DebugLogger.js';
 import { indexService } from './IndexService.js';
+import { IndexSource } from './search/IndexSource.js';
+import { TvaCacheSource } from './search/TvaCacheSource.js';
+import { LocalIndexSource } from './search/LocalIndexSource.js';
+import { ForgeBazaarSource } from './search/ForgeBazaarSource.js';
+import { SearchPlan } from './search/SearchPlan.js';
+import { WorkerSearchClient } from './search/WorkerSearchClient.js';
+import { SearchResultCache } from './search/SearchResultCache.js';
+import { ResultRanker } from './search/ResultRanker.js';
+import { ResultCollector } from './search/ResultCollector.js';
+import { ParallelSearchRunner } from './search/ParallelSearchRunner.js';
+import { FullLibrarySearch } from './search/FullLibrarySearch.js';
 
 /**
- * SearchOrchestrator class for complex search orchestration
- * Handles searchTokenArt with all its subtype logic, result aggregation, and search coordination
+ * Turns creature information into a ranked list of token-art matches. The
+ * orchestrator owns the *flow* — subtype OR-search, standard search, category
+ * browse, then the optional whole-library name fallback — and delegates each
+ * concern to a collaborator in `search/`: the sources find candidates,
+ * `SearchPlan` picks which source runs for the priority setting,
+ * `FullLibrarySearch` runs the fallback, `ResultRanker` orders,
+ * `SearchResultCache` remembers, `WorkerSearchClient` keeps fuzzy search off
+ * the main thread and `ParallelSearchRunner` batches a whole scene.
+ *
+ * Collaborators are built once — in the constructor, or again when
+ * `setDependencies()` swaps the TVA or Bazaar service — never per search.
+ *
+ * Cancellation is one flag owned here and read by the worker client, the
+ * main-thread fuzzy search and the batch runner, so a single
+ * `cancelOperation()` stops whichever is running.
+ *
+ * @pattern Facade + Mediator — one entry point for search; the collaborators
+ * never call each other, the orchestrator wires their results together.
  */
 export class SearchOrchestrator {
+  /**
+   * @param {Object} [deps={}] - Injected collaborators (defaults are the module singletons)
+   * @param {Object} [deps.tvaCacheService] - TVACacheService-like
+   * @param {Object} [deps.forgeBazaarService] - ForgeBazaarService-like
+   * @param {Object} [deps.indexService] - IndexService-like
+   * @param {function(string, string): *} [deps.getSetting] - Settings getter
+   * @param {function(): Worker} [deps.workerFactory] - Builds the search worker
+   * @param {Object} [deps.pathFilter] - Excluded-folder filter
+   * @param {Object} [deps.fuseLoader] - Fuse.js loader
+   */
   constructor(deps = {}) {
     const {
       tvaCacheService: injectedTVACache,
       forgeBazaarService: injectedForgeBazaar,
       indexService: injectedIndex = indexService,
-      getSetting = createDefaultGetSetting(),
+      getSetting = Settings.defaultGetter(),
       workerFactory = () => new Worker(`modules/${MODULE_ID}/scripts/workers/IndexWorker.js`),
+      pathFilter = defaultPathFilter,
+      fuseLoader = defaultFuseLoader,
     } = deps;
 
-    /** @type {Map<string, Array>} Search result cache with max 200 entries */
-    this.searchCache = new Map();
     this._tvaCacheService = injectedTVACache ?? null;
     this._forgeBazaarService = injectedForgeBazaar ?? null;
     this._indexService = injectedIndex;
     this._getSetting = getSetting;
     this._workerFactory = workerFactory;
-    this.worker = null;
-    this._workerInitialized = false;
-    // The index the Worker currently holds, tracked by identity. A boolean
-    // "already sent" flag was never cleared when the index itself changed, so a
-    // rebuilt local index — new artwork, changed search paths — was silently
-    // searched against the copy from earlier in the session.
-    this._workerIndex = null;
+    this._pathFilter = pathFilter;
+    this._logger = new DebugLogger('SearchOrchestrator');
+
     // Distinguishes a user cancellation from a worker failure, so a cancelled
     // search is not "recovered" by running the slow main-thread path anyway.
     this._cancelRequested = false;
-    // Worker replies carry no request id, so only one search may be in flight:
-    // with several, every pending search resolved with the first reply.
-    this._workerSearchQueue = Promise.resolve();
-    this._debugLog = createDebugLogger('SearchOrchestrator');
+    const isCancelled = () => this._cancelRequested;
+
+    /** Ranked results per creature (`CreatureTerms.cacheKey`). */
+    this.searchCache = new SearchResultCache();
+    /** @type {Map<string, ResultRanker>} One ranker per priority, built on first use */
+    this._rankers = new Map();
+
+    this._workerClient = new WorkerSearchClient(workerFactory, { isCancelled });
+    this._localSource = new LocalIndexSource(this._workerClient, {
+      fuseLoader,
+      pathFilter,
+      getSetting,
+      isCancelled,
+      logger: this._logger,
+    });
+    this._runner = new ParallelSearchRunner({
+      batchSize: PARALLEL_BATCH_SIZE,
+      isCancelled,
+      logger: this._logger,
+    });
+    this._buildPlan();
   }
 
   /**
-   * Lazy-initialize the Web Worker on first use
+   * (Re)build the sources that depend on swappable services, and the plan
+   * over them.
    * @private
    */
-  _ensureWorker() {
-    if (this._workerInitialized) return;
-    try {
-      this.worker = this._workerFactory();
-      // Only mark initialized on success so a transient factory failure can retry
-      this._workerInitialized = true;
-      this._debugLog('Web Worker initialized for background search operations');
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Failed to initialize Web Worker:`, error);
-      this.worker = null;
-    }
+  _buildPlan() {
+    this._indexSource = new IndexSource(this._indexService);
+    this._tvaSource = new TvaCacheSource(this._tvaCacheService, {
+      pathFilter: this._pathFilter,
+      logger: this._logger,
+    });
+    this._forgeSource = new ForgeBazaarSource(this._forgeBazaarService);
+    this._plan = new SearchPlan({
+      index: this._indexSource,
+      tva: this._tvaSource,
+      forge: this._forgeSource,
+    });
+    this._fullLibrary = new FullLibrarySearch({
+      plan: this._plan,
+      index: this._indexSource,
+      tva: this._tvaSource,
+      pathFilter: this._pathFilter,
+      getSetting: this._getSetting,
+    });
+  }
+
+  /**
+   * The live search worker, if one has been created.
+   * @returns {Worker|null}
+   */
+  get worker() {
+    return this._workerClient.worker;
   }
 
   /**
@@ -89,36 +149,15 @@ export class SearchOrchestrator {
   setDependencies(tvaCacheService, forgeBazaarService) {
     this._tvaCacheService = tvaCacheService;
     this._forgeBazaarService = forgeBazaarService;
+    this._buildPlan();
   }
 
   /**
    * Clear the search cache
    * @returns {void}
    */
-  /** @private Maximum search cache entries before eviction */
-  static MAX_SEARCH_CACHE = 200;
-
   clearCache() {
     this.searchCache.clear();
-  }
-
-  /**
-   * Set a cache entry, evicting oldest entries if cache exceeds max size
-   * @private
-   */
-  _cacheSet(key, value) {
-    // Delete first so re-insertion moves key to end (most recent)
-    this.searchCache.delete(key);
-    this.searchCache.set(key, value);
-    if (this.searchCache.size > SearchOrchestrator.MAX_SEARCH_CACHE) {
-      // Map iterates in insertion order — delete oldest 25%
-      const toDelete = Math.floor(SearchOrchestrator.MAX_SEARCH_CACHE * 0.25);
-      let count = 0;
-      for (const k of this.searchCache.keys()) {
-        if (count++ >= toDelete) break;
-        this.searchCache.delete(k);
-      }
-    }
   }
 
   /**
@@ -127,62 +166,23 @@ export class SearchOrchestrator {
    * @returns {void}
    */
   terminate() {
-    if (this.worker) {
-      this._teardownWorker();
+    if (this._workerClient.worker) {
+      this._workerClient.teardown();
       console.log(`${MODULE_ID} | Web Worker terminated`);
     }
   }
 
   /**
-   * Drop the current worker so a later search can build a fresh one.
-   *
-   * Nulling `worker` without also clearing `_workerInitialized` leaves
-   * `_ensureWorker()` refusing to replace it, and the orchestrator then runs
-   * every later fuzzy search on the main thread — silently. Every teardown goes
-   * through here so that pairing cannot come apart again.
-   *
-   * `_workerIndex` is cleared too: a fresh worker holds no search index, so the
-   * next search has to send it again.
-   * @private
-   */
-  _teardownWorker() {
-    if (this.worker) {
-      try {
-        this.worker.terminate();
-      } catch (error) {
-        console.debug(`${MODULE_ID} | Worker terminate() failed:`, error);
-      }
-    }
-    this.worker = null;
-    this._workerIndex = null;
-    this._workerInitialized = false;
-  }
-
-  /**
-   * Cancel the current worker operation
-   * Sends a cancel command to the worker, which will stop processing and send a 'cancelled' message
+   * Cancel the current search: the worker stops and replies `cancelled`, the
+   * main-thread fuzzy search stops before its next term, and a parallel search
+   * stops at its next batch boundary.
    * @returns {void}
    */
   cancelOperation() {
     // Set unconditionally: the main-thread fallback has no worker to message.
     this._cancelRequested = true;
-    if (this.worker) {
-      this.worker.postMessage({ command: 'cancel' });
-    }
+    this._workerClient.cancel();
     console.log(`${MODULE_ID} | Cancellation requested`);
-  }
-
-  /**
-   * Build the error thrown when a search is cancelled.
-   * The `cancelled` marker is what stops the caller from treating it as a
-   * worker failure and falling back to the slower main-thread path.
-   * @private
-   * @returns {Error} Cancellation error
-   */
-  _cancelledError() {
-    const error = /** @type {Error & { cancelled?: boolean }} */ (new Error('Operation cancelled'));
-    error.cancelled = true;
-    return error;
   }
 
   /**
@@ -192,137 +192,17 @@ export class SearchOrchestrator {
    * @returns {boolean} True if match
    */
   folderMatchesCreatureType(folderName, creatureType) {
-    if (!folderName || !creatureType) return false;
-    const folderLower = folderName.toLowerCase();
-    const typeLower = creatureType.toLowerCase();
-
-    // Direct match
-    if (folderLower.includes(typeLower)) return true;
-
-    // Check against mappings
-    const mappings = CREATURE_TYPE_MAPPINGS[typeLower];
-    if (mappings) {
-      return mappings.some((term) => folderLower.includes(term.toLowerCase()));
-    }
-
-    return false;
+    return LocalIndexSource.matchesCreatureType(folderName, creatureType);
   }
 
   /**
-   * Search Token Variant Art for a term
-   * Uses direct cache access for speed, falls back to doImageSearch API
+   * Search Token Variant Art for a term: the direct cache when loaded, else
+   * TVA's doImageSearch API
    * @param {string} searchTerm - Term to search
    * @returns {Promise<Array>} Search results
    */
-  async searchTVA(searchTerm) {
-    if (!this._tvaCacheService?.hasTVA || !this._tvaCacheService?.tvaAPI) return [];
-
-    // FAST PATH: Use direct cache access if available
-    if (this._tvaCacheService.tvaCacheLoaded) {
-      const directResults = await this._tvaCacheService.searchTVACacheDirect(searchTerm);
-      if (directResults.length > 0) {
-        return directResults;
-      }
-      // If direct search found nothing, don't fall back - cache is complete
-      return [];
-    }
-
-    // SLOW PATH: Fall back to doImageSearch API (only if cache not loaded)
-    try {
-      const results = [];
-      const seenPaths = new Set();
-
-      // Try different search configurations for TVA compatibility
-      let searchResults = await this._tvaCacheService.tvaAPI.doImageSearch(searchTerm, {
-        searchType: 'Portrait',
-        simpleResults: false,
-      });
-
-      // If no results, try without options (TVA 6.x compatibility)
-      if (
-        !searchResults ||
-        (Array.isArray(searchResults) && searchResults.length === 0) ||
-        (searchResults instanceof Map && searchResults.size === 0)
-      ) {
-        searchResults = await this._tvaCacheService.tvaAPI.doImageSearch(searchTerm);
-      }
-
-      this._debugLog(`TVA raw results for "${searchTerm}":`, searchResults);
-
-      if (!searchResults) return [];
-
-      // Helper function to process a single item
-      const processItem = (item) => {
-        const imagePath = extractPathFromTVAResult(item);
-        // Skip if no path, already seen, or from excluded folder
-        if (!imagePath || seenPaths.has(imagePath) || isExcludedPath(imagePath)) return;
-
-        seenPaths.add(imagePath);
-        const name = extractNameFromTVAResult(item, imagePath);
-        results.push({
-          path: imagePath,
-          name: name,
-          source: 'tva',
-          score: item?.score ?? 0.5,
-        });
-      };
-
-      // Handle different TVA result formats
-      if (Array.isArray(searchResults)) {
-        // Direct array of results
-        for (const item of searchResults) {
-          processItem(item);
-        }
-      } else if (
-        searchResults instanceof Map ||
-        (searchResults && typeof searchResults.entries === 'function')
-      ) {
-        // Map format: key is search term, value is array of results
-        for (const [key, data] of searchResults.entries()) {
-          if (Array.isArray(data)) {
-            // Value is array - iterate over each item
-            for (const item of data) {
-              processItem(item);
-            }
-          } else if (data && typeof data === 'object') {
-            // Value is single object
-            processItem(data);
-          } else if (typeof key === 'string' && (key.includes('/') || key.includes('.'))) {
-            // Key itself is a path (older TVA format)
-            // Skip if already seen or from excluded folder
-            if (!seenPaths.has(key) && !isExcludedPath(key)) {
-              seenPaths.add(key);
-              results.push({
-                path: key,
-                name: extractNameFromTVAResult(data, key),
-                source: 'tva',
-                score: 0.5,
-              });
-            }
-          }
-        }
-      } else if (searchResults && typeof searchResults === 'object') {
-        // Object with nested paths/images/results property
-        const pathsArray =
-          searchResults.paths ||
-          searchResults.images ||
-          searchResults.results ||
-          searchResults.data;
-        if (Array.isArray(pathsArray)) {
-          for (const item of pathsArray) {
-            processItem(item);
-          }
-        } else {
-          // Single object result
-          processItem(searchResults);
-        }
-      }
-
-      return results;
-    } catch (error) {
-      console.warn(`${MODULE_ID} | TVA search error for "${searchTerm}":`, error);
-      return [];
-    }
+  searchTVA(searchTerm) {
+    return this._tvaSource.search({ kind: 'term', value: searchTerm });
   }
 
   /**
@@ -331,44 +211,11 @@ export class SearchOrchestrator {
    * @param {string[]} searchTerms - Terms to search
    * @param {Array} index - Local image index
    * @param {string} creatureType - Optional creature type filter
-   * @param {Function} onProgress - Optional progress callback
+   * @param {function(number, number): void} [onProgress] - Optional progress callback
    * @returns {Promise<Array>} Search results
    */
-  async searchLocalIndex(searchTerms, index, creatureType = null, onProgress = null) {
-    if (!index || index.length === 0) return [];
-
-    // Lazy-init Worker on first search
-    this._ensureWorker();
-
-    // Use Web Worker if available, otherwise fallback to direct search
-    if (this.worker) {
-      console.log(`${MODULE_ID} | Using Web Worker for fuzzy search`);
-      try {
-        return await this.searchLocalIndexWithWorker(searchTerms, index, creatureType, onProgress);
-      } catch (error) {
-        // A cancellation is not a failure: falling back here would disable the
-        // worker for the session and run the search the user asked to stop.
-        if (error?.cancelled) throw error;
-        // Worker failed, fallback to direct search on main thread
-        console.warn(`${MODULE_ID} | Worker search failed, falling back to main thread:`, error);
-        this._teardownWorker();
-        try {
-          ui.notifications.warn(
-            i18nOrEnglish(
-              'notifications.workerFallback',
-              'Token Replacer FA: Background worker failed, using slower method.'
-            ),
-            { permanent: false }
-          );
-        } catch {
-          /* ui.notifications may not be ready */
-        }
-        return this.searchLocalIndexDirectly(searchTerms, index, creatureType);
-      }
-    } else {
-      console.log(`${MODULE_ID} | Using fallback method (main thread)`);
-      return this.searchLocalIndexDirectly(searchTerms, index, creatureType);
-    }
+  searchLocalIndex(searchTerms, index, creatureType = null, onProgress = null) {
+    return this._localSource.fuzzy(searchTerms, index, creatureType, onProgress);
   }
 
   /**
@@ -378,232 +225,24 @@ export class SearchOrchestrator {
    * @param {string} creatureType - Optional creature type filter
    * @returns {Promise<Array>} Search results
    */
-  async searchLocalIndexDirectly(searchTerms, index, creatureType = null) {
-    if (!index || index.length === 0) return [];
-
-    const Fuse = await loadFuse();
-    if (!Fuse) {
-      console.warn(`${MODULE_ID} | Fuse.js unavailable — search skipped. Results will be empty.`);
-      return [];
-    }
-
-    const results = [];
-    const seenPaths = new Set(); // Use Set for O(1) duplicate check
-    const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
-
-    const fuseOptions = {
-      keys: ['name', 'fileName', 'category'],
-      threshold: threshold,
-      includeScore: true,
-      minMatchCharLength: 2,
-    };
-
-    // @ts-expect-error Fuse constructor injected via DI, type cannot express constructor constraint in JSDoc
-    const fuse = new Fuse(index, fuseOptions);
-
-    for (const term of searchTerms) {
-      // Each term is a full pass over the index; stopping between terms is the
-      // only interruption point this path has.
-      if (this._cancelRequested) {
-        this._debugLog('Direct fuzzy search cancelled by user');
-        throw this._cancelledError();
-      }
-      const searchResults = fuse.search(term);
-      for (const result of searchResults) {
-        const item = result.item;
-        // Skip if already seen or from excluded folder
-        if (seenPaths.has(item.path) || isExcludedPath(item.path)) continue;
-
-        // Optionally filter by creature type
-        if (creatureType && item.category) {
-          if (!this.folderMatchesCreatureType(item.category, creatureType)) {
-            continue;
-          }
-        }
-        seenPaths.add(item.path);
-        results.push({
-          ...item,
-          score: result.score,
-          source: 'local',
-        });
-      }
-    }
-
-    return results;
+  searchLocalIndexDirectly(searchTerms, index, creatureType = null) {
+    return this._localSource.fuzzyDirect(searchTerms, index, creatureType);
   }
 
   /**
-   * Search local index using Web Worker for background processing
-   * Runs fuzzy search in background without blocking the main thread
+   * Search local index on the existing Web Worker, after any search already queued
    * @param {string[]} searchTerms - Terms to search
    * @param {Array} index - Local image index
    * @param {string} creatureType - Optional creature type filter
-   * @param {Function} onProgress - Optional progress callback
+   * @param {function(number, number): void} [onProgress] - Optional progress callback
    * @returns {Promise<Array>} Search results
    */
   searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
-    const run = () => this._runWorkerSearch(searchTerms, index, creatureType, onProgress);
-    const result = this._workerSearchQueue.then(run, run);
-    // The caller gets the failure through `result`; the queue only needs to
-    // know the slot is free.
-    this._workerSearchQueue = result.catch(() => {});
-    return result;
+    return this._localSource.fuzzyWithWorker(searchTerms, index, creatureType, onProgress);
   }
 
   /**
-   * Run one worker search. Only called through the queue in
-   * searchLocalIndexWithWorker(), which guarantees it is the only one in flight.
-   * @private
-   */
-  async _runWorkerSearch(searchTerms, index, creatureType, onProgress) {
-    // A search queued behind one the user cancelled must not start.
-    if (this._cancelRequested) throw this._cancelledError();
-
-    // Captured once: a timeout elsewhere can null this.worker while we wait.
-    const worker = this.worker;
-    if (!worker) {
-      throw createModuleError('worker_failed', 'Web Worker not available for background search', [
-        'reload_module',
-      ]);
-    }
-
-    if (!index || index.length === 0) return [];
-
-    return new Promise((resolve, reject) => {
-      let timeoutId;
-      const cleanup = () => {
-        clearTimeout(timeoutId);
-        worker.removeEventListener('message', messageHandler);
-        worker.removeEventListener('error', errorHandler);
-      };
-
-      // Create a unique message handler for this search operation
-      const messageHandler = (event) => {
-        const { type, result, current, total, term: _term, message, stack: _stack } = event.data;
-
-        switch (type) {
-          case 'progress':
-            if (onProgress) {
-              onProgress(current, total);
-            }
-            break;
-
-          case 'complete': {
-            cleanup();
-            let results = result || [];
-            // Post-filter by creature type on main thread (Worker doesn't have category logic)
-            if (creatureType && results.length > 0) {
-              const before = results.length;
-              results = results.filter(
-                (item) =>
-                  !item.category || this.folderMatchesCreatureType(item.category, creatureType)
-              );
-              if (results.length < before) {
-                console.log(
-                  `${MODULE_ID} | Worker results filtered by "${creatureType}": ${before} → ${results.length}`
-                );
-              }
-            }
-            console.log(`${MODULE_ID} | Worker search completed: ${results.length} results found`);
-            resolve(results);
-            break;
-          }
-
-          case 'cancelled':
-            cleanup();
-            console.log(`${MODULE_ID} | Search operation cancelled by user`);
-            reject(this._cancelledError());
-            break;
-
-          case 'error':
-            cleanup();
-            console.error(`${MODULE_ID} | Worker search error:`, message);
-            reject(
-              createModuleError(
-                'worker_failed',
-                `Worker search error: ${message || 'Unknown error'}`,
-                ['reload_module', 'check_console']
-              )
-            );
-            break;
-
-          default:
-            break;
-        }
-      };
-
-      // Handle Worker crashes (unhandled exceptions, out-of-memory, import failures)
-      const errorHandler = (error) => {
-        cleanup();
-        console.error(`${MODULE_ID} | Worker crashed during search:`, error);
-        reject(
-          createModuleError(
-            'worker_failed',
-            `Worker crashed: ${error.message || 'Unknown error'}`,
-            ['reload_module', 'check_console']
-          )
-        );
-      };
-
-      worker.addEventListener('message', messageHandler);
-      worker.addEventListener('error', errorHandler);
-
-      // Get fuzzy threshold setting
-      const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
-
-      // 60s timeout to prevent Promise hanging if Worker stalls
-      timeoutId = setTimeout(() => {
-        cleanup();
-        // Terminate the zombie worker so its late reply cannot reach the next
-        // search — unless it has already been replaced.
-        if (this.worker === worker) this._teardownWorker();
-        reject(
-          createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
-            'reload_module',
-            'check_console',
-          ])
-        );
-      }, 60000);
-
-      // Send the index only when the Worker is not already holding this exact
-      // one. Identity, not a boolean: buildLocalTokenIndex() returns a fresh
-      // array whenever the library is rescanned, and the Worker must see it.
-      try {
-        if (this._workerIndex !== index) {
-          worker.postMessage({ command: 'setSearchIndex', data: { index } });
-          this._workerIndex = index;
-        }
-
-        worker.postMessage({
-          command: 'fuzzySearch',
-          data: {
-            searchTerms: searchTerms,
-            // index omitted — Worker uses persisted copy from setSearchIndex
-            options: {
-              keys: ['name', 'fileName', 'category'],
-              threshold: threshold,
-              includeScore: true,
-              minMatchCharLength: 2,
-            },
-          },
-        });
-      } catch (error) {
-        // Without this the pending timer would later tear down a healthy worker.
-        cleanup();
-        console.error(`${MODULE_ID} | Failed to post search to worker:`, error);
-        reject(
-          createModuleError('worker_failed', `Failed to start worker search: ${error.message}`, [
-            'reload_module',
-            'check_console',
-          ])
-        );
-      }
-    });
-  }
-
-  /**
-   * Search by creature type category
-   * Uses TVA's doImageSearch API directly
+   * Search by creature type category, or by a term the user typed
    * @param {string} categoryType - Creature type category
    * @param {Array} localIndex - Local image index
    * @param {string} directSearchTerm - Optional direct search term
@@ -619,790 +258,423 @@ export class SearchOrchestrator {
     console.log(
       `${MODULE_ID} | searchByCategory START - type: ${categoryType}, directSearch: ${directSearchTerm}`
     );
-    const results = [];
-    const seenPaths = new Set();
-
-    // Direct search term mode
-    if (directSearchTerm) {
-      // Get search priority setting
-      const priority = this._getSetting(MODULE_ID, 'searchPriority');
-
-      if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: directSearchTerm, resultsFound: 0 });
-      }
-
-      // Priority: forgeBazaar - Try ForgeBazaarService first
-      if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {
-        const bazaarResults = await this._forgeBazaarService.search(directSearchTerm);
-        for (const result of bazaarResults) {
-          if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push({ ...result, source: 'forge-bazaar' });
-          }
-        }
-      }
-      // Search TVA (when priority is faNexus, both, or forgeBazaar unavailable)
-      else if (
-        this._tvaCacheService?.hasTVA &&
-        (priority === 'faNexus' ||
-          priority === 'both' ||
-          !this._forgeBazaarService?.isServiceAvailable())
-      ) {
-        const tvaResults = await this.searchTVA(directSearchTerm);
-        for (const result of tvaResults) {
-          if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push(result);
-          }
-        }
-      }
-      // Fallback to ForgeBazaarService when TVA is not available (unless priority is faNexus only)
-      else if (priority !== 'faNexus' && this._forgeBazaarService?.isServiceAvailable()) {
-        const bazaarResults = await this._forgeBazaarService.search(directSearchTerm);
-        for (const result of bazaarResults) {
-          if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push({ ...result, source: 'forge-bazaar' });
-          }
-        }
-      }
-
-      // Search local index
-      if (localIndex?.length > 0) {
-        const termLower = directSearchTerm.toLowerCase();
-        const localMatches = localIndex.filter(
-          (img) =>
-            !isExcludedPath(img.path) &&
-            (img.name?.toLowerCase().includes(termLower) ||
-              img.fileName?.toLowerCase().includes(termLower) ||
-              img.category?.toLowerCase().includes(termLower) ||
-              img.path?.toLowerCase().includes(termLower))
-        );
-        for (const match of localMatches) {
-          if (!seenPaths.has(match.path)) {
-            seenPaths.add(match.path);
-            results.push({ ...match, source: 'local' });
-          }
-        }
-      }
-
-      if (progressCallback) {
-        progressCallback({
-          current: 1,
-          total: 1,
-          term: directSearchTerm,
-          resultsFound: results.length,
-        });
-      }
-
-      console.log(
-        `${MODULE_ID} | Direct search for "${directSearchTerm}" found ${results.length} results`
-      );
-      return results;
-    }
-
-    // Category-based comprehensive search
-    console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
-
-    // Get search priority setting
     const priority = this._getSetting(MODULE_ID, 'searchPriority');
+    const collector = new ResultCollector(this._pathFilter);
 
-    // Try FAST mode using pre-built index first
-    if (this._indexService.isBuilt) {
-      console.log(`${MODULE_ID} | Using pre-built index (FAST mode)`);
-      if (progressCallback) {
-        progressCallback({
-          current: 0,
-          total: 1,
-          term: i18nOrEnglish('ui.progressIndexLookup', 'index lookup'),
-          resultsFound: 0,
-        });
-      }
-
-      const indexResults = this._indexService.searchByCategory(categoryType);
-      for (const result of indexResults) {
-        // Double-check exclusion filter for safety
-        if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
-          seenPaths.add(result.path);
-          results.push({
-            ...result,
-            source: result.source || 'index',
-          });
-        }
-      }
-
-      if (progressCallback) {
-        progressCallback({
-          current: 1,
-          total: 1,
-          term: i18nOrEnglish('ui.progressIndexLookup', 'index lookup'),
-          resultsFound: results.length,
-        });
-      }
-
-      console.log(`${MODULE_ID} | Index search found ${results.length} results (FAST mode)`);
-
-      // A built index can be stale (e.g. a pack was added after the last build), returning 0
-      // results for a category that the raw cache still covers. Fall through to the TVA direct
-      // cache — one cheap read — rather than letting the index's emptiness be authoritative.
-      // (Intentionally not cascading to SLOW per-term API search; the cache read is enough.)
-      if (results.length === 0 && this._tvaCacheService?.tvaCacheLoaded) {
-        console.log(`${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`);
-        if (progressCallback) {
-          progressCallback({
-            current: 0,
-            total: 1,
-            term: i18nOrEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
-            resultsFound: 0,
-          });
-        }
-
-        const fallbackResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
-        for (const result of fallbackResults) {
-          if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push(result);
-          }
-        }
-
-        if (progressCallback) {
-          progressCallback({
-            current: 1,
-            total: 1,
-            term: i18nOrEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
-            resultsFound: results.length,
-          });
-        }
-
-        console.log(`${MODULE_ID} | TVA cache fallback found ${results.length} results`);
-      }
-    }
-    // Priority: forgeBazaar - Try ForgeBazaarService first
-    else if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {
-      console.log(`${MODULE_ID} | Using ForgeBazaarService (priority: forgeBazaar)`);
-      if (progressCallback) {
-        progressCallback({
-          current: 0,
-          total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
-          resultsFound: 0,
-        });
-      }
-
-      const bazaarResults = await this._forgeBazaarService.browseCategory(categoryType);
-      for (const result of bazaarResults) {
-        if (!seenPaths.has(result.path)) {
-          seenPaths.add(result.path);
-          results.push({
-            ...result,
-            source: 'forge-bazaar',
-          });
-        }
-      }
-
-      if (progressCallback) {
-        progressCallback({
-          current: 1,
-          total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
-          resultsFound: results.length,
-        });
-      }
-
-      console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
-    }
-    // FAST PATH: Use TVA direct cache if loaded (when priority is not forgeBazaar, or when forgeBazaar unavailable)
-    else if (
-      this._tvaCacheService?.tvaCacheLoaded &&
-      (priority === 'faNexus' ||
-        priority === 'both' ||
-        !this._forgeBazaarService?.isServiceAvailable())
-    ) {
-      console.log(`${MODULE_ID} | Using TVA direct cache (FAST mode)`);
-      if (progressCallback) {
-        progressCallback({
-          current: 0,
-          total: 1,
-          term: i18nOrEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
-          resultsFound: 0,
-        });
-      }
-
-      const tvaCacheResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
-      for (const result of tvaCacheResults) {
-        if (!seenPaths.has(result.path)) {
-          seenPaths.add(result.path);
-          results.push(result);
-        }
-      }
-
-      if (progressCallback) {
-        progressCallback({
-          current: 1,
-          total: 1,
-          term: i18nOrEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
-          resultsFound: results.length,
-        });
-      }
-
-      console.log(`${MODULE_ID} | TVA direct cache found ${results.length} results (FAST mode)`);
-    }
-    // Fallback to SLOW mode - multiple TVA API calls (when priority is not forgeBazaar, or when forgeBazaar unavailable)
-    else if (
-      this._tvaCacheService?.hasTVA &&
-      (priority === 'faNexus' ||
-        priority === 'both' ||
-        !this._forgeBazaarService?.isServiceAvailable())
-    ) {
-      const categoryTerms = CREATURE_TYPE_MAPPINGS[categoryType?.toLowerCase()];
-
-      if (categoryTerms) {
-        console.log(
-          `${MODULE_ID} | Searching ${categoryTerms.length} terms for ${categoryType} (SLOW mode - index not built)`
-        );
-        const totalTerms = categoryTerms.length;
-        let searchCount = 0;
-
-        // Process in parallel batches for better performance
-        for (let i = 0; i < categoryTerms.length; i += SLOW_MODE_BATCH_SIZE) {
-          const batch = categoryTerms.slice(i, i + SLOW_MODE_BATCH_SIZE);
-
-          if (progressCallback) {
-            progressCallback({
-              current: searchCount,
-              total: totalTerms,
-              term: batch.join(', '),
-              resultsFound: results.length,
-            });
-          }
-
-          // Execute batch in parallel
-          const batchPromises = batch.map((term) => this.searchTVA(term));
-          const batchResults = await Promise.allSettled(batchPromises);
-
-          // Process results
-          for (const result of batchResults) {
-            if (result.status === 'fulfilled' && result.value) {
-              for (const item of result.value) {
-                if (!seenPaths.has(item.path)) {
-                  seenPaths.add(item.path);
-                  results.push(item);
-                }
-              }
-            }
-          }
-
-          searchCount += batch.length;
-
-          if (searchCount % 12 === 0 || searchCount === totalTerms) {
-            console.log(
-              `${MODULE_ID} | Search progress: ${searchCount}/${totalTerms} terms, ${results.length} results`
-            );
-          }
-
-          // Yield to main thread after each batch for UI responsiveness
-          await yieldToMain(50);
-        }
-      } else {
-        // Fallback to primary terms - also parallelized
-        const primaryTerms = PRIMARY_CATEGORY_TERMS[categoryType?.toLowerCase()];
-        if (primaryTerms) {
-          console.log(`${MODULE_ID} | No full mapping, using ${primaryTerms.length} primary terms`);
-          const totalTerms = primaryTerms.length;
-          let searchCount = 0;
-
-          for (let i = 0; i < primaryTerms.length; i += SLOW_MODE_BATCH_SIZE) {
-            const batch = primaryTerms.slice(i, i + SLOW_MODE_BATCH_SIZE);
-
-            if (progressCallback) {
-              progressCallback({
-                current: searchCount,
-                total: totalTerms,
-                term: batch.join(', '),
-                resultsFound: results.length,
-              });
-            }
-
-            const batchPromises = batch.map((term) => this.searchTVA(term));
-            const batchResults = await Promise.allSettled(batchPromises);
-
-            for (const result of batchResults) {
-              if (result.status === 'fulfilled' && result.value) {
-                for (const item of result.value) {
-                  if (!seenPaths.has(item.path)) {
-                    seenPaths.add(item.path);
-                    results.push(item);
-                  }
-                }
-              }
-            }
-
-            searchCount += batch.length;
-            await yieldToMain(50);
-          }
-        }
-      }
-      console.log(`${MODULE_ID} | TVA search complete, total unique results: ${results.length}`);
-    }
-    // Fallback to ForgeBazaarService when TVA is not available (unless priority is faNexus only)
-    else if (priority !== 'faNexus' && this._forgeBazaarService?.isServiceAvailable()) {
-      console.log(`${MODULE_ID} | Using ForgeBazaarService (TVA not available)`);
-      if (progressCallback) {
-        progressCallback({
-          current: 0,
-          total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
-          resultsFound: 0,
-        });
-      }
-
-      const bazaarResults = await this._forgeBazaarService.browseCategory(categoryType);
-      for (const result of bazaarResults) {
-        if (!seenPaths.has(result.path)) {
-          seenPaths.add(result.path);
-          results.push({
-            ...result,
-            source: 'forge-bazaar',
-          });
-        }
-      }
-
-      if (progressCallback) {
-        progressCallback({
-          current: 1,
-          total: 1,
-          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
-          resultsFound: results.length,
-        });
-      }
-
-      console.log(`${MODULE_ID} | ForgeBazaarService found ${results.length} results`);
-    }
-
-    // Search local index by category
-    if (localIndex?.length > 0) {
-      if (progressCallback) {
-        progressCallback({
-          current: 0,
-          total: 1,
-          term: i18nOrEnglish('ui.progressLocalIndex', 'local index'),
-          resultsFound: results.length,
-        });
-      }
-
-      const categoryMatches = localIndex.filter(
-        (img) =>
-          !isExcludedPath(img.path) &&
-          img.category &&
-          this.folderMatchesCreatureType(img.category, categoryType)
+    if (directSearchTerm) {
+      return this._searchDirectTerm(
+        directSearchTerm,
+        priority,
+        localIndex,
+        collector,
+        progressCallback
       );
-      for (const match of categoryMatches) {
-        if (!seenPaths.has(match.path)) {
-          seenPaths.add(match.path);
-          results.push({ ...match, source: 'local' });
-        }
-      }
+    }
+
+    console.log(`${MODULE_ID} | Starting comprehensive search for category: ${categoryType}`);
+    await this._runCategoryStep(
+      this._plan.stepForCategory(priority),
+      categoryType,
+      collector,
+      progressCallback
+    );
+
+    if (localIndex?.length > 0) {
+      SearchOrchestrator._report(
+        progressCallback,
+        0,
+        1,
+        localizer.orEnglish('ui.progressLocalIndex', 'local index'),
+        collector.size
+      );
+      const categoryMatches = await this._localSource.search(
+        { kind: 'category', value: categoryType },
+        { index: localIndex }
+      );
+      collector.addAll(categoryMatches, { tag: (match) => ({ ...match, source: 'local' }) });
     }
 
     console.log(
-      `${MODULE_ID} | searchByCategory END - found ${results.length} results for ${categoryType}`
+      `${MODULE_ID} | searchByCategory END - found ${collector.size} results for ${categoryType}`
     );
-    return results;
+    return collector.results;
   }
 
   /**
-   * Search for token art based on creature info
+   * A term the user typed: the remote source the priority picks, then the
+   * local index.
+   * @private
+   */
+  async _searchDirectTerm(term, priority, localIndex, collector, progressCallback) {
+    SearchOrchestrator._report(progressCallback, 0, 1, term, 0);
+
+    const remote = this._plan.sourceForDirectTerm(priority);
+    if (remote) collector.addAll(await remote.search({ kind: 'term', value: term }));
+
+    if (localIndex?.length > 0) {
+      const localMatches = await this._localSource.search(
+        { kind: 'term', value: term },
+        { index: localIndex, fields: LocalIndexSource.FIELDS.ANY }
+      );
+      collector.addAll(localMatches, { tag: (match) => ({ ...match, source: 'local' }) });
+    }
+
+    SearchOrchestrator._report(progressCallback, 1, 1, term, collector.size);
+    console.log(`${MODULE_ID} | Direct search for "${term}" found ${collector.size} results`);
+    return collector.results;
+  }
+
+  /**
+   * Run the remote step `SearchPlan.stepForCategory()` picked.
+   * @private
+   */
+  async _runCategoryStep(step, categoryType, collector, progressCallback) {
+    const { STEP } = SearchPlan;
+    const query = { kind: 'category', value: categoryType };
+
+    switch (step) {
+      case STEP.INDEX: {
+        console.log(`${MODULE_ID} | Using pre-built index (FAST mode)`);
+        const label = localizer.orEnglish('ui.progressIndexLookup', 'index lookup');
+        SearchOrchestrator._report(progressCallback, 0, 1, label, 0);
+        // Double-check the exclusion filter: an index built before a folder was
+        // excluded still holds its paths.
+        collector.addAll(await this._indexSource.search(query), {
+          skipExcluded: true,
+          tag: (result) => ({ ...result, source: result.source || 'index' }),
+        });
+        SearchOrchestrator._report(progressCallback, 1, 1, label, collector.size);
+        console.log(`${MODULE_ID} | Index search found ${collector.size} results (FAST mode)`);
+
+        // A built index can be stale (a pack added after the last build) and
+        // return nothing for a category the raw cache still covers. One cheap
+        // cache read beats letting the index's emptiness be authoritative; the
+        // slow per-term API search is deliberately not tried.
+        if (collector.size === 0 && this._tvaSource.isCacheLoaded()) {
+          console.log(`${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`);
+          const fallbackLabel = localizer.orEnglish(
+            'ui.progressTvaCacheFallback',
+            'TVA cache fallback'
+          );
+          SearchOrchestrator._report(progressCallback, 0, 1, fallbackLabel, 0);
+          collector.addAll(await this._tvaSource.search(query));
+          SearchOrchestrator._report(progressCallback, 1, 1, fallbackLabel, collector.size);
+          console.log(`${MODULE_ID} | TVA cache fallback found ${collector.size} results`);
+        }
+        return;
+      }
+
+      case STEP.FORGE: {
+        console.log(`${MODULE_ID} | Using ForgeBazaarService`);
+        const label = localizer.orEnglish('ui.progressForgeBazaar', 'Forge Bazaar');
+        SearchOrchestrator._report(progressCallback, 0, 1, label, 0);
+        collector.addAll(await this._forgeSource.search(query));
+        SearchOrchestrator._report(progressCallback, 1, 1, label, collector.size);
+        console.log(`${MODULE_ID} | ForgeBazaarService found ${collector.size} results`);
+        return;
+      }
+
+      case STEP.TVA_CACHE: {
+        console.log(`${MODULE_ID} | Using TVA direct cache (FAST mode)`);
+        const label = localizer.orEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup');
+        SearchOrchestrator._report(progressCallback, 0, 1, label, 0);
+        collector.addAll(await this._tvaSource.search(query));
+        SearchOrchestrator._report(progressCallback, 1, 1, label, collector.size);
+        console.log(`${MODULE_ID} | TVA direct cache found ${collector.size} results (FAST mode)`);
+        return;
+      }
+
+      case STEP.TVA_API: {
+        const typeLower = categoryType?.toLowerCase();
+        const terms = CREATURE_TYPE_MAPPINGS[typeLower] ?? PRIMARY_CATEGORY_TERMS[typeLower];
+        if (terms) {
+          console.log(
+            `${MODULE_ID} | Searching ${terms.length} terms for ${categoryType} (SLOW mode - index not built)`
+          );
+          await this._searchTvaTermsInBatches(terms, collector, progressCallback);
+        }
+        console.log(`${MODULE_ID} | TVA search complete, total unique results: ${collector.size}`);
+        return;
+      }
+
+      default:
+        return;
+    }
+  }
+
+  /**
+   * SLOW mode: one TVA API search per term, a few in parallel per batch,
+   * yielding to the UI between batches.
+   * @private
+   */
+  async _searchTvaTermsInBatches(terms, collector, progressCallback) {
+    let searchCount = 0;
+    for (let i = 0; i < terms.length; i += SLOW_MODE_BATCH_SIZE) {
+      const batch = terms.slice(i, i + SLOW_MODE_BATCH_SIZE);
+      SearchOrchestrator._report(
+        progressCallback,
+        searchCount,
+        terms.length,
+        batch.join(', '),
+        collector.size
+      );
+
+      const settled = await Promise.allSettled(
+        batch.map((term) => this._tvaSource.search({ kind: 'term', value: term }))
+      );
+      for (const outcome of settled) {
+        if (outcome.status === 'fulfilled' && outcome.value) collector.addAll(outcome.value);
+        else if (outcome.status === 'rejected') {
+          console.warn(`${MODULE_ID} | TVA term search failed:`, outcome.reason);
+        }
+      }
+
+      searchCount += batch.length;
+      if (searchCount % 12 === 0 || searchCount === terms.length) {
+        console.log(
+          `${MODULE_ID} | Search progress: ${searchCount}/${terms.length} terms, ${collector.size} results`
+        );
+      }
+      await Scheduler.yieldToMain(50);
+    }
+  }
+
+  /**
+   * Search for token art based on creature info. When nothing matches and the
+   * `fallbackFullSearch` setting is on, the actor name is looked up across the
+   * whole library instead (`FullLibrarySearch`).
+   *
+   * Only the normal answer is cached: the fallback runs after the cache, so
+   * turning the setting on applies to creatures already searched this session.
    * @param {Object} creatureInfo - Creature information
    * @param {Array} localIndex - Local image index
    * @param {boolean} useCache - Whether to use cache
    * @returns {Promise<Array>} Search results
    */
   async searchTokenArt(creatureInfo, localIndex, useCache = true) {
-    const searchTerms = creatureInfo.searchTerms;
-    if (searchTerms.length === 0) return [];
+    if (creatureInfo.searchTerms.length === 0) return [];
 
-    const cacheKey = getCreatureCacheKey(creatureInfo);
-    if (useCache && this.searchCache.has(cacheKey)) {
+    const matches = await this._searchCreature(creatureInfo, localIndex, useCache);
+    if (matches.length > 0) return matches;
+
+    const fallback = await this._fullLibrary.search(creatureInfo.actorName);
+    if (fallback.length === 0) return matches;
+    console.log(
+      `${MODULE_ID} | No category match for "${creatureInfo.actorName}" — full-library fallback found ${fallback.length} results`
+    );
+    return this._rankerFor(this._getSetting(MODULE_ID, 'searchPriority')).rank(fallback);
+  }
+
+  /**
+   * The normal search for one creature: cached, then the subtype OR-search or
+   * the standard search.
+   * @private
+   * @param {Object} creatureInfo - Creature information
+   * @param {Array} localIndex - Local image index
+   * @param {boolean} useCache - Whether to use cache
+   * @returns {Promise<Array>} Search results
+   */
+  async _searchCreature(creatureInfo, localIndex, useCache) {
+    const searchTerms = creatureInfo.searchTerms;
+    const cacheKey = CreatureTerms.cacheKey(creatureInfo);
+    if (useCache) {
       const cached = this.searchCache.get(cacheKey);
-      // Promote to most-recent position for LRU ordering
-      this.searchCache.delete(cacheKey);
-      this.searchCache.set(cacheKey, cached);
-      return cached;
+      if (cached !== undefined) return cached;
     }
 
     const priority = this._getSetting(MODULE_ID, 'searchPriority');
     const useTVACache = this._getSetting(MODULE_ID, 'useTVACache');
-    const results = [];
-    const useTVAForAll = this._tvaCacheService?.hasTVA && useTVACache;
+    const isGenericSubtype = CreatureTerms.isGenericSubtype(creatureInfo.subtype);
+    const subtypeTerms = CreatureTerms.parseSubtype(creatureInfo.subtype);
+    const collector = new ResultCollector(this._pathFilter);
 
-    // Check for specific subtypes
-    const isGenericSubtype = hasGenericSubtype(creatureInfo.subtype);
-    const subtypeTerms = parseSubtypeTerms(creatureInfo.subtype);
-    const hasSpecificSubtypes = subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type;
-
-    // Case: Specific subtypes - search each term separately (OR logic)
-    if (hasSpecificSubtypes) {
-      console.log(
-        `${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`
-      );
-
-      const seenPaths = new Set();
-
-      // Try FAST mode using pre-built index
-      if (this._indexService.isBuilt) {
-        console.log(`${MODULE_ID} | Using index for subtype search (FAST mode)`);
-
-        // First search for actor name (highest priority - exact matches)
-        if (creatureInfo.actorName) {
-          const nameResults = this._indexService.search(creatureInfo.actorName.toLowerCase());
-          console.log(
-            `${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`
-          );
-          for (const result of nameResults) {
-            // Double-check exclusion filter for safety
-            if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
-              seenPaths.add(result.path);
-              results.push({
-                ...result,
-                score: result.score ?? 0.1, // Higher priority (lower score = better)
-                fromName: true,
-              });
-            }
-          }
-        }
-
-        // Then search for subtypes
-        const indexResults = this._indexService.searchMultiple(subtypeTerms);
-        console.log(`${MODULE_ID} | Index returned ${indexResults.length} results for subtypes`);
-
-        for (const result of indexResults) {
-          // Double-check exclusion filter for safety
-          if (!seenPaths.has(result.path) && !isExcludedPath(result.path)) {
-            seenPaths.add(result.path);
-            results.push({
-              ...result,
-              score: result.score ?? 0.3,
-              fromSubtype: true,
-            });
-          }
-        }
-      }
-      // FAST PATH: Use TVA direct cache if loaded
-      else if (this._tvaCacheService?.isTVACacheLoaded) {
-        console.log(`${MODULE_ID} | Using TVA direct cache for subtype search (FAST mode)`);
-
-        // First search for actor name (highest priority)
-        if (creatureInfo.actorName) {
-          const nameResults = await this._tvaCacheService.searchTVACacheDirect(
-            creatureInfo.actorName
-          );
-          console.log(
-            `${MODULE_ID} | TVA direct cache returned ${nameResults.length} results for actor name "${creatureInfo.actorName}"`
-          );
-
-          for (const result of nameResults) {
-            if (!seenPaths.has(result.path)) {
-              seenPaths.add(result.path);
-              results.push({
-                ...result,
-                score: result.score ?? 0.1,
-                fromName: true,
-              });
-            }
-          }
-        }
-
-        // Then search for all subtypes at once (more efficient)
-        const subtypeResults = await this._tvaCacheService.searchTVACacheMultiple(subtypeTerms);
-        console.log(
-          `${MODULE_ID} | TVA direct cache returned ${subtypeResults.length} results for subtypes (${subtypeTerms.join(', ')})`
-        );
-
-        for (const result of subtypeResults) {
-          if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push({
-              ...result,
-              score: result.score ?? 0.3,
-              fromSubtype: true,
-            });
-          }
-        }
-      }
-      // Fallback to SLOW mode - TVA API calls (only if cache not loaded)
-      else if (this._tvaCacheService?.hasTVA) {
-        console.log(
-          `${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode - cache not loaded)`
-        );
-
-        // First search for actor name (highest priority)
-        if (creatureInfo.actorName) {
-          console.log(`${MODULE_ID} | Searching TVA for actor name: "${creatureInfo.actorName}"`);
-          const nameResults = await this.searchTVA(creatureInfo.actorName);
-          console.log(`${MODULE_ID} | TVA returned ${nameResults.length} results for actor name`);
-
-          for (const result of nameResults) {
-            if (!seenPaths.has(result.path)) {
-              seenPaths.add(result.path);
-              results.push({
-                ...result,
-                score: result.score ?? 0.1,
-                fromName: true,
-              });
-            }
-          }
-        }
-
-        // Then search for subtypes
-        for (const term of subtypeTerms) {
-          console.log(`${MODULE_ID} | Searching TVA for subtype: "${term}"`);
-
-          const tvaResults = await this.searchTVA(term);
-          console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
-
-          for (const result of tvaResults) {
-            if (!seenPaths.has(result.path)) {
-              seenPaths.add(result.path);
-              results.push({
-                ...result,
-                score: result.score ?? 0.3,
-                fromSubtype: true,
-                matchedTerm: term,
-              });
-            }
-          }
-        }
-      }
-
-      // Also search local index for actor name and subtypes
-      if (localIndex?.length > 0) {
-        // First search for actor name
-        if (creatureInfo.actorName) {
-          const actorNameLower = creatureInfo.actorName.toLowerCase();
-          const nameMatches = localIndex.filter((img) => {
-            if (isExcludedPath(img.path)) return false;
-            const nameLower = (img.name || '').toLowerCase();
-            const pathLower = (img.path || '').toLowerCase();
-            return nameLower.includes(actorNameLower) || pathLower.includes(actorNameLower);
-          });
-
-          for (const match of nameMatches) {
-            if (!seenPaths.has(match.path)) {
-              seenPaths.add(match.path);
-              results.push({
-                ...match,
-                source: 'local',
-                score: match.score ?? 0.15,
-                fromName: true,
-              });
-            }
-          }
-        }
-
-        // Then search for subtypes
-        for (const term of subtypeTerms) {
-          const termLower = term.toLowerCase();
-          const localMatches = localIndex.filter((img) => {
-            // Skip excluded paths
-            if (isExcludedPath(img.path)) return false;
-            const nameLower = (img.name || '').toLowerCase();
-            const pathLower = (img.path || '').toLowerCase();
-            const categoryLower = (img.category || '').toLowerCase();
-            return (
-              nameLower.includes(termLower) ||
-              pathLower.includes(termLower) ||
-              categoryLower.includes(termLower)
-            );
-          });
-
-          for (const match of localMatches) {
-            if (!seenPaths.has(match.path)) {
-              seenPaths.add(match.path);
-              results.push({
-                ...match,
-                source: 'local',
-                score: match.score ?? 0.4,
-                fromSubtype: true,
-                matchedTerm: term,
-              });
-            }
-          }
-        }
-      }
-
-      console.log(
-        `${MODULE_ID} | Total results after OR search: ${results.length} (matching ${subtypeTerms.join(' OR ')})`
-      );
-
-      this._cacheSet(cacheKey, results);
-      return results;
+    // Specific subtypes: search the name and each subtype separately (OR logic).
+    // These results are cached as found, unranked.
+    if (subtypeTerms.length > 0 && !isGenericSubtype && creatureInfo.type) {
+      await this._searchNameAndSubtypes(creatureInfo, subtypeTerms, localIndex, collector);
+      this.searchCache.set(cacheKey, collector.results);
+      return collector.results;
     }
 
-    // Use Set for O(1) duplicate check
-    const seenPaths = new Set();
+    const steps = this._plan.standardSteps(priority, useTVACache);
 
-    // Standard search flow
-    if (localIndex?.length > 0 && (priority === 'faNexus' || priority === 'both')) {
-      const localResults = await this.searchLocalIndex(searchTerms, localIndex, creatureInfo.type);
-      for (const r of localResults) {
-        seenPaths.add(r.path);
-      }
-      results.push(...localResults);
+    if (localIndex?.length > 0 && steps.fuzzyLocal) {
+      collector.addAll(await this._localSource.fuzzy(searchTerms, localIndex, creatureInfo.type));
     }
 
-    if (
-      this._tvaCacheService?.hasTVA &&
-      (useTVAForAll || priority === 'forgeBazaar' || priority === 'both')
-    ) {
+    if (steps.tvaTerms) {
       for (const term of searchTerms) {
-        const tvaResults = await this.searchTVA(term);
-        for (const result of tvaResults) {
-          if (!seenPaths.has(result.path)) {
-            seenPaths.add(result.path);
-            results.push(result);
-          }
-        }
-        if (tvaResults.length >= 5 && term === searchTerms[0]) {
-          break;
-        }
+        const tvaResults = await this._tvaSource.search({ kind: 'term', value: term });
+        collector.addAll(tvaResults);
+        // Enough hits on the primary term: the fallback terms would only add noise.
+        if (tvaResults.length >= 5 && term === searchTerms[0]) break;
       }
     }
 
-    // Case: Generic subtype - show all category results
-    // searchByCategory already handles both index and local index searches
+    // Generic subtype: offer the whole category. searchByCategory covers both
+    // the index and the local index.
     if (isGenericSubtype && creatureInfo.type) {
       console.log(`${MODULE_ID} | Generic subtype mode for ${creatureInfo.type}`);
       const categoryResults = await this.searchByCategory(creatureInfo.type, localIndex);
+      collector.addAll(categoryResults, {
+        tag: (result) => ({ ...result, score: result.score ?? 0.6, fromCategory: true }),
+      });
+    }
 
-      for (const result of categoryResults) {
-        if (!seenPaths.has(result.path)) {
-          seenPaths.add(result.path);
-          results.push({
-            ...result,
-            score: result.score ?? 0.6,
-            fromCategory: true,
+    const ranked = this._rankerFor(priority).rank(collector.results);
+    this.searchCache.set(cacheKey, ranked);
+    return ranked;
+  }
+
+  /**
+   * The OR search for a creature with specific subtypes: its actor name
+   * first (best matches), then every subtype, from the fastest ready source and
+   * from the local index.
+   * @private
+   */
+  async _searchNameAndSubtypes(creatureInfo, subtypeTerms, localIndex, collector) {
+    const { actorName } = creatureInfo;
+    console.log(
+      `${MODULE_ID} | OR Logic Mode: "${creatureInfo.type}" with subtypes (${subtypeTerms.join(', ')})`
+    );
+    const nameTag = (result) => ({ ...result, score: result.score ?? 0.1, fromName: true });
+    const subtypeTag = (result) => ({ ...result, score: result.score ?? 0.3, fromSubtype: true });
+    const { STEP } = SearchPlan;
+
+    switch (this._plan.stepForSubtypes()) {
+      case STEP.INDEX: {
+        console.log(`${MODULE_ID} | Using index for subtype search (FAST mode)`);
+        if (actorName) {
+          const nameResults = await this._indexSource.search({
+            kind: 'term',
+            value: actorName.toLowerCase(),
+          });
+          console.log(
+            `${MODULE_ID} | Index returned ${nameResults.length} results for actor name "${actorName}"`
+          );
+          collector.addAll(nameResults, { skipExcluded: true, tag: nameTag });
+        }
+        const indexResults = await this._indexSource.search({ kind: 'terms', value: subtypeTerms });
+        console.log(`${MODULE_ID} | Index returned ${indexResults.length} results for subtypes`);
+        collector.addAll(indexResults, { skipExcluded: true, tag: subtypeTag });
+        break;
+      }
+
+      case STEP.TVA_CACHE: {
+        console.log(`${MODULE_ID} | Using TVA direct cache for subtype search (FAST mode)`);
+        if (actorName) {
+          const nameResults = await this._tvaSource.search({ kind: 'term', value: actorName });
+          console.log(
+            `${MODULE_ID} | TVA direct cache returned ${nameResults.length} results for actor name "${actorName}"`
+          );
+          collector.addAll(nameResults, { tag: nameTag });
+        }
+        const subtypeResults = await this._tvaSource.search({ kind: 'terms', value: subtypeTerms });
+        console.log(
+          `${MODULE_ID} | TVA direct cache returned ${subtypeResults.length} results for subtypes (${subtypeTerms.join(', ')})`
+        );
+        collector.addAll(subtypeResults, { tag: subtypeTag });
+        break;
+      }
+
+      case STEP.TVA_API: {
+        console.log(
+          `${MODULE_ID} | Searching TVA for each subtype separately (SLOW mode - cache not loaded)`
+        );
+        if (actorName) {
+          const nameResults = await this._tvaSource.search({ kind: 'term', value: actorName });
+          console.log(`${MODULE_ID} | TVA returned ${nameResults.length} results for actor name`);
+          collector.addAll(nameResults, { tag: nameTag });
+        }
+        for (const term of subtypeTerms) {
+          const tvaResults = await this._tvaSource.search({ kind: 'term', value: term });
+          console.log(`${MODULE_ID} | TVA returned ${tvaResults.length} results for "${term}"`);
+          collector.addAll(tvaResults, {
+            tag: (result) => ({ ...subtypeTag(result), matchedTerm: term }),
           });
         }
+        break;
+      }
+
+      default:
+        break;
+    }
+
+    if (localIndex?.length > 0) {
+      if (actorName) {
+        const nameMatches = await this._localSource.search(
+          { kind: 'term', value: actorName },
+          { index: localIndex, fields: LocalIndexSource.FIELDS.NAME }
+        );
+        collector.addAll(nameMatches, {
+          tag: (match) => ({
+            ...match,
+            source: 'local',
+            score: match.score ?? 0.15,
+            fromName: true,
+          }),
+        });
+      }
+      for (const term of subtypeTerms) {
+        const localMatches = await this._localSource.search(
+          { kind: 'term', value: term },
+          { index: localIndex, fields: LocalIndexSource.FIELDS.SUBTYPE }
+        );
+        collector.addAll(localMatches, {
+          tag: (match) => ({
+            ...match,
+            source: 'local',
+            score: match.score ?? 0.4,
+            fromSubtype: true,
+            matchedTerm: term,
+          }),
+        });
       }
     }
 
-    // Filter and sort results
-    const validResults = results.filter((r) => {
-      if (!r.path || typeof r.path !== 'string') return false;
-      return (
-        r.path.includes('/') ||
-        r.path.includes('.') ||
-        r.path.startsWith('http') ||
-        r.path.startsWith('forge://')
-      );
-    });
-
-    validResults.sort((a, b) => {
-      // Priority order: fromName > fromSubtype > fromCategory > other
-      const aIsName = a.fromName === true;
-      const bIsName = b.fromName === true;
-      const aIsSubtype = a.fromSubtype === true;
-      const bIsSubtype = b.fromSubtype === true;
-      const aIsCategory = a.fromCategory === true;
-      const bIsCategory = b.fromCategory === true;
-
-      // Name matches have highest priority
-      if (aIsName && !bIsName) return -1;
-      if (!aIsName && bIsName) return 1;
-
-      // Subtype matches next
-      if (aIsSubtype && !bIsSubtype && !bIsName) return -1;
-      if (!aIsSubtype && bIsSubtype && !aIsName) return 1;
-
-      // Category matches last
-      if (aIsCategory && bIsCategory) {
-        /* same priority */
-      } else if (!aIsCategory && bIsCategory) return -1;
-      else if (aIsCategory && !bIsCategory) return 1;
-
-      // Within same priority, respect source preference
-      if (priority === 'faNexus') {
-        if (a.source === 'local' && b.source !== 'local') return -1;
-        if (a.source !== 'local' && b.source === 'local') return 1;
-      } else if (priority === 'forgeBazaar') {
-        if (a.source === 'tva' && b.source !== 'tva') return -1;
-        if (a.source !== 'tva' && b.source === 'tva') return 1;
-      }
-
-      // Finally sort by score (lower is better)
-      return (a.score || 0.5) - (b.score || 0.5);
-    });
-
-    this._cacheSet(cacheKey, validResults);
-    return validResults;
+    console.log(
+      `${MODULE_ID} | Total results after OR search: ${collector.size} (matching ${subtypeTerms.join(' OR ')})`
+    );
   }
 
   /**
    * Perform parallel searches for multiple creature groups
    * @param {Map} groups - Creature groups
    * @param {Array} localIndex - Local image index
-   * @param {Function} progressCallback - Progress callback
+   * @param {function(Object): void} [progressCallback] - Progress callback
    * @returns {Promise<Map>} Search results map
    */
-  async parallelSearchCreatures(groups, localIndex, progressCallback = null) {
-    const groupArray = Array.from(groups.entries());
-    const totalGroups = groupArray.length;
-    const results = new Map();
-
+  parallelSearchCreatures(groups, localIndex, progressCallback = null) {
     // A cancel from a previous run must not abort this one before it starts.
     this._cancelRequested = false;
+    return this._runner.run(
+      groups,
+      (creatureInfo) => this.searchTokenArt(creatureInfo, localIndex, true),
+      progressCallback
+    );
+  }
 
-    for (let i = 0; i < groupArray.length; i += PARALLEL_BATCH_SIZE) {
-      // Batch boundaries are where this phase can stop: the searches inside a
-      // batch run concurrently and are awaited together.
-      if (this._cancelRequested) {
-        this._debugLog(`Parallel search cancelled after ${results.size} creature type(s)`);
-        break;
-      }
-
-      const batch = groupArray.slice(i, i + PARALLEL_BATCH_SIZE);
-
-      if (progressCallback) {
-        const completed = Math.min(i, groupArray.length);
-        progressCallback({
-          type: 'batch',
-          completed: completed,
-          total: totalGroups,
-          currentBatch: batch.map(([_key, group]) => group.creatureInfo.actorName),
-        });
-      }
-
-      const batchPromises = batch.map(async ([key, group]) => {
-        const searchResults = await this.searchTokenArt(group.creatureInfo, localIndex, true);
-        return { key, searchResults, group };
-      });
-
-      const settledResults = await Promise.allSettled(batchPromises);
-
-      for (const result of settledResults) {
-        if (result.status === 'fulfilled') {
-          const { key, searchResults, group } = result.value;
-          results.set(key, {
-            matches: searchResults,
-            tokens: group.tokens,
-            creatureInfo: group.creatureInfo,
-          });
-        } else if (result.reason?.cancelled) {
-          // The cancellation propagates out of every search in the in-flight
-          // batch, so without this a deliberate stop prints one "search failed"
-          // warning per creature type — the same mislabelling the wrapping
-          // catches in IndexService had.
-          this._debugLog('Batch search stopped by cancellation');
-        } else {
-          console.warn(
-            `${MODULE_ID} | Batch search failed for one group:`,
-            result.reason?.message || result.reason
-          );
-        }
-      }
+  /**
+   * The ranker for a priority, built once and reused.
+   * @private
+   * @param {string} priority - `searchPriority` setting
+   * @returns {ResultRanker}
+   */
+  _rankerFor(priority) {
+    let ranker = this._rankers.get(priority);
+    if (!ranker) {
+      ranker = new ResultRanker(priority);
+      this._rankers.set(priority, ranker);
     }
+    return ranker;
+  }
 
-    return results;
+  /**
+   * Send a progress tick, if anyone listens.
+   * @private
+   */
+  static _report(progressCallback, current, total, term, resultsFound) {
+    if (progressCallback) progressCallback({ current, total, term, resultsFound });
   }
 }
 

@@ -1,8 +1,15 @@
 <div class='token-replacer-fa-progress'>
-  <div class='progress-bar'>
+  <div
+    class='progress-bar'
+    role='progressbar'
+    aria-valuemin='0'
+    aria-valuemax='100'
+    aria-valuenow='{{percent}}'
+    aria-valuetext='{{progressLabel}}'
+  >
     <div class='progress-fill' style='width: {{percent}}%'></div>
   </div>
-  <div class='progress-text'>{{progressLabel}}</div>
+  <div class='progress-text' data-announce>{{progressLabel}}</div>
 </div>
 
 <div class='token-replacer-fa-summary'>
@@ -12,7 +19,7 @@
   </div>
   <div class='summary-item failed'>
     <div class='count'>{{failedCount}}</div>
-    <div class='label'>{{noMatchLabel}}</div>
+    <div class='label'>{{failedLabel}}</div>
   </div>
   <div class='summary-item skipped'>
     <div class='count'>{{skippedCount}}</div>
@@ -21,17 +28,26 @@
 </div>
 
 {{#if hasResults}}
-  <div class='token-replacer-fa-results'>
+  <ul class='token-replacer-fa-results'>
     {{#each results}}
-      <div class='result-item {{this.status}}'>
-        <div class='result-icon {{this.status}}'>
+      <li class='result-item {{this.status}}'>
+        <span class='result-icon {{this.status}}' aria-hidden='true'>
           <i class='fas {{this.iconClass}}'></i>
-        </div>
-        <div class='result-name'>{{this.name}}</div>
+        </span>
+        <span class='result-name'>{{this.name}}</span>
         {{#if this.match}}
-          <div class='result-match'>→ {{this.match}}</div>
+          <span class='result-match' title='{{this.match}}'>{{this.match}}</span>
         {{/if}}
-      </div>
+      </li>
     {{/each}}
+  </ul>
+{{/if}}
+
+{{#if isComplete}}
+  <div class='token-replacer-fa-progress-buttons'>
+    <button type='button' class='close-btn' data-action='close'>
+      <i class='fas fa-check' aria-hidden='true'></i>
+      <span class='btn-label'>{{closeLabel}}</span>
+    </button>
   </div>
 {{/if}}

@@ -34,9 +34,9 @@ describe('ready hook', () => {
 describe('token replacement without an active scene', () => {
   it('warns once and does not report a second, unrelated error', async () => {
     vi.resetModules();
-    vi.doMock('../../scripts/core/Utils.js', async (importOriginal) => ({
+    vi.doMock('../../scripts/core/FuseLoader.js', async (importOriginal) => ({
       ...(await importOriginal()),
-      loadFuse: vi.fn(async () => function Fuse() {}),
+      fuseLoader: { load: vi.fn(async () => function Fuse() {}) },
     }));
     const { tokenReplacerApp } = await import('../../scripts/main.js');
     const scene = canvas.scene;
@@ -46,11 +46,38 @@ describe('token replacement without an active scene', () => {
       await tokenReplacerApp.processTokenReplacement();
     } finally {
       canvas.scene = scene;
-      vi.doUnmock('../../scripts/core/Utils.js');
+      vi.doUnmock('../../scripts/core/FuseLoader.js');
     }
 
     expect(ui.notifications.warn).toHaveBeenCalledTimes(1);
     expect(ui.notifications.error).not.toHaveBeenCalled();
     expect(tokenReplacerApp.isProcessing).toBe(false);
+  });
+});
+
+describe('main.js entry point', () => {
+  it('registers the hooks and exposes the app to macros', async () => {
+    vi.resetModules();
+    Hooks.once.mockClear();
+    Hooks.on.mockClear();
+    const { tokenReplacerApp, TokenReplacerApp } = await import('../../scripts/main.js');
+
+    expect(tokenReplacerApp).toBeInstanceOf(TokenReplacerApp);
+    expect(window.TokenReplacerFA).toBe(tokenReplacerApp);
+    expect(Hooks.once.mock.calls.map(([name]) => name)).toEqual(['init', 'ready']);
+    expect(Hooks.on.mock.calls.map(([name]) => name)).toEqual(['getSceneControlButtons']);
+  });
+
+  it('registers the settings on init', async () => {
+    vi.resetModules();
+    Hooks.once.mockClear();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await import('../../scripts/main.js');
+    const [, init] = Hooks.once.mock.calls.find(([name]) => name === 'init');
+
+    await init();
+
+    const keys = game.settings.register.mock.calls.map(([, key]) => key);
+    expect(keys).toEqual(expect.arrayContaining(['debugMode', 'autoReplace', 'useTVACache']));
   });
 });

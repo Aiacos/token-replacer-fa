@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SearchOrchestrator } from '../../scripts/services/SearchOrchestrator.js';
+import { ModuleError } from '../../scripts/core/ModuleError.js';
 
 /**
  * A Worker stub that answers every fuzzySearch with an empty result set.
@@ -57,7 +58,7 @@ describe('setSearchIndex freshness', () => {
       workerFactory: () => worker,
       getSetting: vi.fn(() => 0.3),
     });
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
   });
 
   /** Count how many times the index was pushed to the Worker. */
@@ -93,7 +94,7 @@ describe('setSearchIndex freshness', () => {
     await orchestrator.searchLocalIndexWithWorker(['wolf'], index);
 
     orchestrator.terminate();
-    orchestrator._ensureWorker();
+    orchestrator._workerClient.ensure();
     await orchestrator.searchLocalIndexWithWorker(['wolf'], index);
 
     // A fresh worker holds nothing, even for an index it was sent before.
@@ -166,7 +167,7 @@ describe('cancellation is not reported as a failure', () => {
     // unguarded allSettled loop prints one "search failed" warning per group.
     orchestrator.searchTokenArt = vi.fn(async () => {
       orchestrator.cancelOperation();
-      throw orchestrator._cancelledError();
+      throw ModuleError.cancelled();
     });
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

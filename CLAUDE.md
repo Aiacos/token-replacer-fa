@@ -33,13 +33,14 @@ repairable.
 3. Comments explain _why_, never _what_. Code that needs a "what" comment gets
    rewritten instead.
 4. Duplicated logic carries a `SYNC: Keep in sync with <path>` marker. This is
-   mandatory for the `Utils.js` ↔ `IndexWorker.js` pairs (`loadFuse`,
-   `_validateFuseShape`, `CDN_SEGMENTS`, `isExcludedPath`), which cannot share
-   imports across the worker boundary.
+   mandatory for the main-thread ↔ `IndexWorker.js` pairs (`FuseLoader.load` ↔
+   `loadFuse`, `_validateFuseShape`, `CDN_SEGMENTS`, `PathFilter.isExcluded` ↔
+   `isExcludedPath`), which cannot share imports across the worker boundary.
 5. Dead code is deleted, not commented out. Git remembers.
 6. Simplicity, quality, correctness, security, readability and maintainability
-   come before cleverness and delivery speed. Choose the simplest solution that
-   is correct and secure; correctness and security are never traded for the rest.
+   come before cleverness and delivery speed. Simplicity works inside Article XII:
+   the simplest correct and secure design that is object-oriented and names its
+   pattern; correctness and security are never traded for the rest.
 7. Everything crossing a trust boundary is untrusted until validated: TVA cache
    contents, file paths, CDN code, persisted data. Secrets never enter the
    repository. `SECURITY.md` records the resulting guarantees and known limits.
@@ -73,7 +74,7 @@ repairable.
 1. Every user-visible string goes through `lang/en.json` and is mirrored in
    `lang/it.json`. Hardcoded English in a template, a dialog or a notification
    is a defect. The one exception is a fallback for the window before
-   `game.i18n` exists, and it must be _declared_ with `i18nOrEnglish(key,
+   `game.i18n` exists, and it must be _declared_ with `localizer.orEnglish(key,
 english)` — never improvised as `localize(key) || 'English'`, which cannot
    work: Foundry returns the key itself for a missing key, so the fallback is
    unreachable and the user sees a raw `TOKEN_REPLACER_FA.…` string.
@@ -283,16 +284,27 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
 ### Article XII — 🧠 Architecture & design
 
 1. Plan before implementing. Anything beyond a local fix starts from a stated
-   design: responsibilities, data flow, failure modes, and which existing service
-   it belongs to.
-2. Apply a design pattern only when it solves a problem this code has now. The
-   facade over `SearchOrchestrator`/`TVACacheService` and the injected service
-   dependencies earn their place; a pattern added for symmetry does not.
-3. Use classes where they provide clear benefits: owned state, a lifecycle (the
-   worker), or injectable dependencies for testing. Stateless logic stays a plain
-   function, and inheritance needs a concrete reason.
-4. **Enforced by:** review, and Article II.3 — a design that cannot be tested
-   through its public behaviour goes back to the drawing board.
+   design: responsibilities, data flow, failure modes, and the class that owns it.
+2. Object-oriented design is mandatory for runtime code under `scripts/`. Every
+   responsibility lives in a class with one reason to change; module-level
+   functions and mutable module state are not allowed, except the duplicated
+   worker helpers that Article I.4 pins byte-for-byte. State that outlives a call
+   (a cache, a worker, a listener set) is owned and encapsulated by an instance.
+3. Design patterns are mandatory and deliberate. Each class names the pattern it
+   applies and the problem it solves in its JSDoc (`@pattern Strategy — …`). The
+   catalogue in use: Facade (`SearchService`), Strategy (search sources), Chain of
+   Responsibility (TVA path sources), Repository (persisted index and cache),
+   Command (worker messages), Observer (progress), Factory (errors, workers),
+   Singleton (module-wide services), Value Object (filter queries).
+4. Composition over inheritance; dependencies are injected through constructors,
+   so every class is testable without Foundry globals. Inheritance is reserved for
+   true is-a relations (`ModuleError extends Error`, Foundry base classes).
+5. Well-written means efficient too: a pattern must not add a hot-path cost. No
+   per-call allocation of strategies, no wrapper layers on the search loop, and
+   Article IV's numbers hold after every structural change.
+6. **Enforced by:** review, Article II.3 — a design that cannot be tested through
+   its public behaviour goes back to the drawing board — and the `@pattern` tag on
+   every exported class.
 
 ## 🎮 Development Commands
 
@@ -382,56 +394,93 @@ https://github.com/Aiacos/token-replacer-fa/releases/latest/download/module.json
 
 ## 🧠 Architecture
 
+Every runtime class names its pattern in a `@pattern` JSDoc tag (Article XII);
+`tests/core/architecture.test.js` fails on a class without one, on module-level
+`let`/`var`, and on top-level functions other than the worker-pinned helpers.
+
 ```
 scripts/
-├── main.js              # Entry point: Hooks (init, ready), settings, processTokenReplacement()
-├── core/
-│   ├── Constants.js     # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), EXCLUDED_FOLDERS
-│   └── Utils.js         # Path extraction from TVA results, Fuse.js loader
+├── main.js                   # Entry point only: builds TokenReplacerApp, registers Foundry hooks
+├── app/                      # Application layer
+│   ├── TokenReplacerApp.js   # Composition root — Facade + Mediator; owns the current run
+│   ├── TokenReplacementWorkflow.js # One run = one object — Command + Template Method
+│   ├── IndexBootstrapper.js  # ready hook: GM guard, Fuse, TVA cache, background index build
+│   ├── VariantAssignment.js  # Sequential / Random (Fisher–Yates) — Strategy + Factory
+│   ├── ModuleSettings.js     # All game.settings as one table — Registry
+│   ├── StoppableNotification.js # v13 Notification element / v12 id — Adapter
+│   ├── SceneControls.js      # v13 scene-control payload — Adapter
+│   ├── CompanionModules.js   # TVA / FA Nexus presence — Adapter
+│   ├── TokenImageWriter.js   # TVA updateTokenImage (+ one follow-up update for extras) or core update — Strategy
+│   └── TokenAppearancePolicy.js # Scale + dynamic ring extras, built once per run — Strategy
+├── core/                     # Shared building blocks, no Foundry access at construction
+│   ├── Constants.js          # MODULE_ID, CREATURE_TYPE_MAPPINGS (14 categories), exclusions (data)
+│   ├── ModuleError.js        # Error subclass: of(type, details, keys), cancelled() — Factory
+│   ├── DebugLogger.js · Settings.js · Localizer.js (localizer: localize(), orEnglish())
+│   ├── FuseLoader.js         # fuseLoader: lazy CDN load + shape check (SYNC with worker)
+│   ├── PathFilter.js         # pathFilter: isExcluded() + memo cache (SYNC with worker)
+│   ├── TvaResultParser.js · FilterQuery.js (Value Object; WildcardTerm — Interpreter) · CreatureTerms.js
+│   ├── TemplateRenderer.js · HtmlSanitizer.js · Scheduler.js
+│   └── ManagedWorker.js      # Lazy worker lifecycle: ensure/post/teardown — used by index + search
 ├── services/
-│   ├── SearchService.js      # Thin facade delegating to SearchOrchestrator and TVACacheService
-│   ├── SearchOrchestrator.js # Search logic: TVA search, category search, parallel batching
-│   ├── TVACacheService.js    # TVA cache loading, direct cache search, IndexedDB persistence
-│   ├── IndexService.js       # Hierarchical category index, Web Worker + IndexedDB caching
-│   ├── TokenService.js       # Extract creature info from D&D 5e actors (instance class with DI)
-│   ├── StorageService.js     # IndexedDB/localStorage abstraction layer
-│   ├── ScanService.js        # Directory scanning (fallback when TVA unavailable)
-│   └── ForgeBazaarService.js # Forge Bazaar API stub (non-functional, placeholder)
+│   ├── SearchService.js      # Facade over search + TVA cache
+│   ├── SearchOrchestrator.js # Search flows — Facade + Mediator
+│   ├── search/               # SearchPlan (priority rules), Index/TvaCache/LocalIndex/ForgeBazaar
+│   │                         #   sources (Strategy), ResultRanker, ResultCollector,
+│   │                         #   SearchResultCache (LRU), WorkerSearchClient (one search in
+│   │                         #   flight, on ManagedWorker), ParallelSearchRunner (batches),
+│   │                         #   FullLibrarySearch (fallbackFullSearch: name search, Strategy)
+│   ├── IndexService.js       # Category + term index — Facade; only it decides worker fallback
+│   ├── index/                # TermIndex, IndexRepository (CACHE_KEY, VERSION), TvaPathSourceChain
+│   │                         #   (Chain of Responsibility), Worker/Direct/TvaSearch builders
+│   │                         #   (Strategy), IndexBuildProgress (~10% steps), CancellationToken
+│   ├── TVACacheService.js    # Facade: load with de-duplication, reload, direct search
+│   ├── tva/                  # TvaCacheParser (Adapter), TvaCacheRepository, CategoryCache
+│   ├── StorageService.js     # Facade: IndexedDB first, localStorage fallback per call
+│   ├── storage/              # IndexedDbBackend / LocalStorageBackend (Strategy), DataSanitizer
+│   ├── TokenService.js · token/CreatureInfoExtractor.js (only reader of actor.system)
+│   ├── ScanService.js · scan/DirectoryWalker.js (async-generator Iterator over FilePicker)
+│   └── ForgeBazaarService.js # Non-functional stub — Null Object; do not refactor
 ├── workers/
-│   └── IndexWorker.js   # Web Worker for background index building (non-blocking)
+│   └── IndexWorker.js        # IndexWorkerRuntime — Command registry; protocol is fixed
 └── ui/
-    └── UIManager.js     # Dialog generation, match selection UI, progress tracking
-templates/
-├── error.hbs            # Error message dialog
-├── tva-cache.hbs        # TVA cache loading progress
-├── scan-progress.hbs    # Directory scanning progress
-├── search-progress.hbs  # Category search progress
-├── parallel-search.hbs  # Parallel token search progress
-├── progress.hbs         # Final results summary
-├── match-selection.hbs  # Token variant selection dialog
-└── no-match.hbs         # No match found with category browser
-tools/                   # CI/CD logic — plain Node, unit-tested, no YAML branching
-├── validate-manifest.mjs    # npm run validate: manifest, runtime assets, i18n, parity
-├── bump-version.mjs         # Version bump + CHANGELOG promotion (exports pure helpers)
-├── publish-foundry.mjs      # Foundry package registry announcement
-├── check-foundry-version.mjs # Newest Foundry generation vs compatibility.verified
-├── install-hooks.mjs        # npm install: points git at the versioned .githooks/
-└── dependabot-triage.mjs    # merge/hold decision per Dependabot PR
-.github/
-├── dependabot.yml       # Weekly grouped updates: actions + npm dev deps
-└── workflows/           # ci · release · foundry-compat · dependabot-auto-merge
+    ├── UIManager.js          # Facade used by the app layer
+    ├── TokenReplacerDialog.js # ApplicationV2 subclass; focus restore, aria-live region
+    ├── MatchSelectionController.js · NoMatchController.js # one per dialog — Mediator
+    ├── SelectionPanel.js     # grid + mode + Apply/Skip, resolves once — Mediator
+    ├── MatchGrid.js          # Set-based selection, keyed tiles, pages of 200 via an IntersectionObserver
+    │                         #   sentinel (chunked fallback), arrow-key focus — Observer
+    ├── FilterBox.js · FilterTermStore.js (Repository) · ProgressView.js · DisplayLabels.js
+templates/                    # *.hbs, incl. match-grid.hbs (tiles); only the grid scrolls
+tools/                        # CI/CD logic — plain Node, unit-tested, no YAML branching
+├── validate-manifest.mjs     # npm run validate: manifest, runtime assets, i18n, parity, labels
+├── bump-version.mjs · publish-foundry.mjs · check-foundry-version.mjs · dependabot-triage.mjs
+└── install-hooks.mjs         # npm install: points git at the versioned .githooks/
 tests/
-├── core/ services/ ui/ integration/ helpers/ setup/   # Module suite
-└── tools/               # CI tooling suite (bump, triage, manifest validation)
+├── app/ core/ services/ ui/ integration/ helpers/ setup/   # Module suite
+└── tools/                    # CI tooling suite
 ```
+
+### Where a change goes
+
+| To change…                                      | Edit                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------ |
+| which sources run, in which order, per priority | `services/search/SearchPlan.js`                                          |
+| how matches are ordered                         | `services/search/ResultRanker.js`                                        |
+| a new place to find TVA image paths             | a new source in `services/index/TvaPathSources.js`, not a new `if`       |
+| how the persisted index is versioned            | `IndexRepository.VERSION` (bump to invalidate caches)                    |
+| a step of the replacement run                   | `app/TokenReplacementWorkflow.js`                                        |
+| how selected token art is spread over tokens    | a new `VariantAssignment` strategy                                       |
+| dialog behaviour                                | the dialog's controller in `ui/`; markup in `templates/`                 |
+| what happens when a creature has no match       | `services/search/FullLibrarySearch.js` (`SearchPlan.stepForFullLibrary`) |
+| extra token changes when art is applied         | `app/TokenAppearancePolicy.js`                                           |
 
 ### Key Data Flow
 
-1. `main.js` → `processTokenReplacement()` triggered by scene control button
-2. `TokenService` extracts creature type/subtype from selected tokens
-3. `SearchService.loadTVACache()` reads TVA's static cache file directly
-4. `IndexService.build()` creates hierarchical category index from cache
-5. `UIManager` displays matches for user selection
+1. `main.js` registers hooks; `ready` → `IndexBootstrapper.run()` (GM only) loads Fuse and starts the background TVA-cache + index build
+2. The scene control → `TokenReplacerApp.processTokenReplacement()` → a new `TokenReplacementWorkflow`
+3. `TokenService` extracts creature info; tokens are grouped by creature
+4. `SearchOrchestrator` runs the `SearchPlan` sources per group through `ParallelSearchRunner`; one failing group does not stop the others. With `fallbackFullSearch`, a group with no match gets a whole-library name search (`fromFullSearch: true`)
+5. `UIManager` shows matches; the chosen `VariantAssignment` maps token art to tokens; `TokenImageWriter` applies it with the run's `TokenAppearancePolicy` extras. A selection resolved with `applyToRemaining` gives every later group its best match without a dialog; `cancel()` stops the apply phase between tokens
 
 ### Template System
 
@@ -447,7 +496,7 @@ The module uses Handlebars templates (preloaded in `main.js` init hook) to separ
 
 - Handlebars auto-escapes all variables by default (e.g., `{{name}}`)
 - No manual escaping needed in template methods - just pass raw data
-- `escapeHtml()` utility is only used for dynamic HTML generation outside templates (e.g., `innerHTML` assignments in event handlers)
+- `HtmlSanitizer.escape()` is only used for dynamic HTML generation outside templates (e.g., `innerHTML` assignments in event handlers)
 
 **Template Conventions:**
 
@@ -459,7 +508,7 @@ The module uses Handlebars templates (preloaded in `main.js` init hook) to separ
 
 ### TVA Integration
 
-The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather than using the slower `doImageSearch` API. Cache format:
+`TvaCacheParser` reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather than using the slower `doImageSearch` API. Cache format:
 
 ```javascript
 // TVA cache JSON: { category: [ path | [path, name] | [path, name, tags] ] }
@@ -468,31 +517,15 @@ The module reads TVA's cache file directly (`TVA_CONFIG.staticCacheFile`) rather
 
 ### Web Worker Architecture
 
-Index building uses Web Workers to prevent main thread blocking:
+Index building and local fuzzy search run in `IndexWorker.js` so the main thread never blocks (Article IV.1).
 
-**IndexWorker.js** - Runs in background thread, processes thousands of images at full speed without UI freezing
-
-- Receives `indexPaths` command with image paths and categorization rules
-- Yields to its message queue every few thousand items, so a cancel can arrive mid-build
-- Sends progress updates every 1000 items via `postMessage`
-- Returns categorized index structure when complete
-
-**IndexService** - Manages worker lifecycle and fallback
-
-- Creates the worker lazily on first use (`_ensureWorker()`), never in the constructor
-- Uses `indexPathsWithWorker()` when worker available (non-blocking)
-- Falls back to `indexPathsDirectly()` with 10ms yields if worker unavailable
-- Properly terminates worker with `terminate()` method
-
-**Benefits:**
-
-- Main thread remains completely responsive during large index builds
-- Near full-speed processing in the worker: its rare yields carry no fixed delay
-- Graceful fallback for browsers without Worker support
+- **The worker** (`IndexWorkerRuntime`) dispatches `indexPaths`, `fuzzySearch`, `setSearchIndex`, `cancel`, `ping` from a `Map` registry. It yields to its message queue every 5000 items, so a cancel can arrive mid-build, and reports progress every 1000. Its `CancellationToken` is reset by each new command — the main thread relies on that.
+- **Index builds**: `WorkerIndexBuilder` owns the worker through `ManagedWorker`; `DirectIndexBuilder` is the main-thread fallback with 10 ms yields. Builders reject, they never fall back: only `IndexService` decides to fall back, on a worker failure and never on a cancel.
+- **Searches**: `WorkerSearchClient` keeps exactly one fuzzy search in flight (replies carry no request id), captures its worker per search, sends the index once by identity via `setSearchIndex`, and tears the worker down after a 60 s timeout.
 
 ### Critical: CDN Path Handling
 
-`isExcludedPath()` must filter out CDN URL segments before checking EXCLUDED_FOLDERS:
+`PathFilter.isExcluded()` (and the worker's `isExcludedPath()`) must filter out CDN URL segments before checking EXCLUDED_FOLDERS:
 
 ```javascript
 // Forge URLs: https://assets.forge-vtt.com/bazaar/assets/FA_Pack/...
@@ -500,16 +533,17 @@ Index building uses Web Workers to prevent main thread blocking:
 const cdnSegments = new Set(['https:', 'http:', '', 'bazaar', 'assets', 'modules', ...]);
 ```
 
-**Note:** This CDN filtering logic exists in BOTH IndexService.js (main thread fallback) and IndexWorker.js (worker thread)
+**Note:** This CDN filtering logic exists in BOTH `core/PathFilter.js` (main thread) and IndexWorker.js (worker thread)
 
 ### Worker Code Duplication
 
-Web Workers can't share ES module imports with the main thread, so several functions are duplicated between `Utils.js` and `IndexWorker.js`:
+Web Workers can't share ES module imports with the main thread, so several functions are duplicated between `scripts/core/` classes and `IndexWorker.js`:
 
-- `loadFuse()` / `_validateFuseShape()` — CDN loading + shape validation
-- `CDN_SEGMENTS` / `isExcludedPath()` — path filtering
+- `FuseLoader.load()` ↔ `loadFuse()`, and `FuseLoader._validateFuseShape()` ↔ `_validateFuseShape()` — CDN loading + shape validation (`core/FuseLoader.js`)
+- `CDN_SEGMENTS`, and `PathFilter.isExcluded()` ↔ `isExcludedPath()` — path filtering (`core/PathFilter.js`)
+- `compileCategorizer()` / `categorizeWith()` — byte-identical between `IndexService.js` and the worker
 
-Each duplicated function has a `SYNC: Keep in sync with ...` JSDoc marker. When modifying one copy, search for the marker and update both.
+The main-thread copies are methods because they own state (the Fuse constructor, the memo cache and precompiled patterns); the worker copies stay module functions and take their configuration as arguments. Each duplicate has a `SYNC: Keep in sync with ...` JSDoc marker, and `tests/core/worker-sync.test.js` fails when a marker goes missing or an identical pair drifts. When modifying one copy, search for the marker and update both.
 
 ## 🔄 Version Management
 

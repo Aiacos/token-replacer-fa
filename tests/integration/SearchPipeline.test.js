@@ -16,10 +16,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Fuse from 'fuse.js';
 
-// Mock loadFuse to return real Fuse.js (established Phase 7 pattern)
-vi.mock('../../scripts/core/Utils.js', async (importOriginal) => {
+// Mock fuseLoader.load() to return real Fuse.js (established Phase 7 pattern)
+vi.mock('../../scripts/core/FuseLoader.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, loadFuse: vi.fn(async () => Fuse) };
+  return { ...actual, fuseLoader: { load: vi.fn(async () => Fuse) } };
 });
 
 import { TVACacheService } from '../../scripts/services/TVACacheService.js';
@@ -439,8 +439,6 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
       getTvaAPI: vi.fn(),
     });
     workerService.index = workerService.createEmptyIndex();
-    // Initialize the worker via _ensureWorker
-    workerService._ensureWorker();
 
     // Intercept postMessage and simulate worker response with direct-path results
     mockWorker.postMessage.mockImplementation((msg) => {
@@ -463,6 +461,10 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
     });
 
     await workerService.indexPathsWithWorker(parsedImages);
+    // indexPathsWithWorker creates the worker itself: the build really ran on it.
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'indexPaths' })
+    );
     workerService.isBuilt = true;
 
     // Compare category keys
@@ -507,7 +509,6 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
       getTvaAPI: vi.fn(),
     });
     workerService.index = workerService.createEmptyIndex();
-    workerService._ensureWorker();
 
     mockWorker.postMessage.mockImplementation((msg) => {
       if (msg.command === 'indexPaths') {
@@ -528,6 +529,10 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
     });
 
     await workerService.indexPathsWithWorker(parsedImages);
+    // indexPathsWithWorker creates the worker itself: the build really ran on it.
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'indexPaths' })
+    );
 
     // Compare allPaths keys
     const directPaths = Object.keys(directService.index.allPaths).sort();
@@ -571,7 +576,6 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
       getTvaAPI: vi.fn(),
     });
     workerService.index = workerService.createEmptyIndex();
-    workerService._ensureWorker();
 
     mockWorker.postMessage.mockImplementation((msg) => {
       if (msg.command === 'indexPaths') {
@@ -592,6 +596,10 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
     });
 
     await workerService.indexPathsWithWorker(parsedImages);
+    // indexPathsWithWorker creates the worker itself: the build really ran on it.
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'indexPaths' })
+    );
 
     // termIndex should be populated (not empty)
     const termKeys = Object.keys(workerService.index.termIndex);
@@ -635,7 +643,6 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
       getTvaAPI: vi.fn(),
     });
     workerService.index = workerService.createEmptyIndex();
-    workerService._ensureWorker();
 
     mockWorker.postMessage.mockImplementation((msg) => {
       if (msg.command === 'indexPaths') {
@@ -656,6 +663,10 @@ describe('Worker vs Direct Parity (INTG-03)', () => {
     });
 
     await workerService.indexPathsWithWorker(parsedImages);
+    // indexPathsWithWorker creates the worker itself: the build really ran on it.
+    expect(mockWorker.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'indexPaths' })
+    );
     workerService.isBuilt = true;
 
     // Search using worker-built index

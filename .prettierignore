@@ -9,3 +9,5 @@ templates/no-match.hbs
 security-scan/
 fix-todos/
 coverage/
+.claude/
+.auto-claude/

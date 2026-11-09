@@ -1,10 +1,10 @@
 <div class="token-replacer-fa-token-preview">
-  <div class="skeleton-loader skeleton-52">
-    <img src="{{currentImage}}" alt="{{actorName}}">
-  </div>
+  <span class="skeleton-loader skeleton-52">
+    <img src="{{currentImage}}" alt="" width="52" height="52">
+  </span>
   <div class="token-info">
     <div class="token-name">{{actorName}}</div>
-    <div class="token-type">{{type}} {{subtype}}</div>
+    <div class="token-type">{{typeLabel}} {{subtype}}</div>
     {{#if showTokenCount}}
       <div class="token-count">{{tokenCountLabel}}</div>
     {{/if}}
@@ -13,52 +13,44 @@
 
 <div class="token-replacer-fa-search-filter">
   <div class="search-input-wrapper">
-    <i class="fas fa-search"></i>
-    <input type="text" class="search-filter-input" placeholder="{{filterPlaceholder}}" autocomplete="off" value="{{savedFilterTerm}}">
-    <i class="fas fa-times search-clear-btn" title="{{clearFilterLabel}}"></i>
+    <i class="fas fa-search" aria-hidden="true"></i>
+    <input type="search" class="search-filter-input" aria-label="{{filterLabel}}" title="{{filterHint}}" placeholder="{{filterPlaceholder}}" autocomplete="off" value="{{savedFilterTerm}}">
+    <button type="button" class="search-clear-btn" aria-label="{{clearFilterLabel}}" title="{{clearFilterLabel}}" hidden>
+      <i class="fas fa-times" aria-hidden="true"></i>
+    </button>
   </div>
-  <div class="result-count">{{resultCountLabel}}</div>
+  <div class="result-count" aria-live="polite">{{resultCountLabel}}</div>
 </div>
+
+<div class="token-replacer-fa-match-select" role="group" aria-label="{{matchGridLabel}}" data-multiselect="{{showMultiSelect}}"></div>
+<p class="match-grid-empty" hidden>{{noFilterResultsLabel}}</p>
 
 {{#if showMultiSelect}}
   <div class="token-replacer-fa-mode-toggle">
-    <span class="mode-label">{{variantAssignmentLabel}}</span>
-    <div class="mode-buttons">
-      <button type="button" class="mode-btn active" data-mode="sequential">
-        <i class="fas fa-arrow-right"></i> {{sequentialLabel}}
+    <span class="mode-label" id="trfa-mode-label">{{variantAssignmentLabel}}</span>
+    <div class="mode-buttons" role="group" aria-labelledby="trfa-mode-label">
+      <button type="button" class="mode-btn active" data-mode="sequential" aria-pressed="true">
+        <i class="fas fa-arrow-right" aria-hidden="true"></i> {{sequentialLabel}}
       </button>
-      <button type="button" class="mode-btn" data-mode="random">
-        <i class="fas fa-random"></i> {{randomLabel}}
+      <button type="button" class="mode-btn" data-mode="random" aria-pressed="false">
+        <i class="fas fa-random" aria-hidden="true"></i> {{randomLabel}}
       </button>
     </div>
     <span class="mode-hint">{{multiSelectHintLabel}}</span>
   </div>
-{{/if}}
-
-<div class="token-replacer-fa-match-select" data-multiselect="{{showMultiSelect}}" data-total="{{totalCount}}">
-  {{#each matches}}
-    <div class="match-option{{#if isFirst}} selected{{/if}}" data-index="{{index}}" data-path="{{path}}" data-name="{{nameLower}}">
-      <div class="skeleton-loader skeleton-72">
-        <img src="{{path}}" alt="{{name}}" loading="lazy">
-      </div>
-      <div class="match-name">{{name}}</div>
-      <div class="match-score">{{scoreDisplay}}</div>
-      <div class="match-check"><i class="fas fa-check"></i></div>
-    </div>
-  {{/each}}
-</div>
-
-{{#if showMultiSelect}}
   <div class="token-replacer-fa-selection-info">
-    <span class="selection-count">{{selectionCountLabel}}</span>
+    <span class="selection-count" aria-live="polite">{{selectionCountLabel}}</span>
   </div>
 {{/if}}
 
 <div class="token-replacer-fa-selection-buttons">
   <button type="button" class="select-btn" data-action="select">
-    <i class="fas fa-check"></i> {{applyLabel}}
+    <i class="fas fa-check" aria-hidden="true"></i> {{applyLabel}}
+  </button>
+  <button type="button" class="apply-all-btn" data-action="apply-all" title="{{applyToRemainingHint}}">
+    <i class="fas fa-check-double" aria-hidden="true"></i> {{applyToRemainingLabel}}
   </button>
   <button type="button" class="skip-btn" data-action="skip">
-    <i class="fas fa-forward"></i> {{skipLabel}}
+    <i class="fas fa-forward" aria-hidden="true"></i> {{skipLabel}}
   </button>
 </div>

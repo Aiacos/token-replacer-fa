@@ -16,6 +16,7 @@
  * @property {string|null} subtype - Creature subtype (e.g., "human")
  * @property {string|null} race - Character race if available
  * @property {string} [custom] - Custom type string if available
+ * @property {string|null} [swarm] - dnd5e swarm size key when the creature is a swarm
  * @property {string[]} searchTerms - Prioritized search terms
  */
 

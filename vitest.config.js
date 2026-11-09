@@ -5,7 +5,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     include: ['tests/**/*.test.js'],
-    setupFiles: ['fake-indexeddb/auto', 'tests/setup/foundry-mocks.js'],
+    setupFiles: ['tests/setup/indexeddb.js', 'tests/setup/foundry-mocks.js'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
