@@ -58,6 +58,9 @@ export class SearchOrchestrator {
     // Distinguishes a user cancellation from a worker failure, so a cancelled
     // search is not "recovered" by running the slow main-thread path anyway.
     this._cancelRequested = false;
+    // Worker replies carry no request id, so only one search may be in flight:
+    // with several, every pending search resolved with the first reply.
+    this._workerSearchQueue = Promise.resolve();
     this._debugLog = createDebugLogger('SearchOrchestrator');
   }
 
@@ -438,8 +441,27 @@ export class SearchOrchestrator {
    * @param {Function} onProgress - Optional progress callback
    * @returns {Promise<Array>} Search results
    */
-  async searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
-    if (!this.worker) {
+  searchLocalIndexWithWorker(searchTerms, index, creatureType = null, onProgress = null) {
+    const run = () => this._runWorkerSearch(searchTerms, index, creatureType, onProgress);
+    const result = this._workerSearchQueue.then(run, run);
+    // The caller gets the failure through `result`; the queue only needs to
+    // know the slot is free.
+    this._workerSearchQueue = result.catch(() => {});
+    return result;
+  }
+
+  /**
+   * Run one worker search. Only called through the queue in
+   * searchLocalIndexWithWorker(), which guarantees it is the only one in flight.
+   * @private
+   */
+  async _runWorkerSearch(searchTerms, index, creatureType, onProgress) {
+    // A search queued behind one the user cancelled must not start.
+    if (this._cancelRequested) throw this._cancelledError();
+
+    // Captured once: a timeout elsewhere can null this.worker while we wait.
+    const worker = this.worker;
+    if (!worker) {
       throw createModuleError('worker_failed', 'Web Worker not available for background search', [
         'reload_module',
       ]);
@@ -451,8 +473,8 @@ export class SearchOrchestrator {
       let timeoutId;
       const cleanup = () => {
         clearTimeout(timeoutId);
-        this.worker.removeEventListener('message', messageHandler);
-        this.worker.removeEventListener('error', errorHandler);
+        worker.removeEventListener('message', messageHandler);
+        worker.removeEventListener('error', errorHandler);
       };
 
       // Create a unique message handler for this search operation
@@ -523,8 +545,8 @@ export class SearchOrchestrator {
         );
       };
 
-      this.worker.addEventListener('message', messageHandler);
-      this.worker.addEventListener('error', errorHandler);
+      worker.addEventListener('message', messageHandler);
+      worker.addEventListener('error', errorHandler);
 
       // Get fuzzy threshold setting
       const threshold = this._getSetting(MODULE_ID, 'fuzzyThreshold') ?? 0.1;
@@ -532,8 +554,9 @@ export class SearchOrchestrator {
       // 60s timeout to prevent Promise hanging if Worker stalls
       timeoutId = setTimeout(() => {
         cleanup();
-        // Terminate zombie worker to prevent out-of-order results on subsequent calls
-        this._teardownWorker();
+        // Terminate the zombie worker so its late reply cannot reach the next
+        // search — unless it has already been replaced.
+        if (this.worker === worker) this._teardownWorker();
         reject(
           createModuleError('worker_failed', 'Worker search timed out after 60 seconds', [
             'reload_module',
@@ -545,24 +568,36 @@ export class SearchOrchestrator {
       // Send the index only when the Worker is not already holding this exact
       // one. Identity, not a boolean: buildLocalTokenIndex() returns a fresh
       // array whenever the library is rescanned, and the Worker must see it.
-      if (this._workerIndex !== index) {
-        this.worker.postMessage({ command: 'setSearchIndex', data: { index } });
-        this._workerIndex = index;
-      }
+      try {
+        if (this._workerIndex !== index) {
+          worker.postMessage({ command: 'setSearchIndex', data: { index } });
+          this._workerIndex = index;
+        }
 
-      this.worker.postMessage({
-        command: 'fuzzySearch',
-        data: {
-          searchTerms: searchTerms,
-          // index omitted — Worker uses persisted copy from setSearchIndex
-          options: {
-            keys: ['name', 'fileName', 'category'],
-            threshold: threshold,
-            includeScore: true,
-            minMatchCharLength: 2,
+        worker.postMessage({
+          command: 'fuzzySearch',
+          data: {
+            searchTerms: searchTerms,
+            // index omitted — Worker uses persisted copy from setSearchIndex
+            options: {
+              keys: ['name', 'fileName', 'category'],
+              threshold: threshold,
+              includeScore: true,
+              minMatchCharLength: 2,
+            },
           },
-        },
-      });
+        });
+      } catch (error) {
+        // Without this the pending timer would later tear down a healthy worker.
+        cleanup();
+        console.error(`${MODULE_ID} | Failed to post search to worker:`, error);
+        reject(
+          createModuleError('worker_failed', `Failed to start worker search: ${error.message}`, [
+            'reload_module',
+            'check_console',
+          ])
+        );
+      }
     });
   }
 
@@ -676,7 +711,12 @@ export class SearchOrchestrator {
     if (this._indexService.isBuilt) {
       console.log(`${MODULE_ID} | Using pre-built index (FAST mode)`);
       if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: 'index lookup', resultsFound: 0 });
+        progressCallback({
+          current: 0,
+          total: 1,
+          term: i18nOrEnglish('ui.progressIndexLookup', 'index lookup'),
+          resultsFound: 0,
+        });
       }
 
       const indexResults = this._indexService.searchByCategory(categoryType);
@@ -695,7 +735,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: 'index lookup',
+          term: i18nOrEnglish('ui.progressIndexLookup', 'index lookup'),
           resultsFound: results.length,
         });
       }
@@ -709,7 +749,12 @@ export class SearchOrchestrator {
       if (results.length === 0 && this._tvaCacheService?.tvaCacheLoaded) {
         console.log(`${MODULE_ID} | Index returned 0 results — falling back to TVA direct cache`);
         if (progressCallback) {
-          progressCallback({ current: 0, total: 1, term: 'TVA cache fallback', resultsFound: 0 });
+          progressCallback({
+            current: 0,
+            total: 1,
+            term: i18nOrEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
+            resultsFound: 0,
+          });
         }
 
         const fallbackResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
@@ -724,7 +769,7 @@ export class SearchOrchestrator {
           progressCallback({
             current: 1,
             total: 1,
-            term: 'TVA cache fallback',
+            term: i18nOrEnglish('ui.progressTvaCacheFallback', 'TVA cache fallback'),
             resultsFound: results.length,
           });
         }
@@ -736,7 +781,12 @@ export class SearchOrchestrator {
     else if (priority === 'forgeBazaar' && this._forgeBazaarService?.isServiceAvailable()) {
       console.log(`${MODULE_ID} | Using ForgeBazaarService (priority: forgeBazaar)`);
       if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
+        progressCallback({
+          current: 0,
+          total: 1,
+          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
+          resultsFound: 0,
+        });
       }
 
       const bazaarResults = await this._forgeBazaarService.browseCategory(categoryType);
@@ -754,7 +804,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: 'Forge Bazaar',
+          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
           resultsFound: results.length,
         });
       }
@@ -770,7 +820,12 @@ export class SearchOrchestrator {
     ) {
       console.log(`${MODULE_ID} | Using TVA direct cache (FAST mode)`);
       if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: 'TVA cache lookup', resultsFound: 0 });
+        progressCallback({
+          current: 0,
+          total: 1,
+          term: i18nOrEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
+          resultsFound: 0,
+        });
       }
 
       const tvaCacheResults = await this._tvaCacheService.searchTVACacheByCategory(categoryType);
@@ -785,7 +840,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: 'TVA cache lookup',
+          term: i18nOrEnglish('ui.progressTvaCacheLookup', 'TVA cache lookup'),
           resultsFound: results.length,
         });
       }
@@ -893,7 +948,12 @@ export class SearchOrchestrator {
     else if (priority !== 'faNexus' && this._forgeBazaarService?.isServiceAvailable()) {
       console.log(`${MODULE_ID} | Using ForgeBazaarService (TVA not available)`);
       if (progressCallback) {
-        progressCallback({ current: 0, total: 1, term: 'Forge Bazaar', resultsFound: 0 });
+        progressCallback({
+          current: 0,
+          total: 1,
+          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
+          resultsFound: 0,
+        });
       }
 
       const bazaarResults = await this._forgeBazaarService.browseCategory(categoryType);
@@ -911,7 +971,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 1,
           total: 1,
-          term: 'Forge Bazaar',
+          term: i18nOrEnglish('ui.progressForgeBazaar', 'Forge Bazaar'),
           resultsFound: results.length,
         });
       }
@@ -925,7 +985,7 @@ export class SearchOrchestrator {
         progressCallback({
           current: 0,
           total: 1,
-          term: 'local index',
+          term: i18nOrEnglish('ui.progressLocalIndex', 'local index'),
           resultsFound: results.length,
         });
       }

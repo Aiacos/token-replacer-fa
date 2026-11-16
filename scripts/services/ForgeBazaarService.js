@@ -365,7 +365,7 @@ export class ForgeBazaarService {
     let validCategories = 0;
     let expiredCategories = 0;
 
-    for (const [category, entry] of Object.entries(this.categoryCache)) {
+    for (const entry of Object.values(this.categoryCache)) {
       if (entry.timestamp && now - entry.timestamp < CATEGORY_CACHE_TTL) {
         validCategories++;
       } else {
@@ -376,7 +376,7 @@ export class ForgeBazaarService {
     let validSearches = 0;
     let expiredSearches = 0;
 
-    for (const [term, entry] of this.searchCache.entries()) {
+    for (const entry of this.searchCache.values()) {
       if (entry.timestamp && now - entry.timestamp < SEARCH_CACHE_TTL) {
         validSearches++;
       } else {

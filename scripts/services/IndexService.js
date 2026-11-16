@@ -373,7 +373,7 @@ export class IndexService {
           const path = this.index.pathList[id];
           const searchTerms = this.tokenizeSearchText(`${path} ${this.index.allPaths[id].name}`);
           for (const term of searchTerms) {
-            if (!this.index.termIndex[term]) {
+            if (!Object.hasOwn(this.index.termIndex, term)) {
               this.index.termIndex[term] = [];
             }
             this.index.termIndex[term].push(id);
@@ -419,7 +419,12 @@ export class IndexService {
       const catCount = this.index.categories ? Object.keys(this.index.categories).length : 0;
       const approxKB = Math.round(pathCount * 0.2 + catCount * 0.5);
 
-      await this._storageService.save(CACHE_KEY, this.index);
+      // save() never throws: a full or unavailable store comes back as false.
+      if (!(await this._storageService.save(CACHE_KEY, this.index))) {
+        console.warn(`${MODULE_ID} | Failed to save cache: storage rejected the index`);
+        this._warnStorageFull();
+        return false;
+      }
       this._debugLog(
         `Saved index to cache: ~${approxKB}KB (${pathCount} paths, ${catCount} categories)`
       );
@@ -431,19 +436,26 @@ export class IndexService {
       // Check if it's a QuotaExceededError (localStorage full)
       if (error.name === 'QuotaExceededError' || error.code === 22) {
         console.warn(`${MODULE_ID} | Failed to save cache: localStorage is full`, error);
-        if (typeof ui !== 'undefined' && ui.notifications) {
-          ui.notifications.warn(
-            i18nOrEnglish(
-              'notifications.storageFull',
-              'Token Replacer FA: browser storage is full, so the index will be rebuilt every session.'
-            )
-          );
-        }
+        this._warnStorageFull();
       } else {
         console.warn(`${MODULE_ID} | Failed to save cache:`, error);
       }
       return false;
     }
+  }
+
+  /**
+   * Tell the user the index will not survive the session.
+   * @returns {void}
+   */
+  _warnStorageFull() {
+    if (typeof ui === 'undefined' || !ui.notifications) return;
+    ui.notifications.warn(
+      i18nOrEnglish(
+        'notifications.storageFull',
+        'Token Replacer FA: browser storage is full, so the index will be rebuilt every session.'
+      )
+    );
   }
 
   /**
@@ -550,7 +562,7 @@ export class IndexService {
       // Populate termIndex for O(1) search term lookups
       const searchTerms = this.tokenizeSearchText(`${path} ${imageName}`);
       for (const term of searchTerms) {
-        if (!this.index.termIndex[term]) {
+        if (!Object.hasOwn(this.index.termIndex, term)) {
           this.index.termIndex[term] = [];
         }
         this.index.termIndex[term].push(id);
@@ -1094,6 +1106,10 @@ export class IndexService {
       ]);
     }
 
+    // The worker resets its own cancel flag when a command arrives, so a Stop
+    // pressed before this point would otherwise be forgotten.
+    if (this._cancelRequested) throw this._cancelledError();
+
     this._debugLog(`Starting worker-based indexing for ${paths.length} paths`);
 
     // Timeout: 120s for indexing, scales with dataset size but caps to prevent infinite hang
@@ -1523,6 +1539,7 @@ export class IndexService {
 
     this.buildPromise = (async () => {
       const startTime = performance.now();
+      let cachedIndex = null;
       this._debugLog(`Starting index build (forceRebuild: ${forceRebuild})`);
       console.log(`${MODULE_ID} | Starting index build...`);
 
@@ -1536,6 +1553,7 @@ export class IndexService {
             console.log(`${MODULE_ID} | Index loaded from cache, no update needed`);
             return true;
           }
+          cachedIndex = this.index;
           this._debugLog('Index needs update based on frequency setting');
           console.log(`${MODULE_ID} | Index needs update based on frequency setting`);
         }
@@ -1577,6 +1595,17 @@ export class IndexService {
           ['rebuild_cache', 'check_paths', 'check_console']
         );
       } catch (error) {
+        // A stale index beats none: searches keep working, and the refresh is
+        // retried on the next session.
+        if (cachedIndex) {
+          this.index = cachedIndex;
+          this._rebuildPathIds();
+          this.isBuilt = true;
+          if (error?.cancelled) throw error;
+          console.warn(`${MODULE_ID} | Index refresh failed, keeping the cached index:`, error);
+          return true;
+        }
+
         // Same as buildFromTVA: a cancellation must reach the caller intact.
         if (error?.cancelled) {
           this.isBuilt = false;
@@ -1755,7 +1784,8 @@ export class IndexService {
 
       // O(1) lookup in termIndex for each token
       for (const token of tokens) {
-        const ids = this.index.termIndex[token];
+        // A plain-object lookup would return Object for the term "constructor".
+        const ids = Object.hasOwn(this.index.termIndex, token) ? this.index.termIndex[token] : null;
         if (ids) {
           for (const id of ids) {
             if (seenIds.has(id)) continue;
@@ -1814,7 +1844,8 @@ export class IndexService {
 
       // O(1) lookup in termIndex for each unique token
       for (const token of allTokens) {
-        const ids = this.index.termIndex[token];
+        // A plain-object lookup would return Object for the term "constructor".
+        const ids = Object.hasOwn(this.index.termIndex, token) ? this.index.termIndex[token] : null;
         if (ids) {
           for (const id of ids) {
             if (seenIds.has(id)) continue;

@@ -68,7 +68,7 @@ describe('SearchService', () => {
       expect(() => svc.init()).toThrow();
       try {
         svc.init();
-      } catch (err) {
+      } catch {
         // Reset for the actual check — need a fresh instance
       }
 

@@ -109,7 +109,6 @@ export class StorageService {
         console.log(`${MODULE_ID} | IndexedDB upgrade: v${oldVersion} → v${DB_VERSION}`);
 
         // Incremental migrations — each case falls through to apply all needed upgrades
-        // eslint-disable-next-line default-case
         switch (oldVersion) {
           case 0:
             // Fresh install: create the object store
@@ -370,26 +369,32 @@ export class StorageService {
    * Optimized: skips arrays of primitives (strings, numbers) since they can't
    * carry __proto__ pollution. Only recurses into objects and arrays-of-objects.
    * @param {*} data - Data to sanitize
-   * @param {WeakSet} [seen] - Cycle detection set (internal, do not pass)
+   * @param {WeakMap} [seen] - Original → cleaned copy (internal, do not pass)
    * @returns {*} Sanitized data
    */
-  static _sanitizeData(data, seen = new WeakSet()) {
+  static _sanitizeData(data, seen = new WeakMap()) {
     if (data === null || data === undefined || typeof data !== 'object') {
       return data;
     }
 
-    if (seen.has(data)) return data;
-    seen.add(data);
+    // Returning the cleaned copy, not the original, matters beyond cycles: the
+    // TVA cache shares each image object between two structures, and handing
+    // back the original skipped sanitizing every second reference.
+    if (seen.has(data)) return seen.get(data);
 
     if (Array.isArray(data)) {
       if (data.length === 0) return data;
       // Check if ANY element is an object (not just data[0]) to avoid bypassing mixed arrays
       const hasObjects = data.some((item) => item !== null && typeof item === 'object');
       if (!hasObjects) return data;
-      return data.map((item) => StorageService._sanitizeData(item, seen));
+      const cleanedArray = [];
+      seen.set(data, cleanedArray);
+      for (const item of data) cleanedArray.push(StorageService._sanitizeData(item, seen));
+      return cleanedArray;
     }
 
     const cleaned = {};
+    seen.set(data, cleaned);
     for (const key of Object.keys(data)) {
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
         continue;

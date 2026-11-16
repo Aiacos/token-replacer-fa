@@ -405,12 +405,11 @@ export class TokenReplacerApp {
       this._debugLog('Fuse.js loaded successfully');
 
       // Check for active scene
+      // Same as an empty scene below: nothing to do, not an error. Throwing here
+      // added a second notification blaming unselected tokens.
       if (!canvas?.scene) {
-        const error = this._createError('no_tokens_selected', 'No active scene found', [
-          'check_console',
-        ]);
         ui.notifications.warn(this.i18n('notifications.noScene'));
-        throw error;
+        return;
       }
       this._debugLog('Active scene found:', canvas.scene.name);
 
@@ -932,6 +931,9 @@ Hooks.once('init', async () => {
 
 Hooks.once('ready', async () => {
   console.log(`${MODULE_ID} | Module ready`);
+  // Only the GM-only scene control uses the index; a player's browser would
+  // pay for a multi-minute build it never reads.
+  if (!game.user.isGM) return;
   tokenReplacerApp._debugLog('Ready hook triggered, starting module initialization');
 
   tokenReplacerApp._debugLog('Loading Fuse.js library');

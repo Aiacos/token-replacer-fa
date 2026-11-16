@@ -16,6 +16,11 @@ cd token-replacer-fa
 npm install
 ```
 
+`npm install` also activates the versioned git hooks in `.githooks/`, so every
+commit runs `npm run check` first. Fix what it reports rather than committing with
+`--no-verify`. If you already set your own `core.hooksPath`, it is left alone and
+you get a reminder to run the check yourself.
+
 ## 🎮 Development Commands
 
 **One command before every commit** — it is exactly what CI runs, so green here

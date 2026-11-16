@@ -20,7 +20,8 @@
     "validate": "node tools/validate-manifest.mjs",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run validate && npm test",
     "fix": "npm run format && npm run lint:fix",
-    "build": "bash build.sh"
+    "build": "bash build.sh",
+    "prepare": "node tools/install-hooks.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

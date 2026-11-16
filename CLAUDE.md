@@ -19,8 +19,9 @@ below, the article wins. Each article ends with the check that enforces it —
 a principle nothing verifies is a wish, not a rule.
 
 **The one command:** `npm run check` runs lint → format → typecheck → validate →
-tests (~10s). It is the gate for Articles I–V. Run it before every commit;
-`npm run fix` repairs what is mechanically repairable.
+tests (~10s). It is the gate for Articles I–V. The versioned pre-commit hook runs
+it before every commit (Article IX.7); `npm run fix` repairs what is mechanically
+repairable.
 
 ### Article I — 🧹 Code quality
 
@@ -36,7 +37,14 @@ tests (~10s). It is the gate for Articles I–V. Run it before every commit;
    `_validateFuseShape`, `CDN_SEGMENTS`, `isExcludedPath`), which cannot share
    imports across the worker boundary.
 5. Dead code is deleted, not commented out. Git remembers.
-6. **Enforced by:** `npm run lint`, `npm run format:check`, `npm run typecheck`.
+6. Simplicity, quality, correctness, security, readability and maintainability
+   come before cleverness and delivery speed. Choose the simplest solution that
+   is correct and secure; correctness and security are never traded for the rest.
+7. Everything crossing a trust boundary is untrusted until validated: TVA cache
+   contents, file paths, CDN code, persisted data. Secrets never enter the
+   repository. `SECURITY.md` records the resulting guarantees and known limits.
+8. **Enforced by:** `npm run lint`, `npm run format:check`, `npm run typecheck`,
+   and review for 6–7.
 
 ### Article II — 🧪 Testing standards
 
@@ -51,9 +59,14 @@ tests (~10s). It is the gate for Articles I–V. Run it before every commit;
    this module lived there, not in the algorithms.
 5. The suite stays fast (currently ~1.6s) and deterministic. No real network, no
    real timers, no test that depends on another test's order.
-6. Coverage may not regress. Baseline at the time of writing: **49% lines**.
+6. Coverage may not regress. Baseline at the time of writing: **59% lines**.
    `npm run test:coverage` reports it.
-7. **Enforced by:** `npm test`, `npm run test:coverage`, CI on Node 20 and 22.
+7. A test must be able to fail. See it fail against the broken or reverted code
+   before trusting it; one that passes whatever the code does is not coverage,
+   however much it lifts the numbers.
+8. Critical workflows — token replacement, index build, cache load, search and
+   release — have automated tests for their success and their failure cases.
+9. **Enforced by:** `npm test`, `npm run test:coverage`, CI on Node 20 and 22.
 
 ### Article III — 🎛️ User experience consistency
 
@@ -73,7 +86,9 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    no-op and never a raw stack trace.
 5. Terminology is stable across UI, README and settings: _token art_, _category_,
    _index_, _cache_, _match_. Do not invent synonyms.
-6. **Enforced by:** `npm run validate` — i18n keys used vs. defined, translation
+6. The same interaction behaves the same everywhere: dialogs, controls, feedback
+   and error handling follow one pattern across every interface.
+7. **Enforced by:** `npm run validate` — i18n keys used vs. defined, translation
    parity, template reachability, no literal text in a template, and no
    untranslated prose handed to `ui.notifications.*`.
 
@@ -96,7 +111,10 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    (~4.5MB ceiling), and every load is sanitized.
 6. A change that touches the search or index path reports before/after numbers
    (the index build already logs images/sec). "Feels faster" is not a result.
-7. **Enforced by:** review + the timing logs in `IndexService`.
+7. Performance requirements are numbers against a named workload (images indexed,
+   tokens processed), not adjectives. Optimize only a bottleneck a measurement has
+   identified, and never at the expense of correctness or maintainability.
+8. **Enforced by:** review + the timing logs in `IndexService`.
 
 ### Article V — 🔍 Automatic debug & validation system
 
@@ -113,7 +131,10 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
 5. Release tooling (`tools/bump-version.mjs`, `tools/dependabot-triage.mjs`) is
    unit-tested code, because a release that fails _halfway_ is worse than one
    that never starts.
-6. **Enforced by:** `npm run validate`, `tests/tools/*.test.js`.
+6. Every failure follows one path: reproduce it with an automated check, find the
+   root cause before changing code, verify the fix against that reproduction, then
+   keep a test or validator rule so the same class of failure cannot recur.
+7. **Enforced by:** `npm run validate`, `tests/tools/*.test.js`.
 
 ### Article VI — 📚 Research & document SDKs and libraries
 
@@ -132,8 +153,11 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    load time, and why a ~50-line local helper is not enough. This module ships
    with zero runtime dependencies; keep it that way.
 5. Version-pin everything reachable from CI.
+6. SDKs, libraries and APIs are checked against their official documentation
+   before integration, never against memory or a blog post. Record the version
+   verified, its constraints and the decision taken next to the code that uses it.
 
-### Article VII — 📖 Technical & user documentation
+### Article VII — 📚 Technical & user documentation
 
 1. Docs ship in the same commit as the behaviour they describe. A merged feature
    with stale docs is an unfinished feature.
@@ -144,13 +168,20 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    - `CLAUDE.md` — for **agents**: architecture, invariants, constraints.
    - `CHANGELOG.md` — Keep a Changelog format; every user-visible change lands
      under `## [Unreleased]` as it is made, not at release time.
+   - `TODO.md` — open work only, as a checklist with references; finished items
+     are removed, because the changelog and git already remember them.
+   - `SECURITY.md` — how to report a vulnerability, what is supported, the
+     guarantees and known limits. Never an unfixed exploit's details.
 3. Architectural decisions with a non-obvious rationale are written down where
    the reader will hit them (the CDN path filtering, the worker/main-thread
    duplication, the ForgeBazaar stub).
 4. Every documented command must actually run. If a doc says `npm run x`, `x`
    exists in `package.json`.
+5. Documentation describes what the code does today: implementation,
+   configuration, workflows and known limitations. Keep `TODO.md`, `SECURITY.md`
+   and `CHANGELOG.md` concise and easy to update, each to its own purpose.
 
-### Article VIII — 🧼 Repository hygiene
+### Article VIII — 🧹 Repository hygiene
 
 1. The repository root holds only what a user or contributor needs. Agent scratch
    output, scan reports and session state do not belong in version control.
@@ -161,6 +192,9 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
 4. `module.json` is the single source of truth for the version; `sync-version.sh`
    propagates it. Never hand-edit a version anywhere else.
 5. Any file added to the root must be justified in the PR description.
+6. Cleanup is routine, not an event: find and remove dead code, unused
+   dependencies, obsolete files and redundant implementations, then show with
+   `npm run check` that expected behaviour survived.
 
 ### Article IX — 🔄 CI/CD, consistent and useful
 
@@ -183,8 +217,14 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    teaches everyone to ignore CI.
 6. Release requires no local steps: no manual ZIP, no manual tag, no manual
    upload.
+7. Every commit passes formatting, lint, type checks and tests first, without
+   anyone having to remember: `.githooks/pre-commit` runs `npm run check`, and
+   `npm install` activates it. Fix the failure; `--no-verify` is not a way out.
+   The module has no compile step, and the package build is proven by CI.
+8. A change that fails the gate reaches neither `main` nor a release. Checks must
+   be able to catch real faults; one that cannot fail is removed or repaired.
 
-### Article X — 🤖 Proper use of subagents
+### Article X — 🤖 Proper use of subagents and agent tooling
 
 1. Delegate for **breadth**, not for thinking. Sweeping many files for a pattern
    is a subagent task; a design decision, a security judgement, or the final
@@ -193,11 +233,15 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    and only the conclusion matters. For a known file or symbol, read it directly.
 3. Independent subagents are launched in one batch so they run in parallel; one
    agent per file is over-spawning.
-4. Give each subagent a scope, a deliverable and a stopping condition. "Look
-   around" wastes a whole context window.
+4. Give each subagent a clearly bounded task with explicit responsibilities,
+   sufficient context, a deliverable and a stopping condition. "Look around"
+   wastes a whole context window.
 5. Subagent output is evidence, never authority. Verify claims against the code
    before acting on them, and never let a subagent report stand in for a passing
    `npm run check`.
+6. Use the Superpowers and Impeccable plugins and skills wherever they are
+   available and fit the task: Superpowers for process (planning, debugging,
+   test-driven development, verification), Impeccable for templates and styles.
 
 ### Article XI — 🎨 Consistent iconography
 
@@ -222,6 +266,10 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    | 📚   | Documentation, research, references    |
    | 📜   | Changelog, license, governance         |
    | 🙌   | Credits, contributing, support         |
+   | 🎛️   | User experience, localization          |
+   | 🔒   | Security                               |
+   | 🤖   | Subagents, agent tooling               |
+   | 🎨   | Iconography, visual consistency        |
 
 2. One icon per heading, at the start, on `##`/`###` chapter headings only. Never
    inside body text, never two in a row, never decorative.
@@ -229,10 +277,26 @@ english)` — never improvised as `localize(key) || 'English'`, which cannot
    table gains a row — in the same commit. The vocabulary does not fork.
 4. Icons never carry meaning on their own: strip every icon and the document
    must read exactly the same. They are navigation aids, not content.
+5. The rule covers every document, `TODO.md` and `SECURITY.md` included: a section
+   about the same concept carries the same icon wherever it appears.
+
+### Article XII — 🧠 Architecture & design
+
+1. Plan before implementing. Anything beyond a local fix starts from a stated
+   design: responsibilities, data flow, failure modes, and which existing service
+   it belongs to.
+2. Apply a design pattern only when it solves a problem this code has now. The
+   facade over `SearchOrchestrator`/`TVACacheService` and the injected service
+   dependencies earn their place; a pattern added for symmetry does not.
+3. Use classes where they provide clear benefits: owned state, a lifecycle (the
+   worker), or injectable dependencies for testing. Stateless logic stays a plain
+   function, and inheritance needs a concrete reason.
+4. **Enforced by:** review, and Article II.3 — a design that cannot be tested
+   through its public behaviour goes back to the drawing board.
 
 ## 🎮 Development Commands
 
-**One gate — run this before every commit:**
+**One gate — the pre-commit hook runs it before every commit:**
 
 ```bash
 npm run check      # lint → format:check → typecheck → validate → test  (~10s)
@@ -241,9 +305,9 @@ npm run fix        # prettier --write + eslint --fix
 
 | Command                           | What it does                                            |
 | --------------------------------- | ------------------------------------------------------- |
-| `npm test`                        | Full Vitest suite (534 tests, ~1.6s)                    |
+| `npm test`                        | Full Vitest suite (~1.6s)                               |
 | `npm run test:watch`              | Watch mode                                              |
-| `npm run test:coverage`           | Coverage report into `coverage/` (baseline ~49% lines)  |
+| `npm run test:coverage`           | Coverage report into `coverage/` (baseline ~59% lines)  |
 | `npm run lint` / `lint:fix`       | ESLint over `scripts/`, `tools/`, `tests/`              |
 | `npm run format` / `format:check` | Prettier                                                |
 | `npm run typecheck`               | `tsc --noEmit` against `jsconfig.json`                  |
@@ -351,12 +415,13 @@ tools/                   # CI/CD logic — plain Node, unit-tested, no YAML bran
 ├── bump-version.mjs         # Version bump + CHANGELOG promotion (exports pure helpers)
 ├── publish-foundry.mjs      # Foundry package registry announcement
 ├── check-foundry-version.mjs # Newest Foundry generation vs compatibility.verified
+├── install-hooks.mjs        # npm install: points git at the versioned .githooks/
 └── dependabot-triage.mjs    # merge/hold decision per Dependabot PR
 .github/
 ├── dependabot.yml       # Weekly grouped updates: actions + npm dev deps
 └── workflows/           # ci · release · foundry-compat · dependabot-auto-merge
 tests/
-├── core/ services/ integration/ helpers/ setup/   # Module suite
+├── core/ services/ ui/ integration/ helpers/ setup/   # Module suite
 └── tools/               # CI tooling suite (bump, triage, manifest validation)
 ```
 
@@ -408,13 +473,13 @@ Index building uses Web Workers to prevent main thread blocking:
 **IndexWorker.js** - Runs in background thread, processes thousands of images at full speed without UI freezing
 
 - Receives `indexPaths` command with image paths and categorization rules
-- Processes all paths without setTimeout yields (unlike main thread fallback)
+- Yields to its message queue every few thousand items, so a cancel can arrive mid-build
 - Sends progress updates every 1000 items via `postMessage`
 - Returns categorized index structure when complete
 
 **IndexService** - Manages worker lifecycle and fallback
 
-- Initializes worker on construction: `new Worker('modules/token-replacer-fa/scripts/workers/IndexWorker.js')`
+- Creates the worker lazily on first use (`_ensureWorker()`), never in the constructor
 - Uses `indexPathsWithWorker()` when worker available (non-blocking)
 - Falls back to `indexPathsDirectly()` with 10ms yields if worker unavailable
 - Properly terminates worker with `terminate()` method
@@ -422,7 +487,7 @@ Index building uses Web Workers to prevent main thread blocking:
 **Benefits:**
 
 - Main thread remains completely responsive during large index builds
-- Full-speed processing (no yield delays) in worker thread
+- Near full-speed processing in the worker: its rare yields carry no fixed delay
 - Graceful fallback for browsers without Worker support
 
 ### Critical: CDN Path Handling

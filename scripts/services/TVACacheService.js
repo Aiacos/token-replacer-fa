@@ -474,6 +474,13 @@ export class TVACacheService {
    */
   async reloadTVACache() {
     this._debugLog('Reloading TVA cache...');
+    // loadTVACache() joins a load already in flight, which would hand back the
+    // very data this reload exists to replace. Let it finish first.
+    if (this._loadPromise) {
+      await this._loadPromise.catch((error) => {
+        console.debug(`${MODULE_ID} | Earlier TVA cache load failed before reload:`, error);
+      });
+    }
     this.tvaCacheLoaded = false;
     this.tvaCacheImages = [];
     this.tvaCacheSearchable = [];

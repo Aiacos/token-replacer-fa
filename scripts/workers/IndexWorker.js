@@ -268,7 +268,8 @@ async function handleIndexPaths(data) {
     const searchText = `${pathList[id]} ${allPaths[id].name}`.toLowerCase();
     const terms = searchText.split(/[/\\\-_\s.]+/).filter((t) => t.length > 0);
     for (const term of new Set(terms)) {
-      if (!termIndex[term]) termIndex[term] = [];
+      // A plain-object lookup would return Object for the term "constructor".
+      if (!Object.hasOwn(termIndex, term)) termIndex[term] = [];
       termIndex[term].push(id);
     }
   }

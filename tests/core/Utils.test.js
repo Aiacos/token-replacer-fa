@@ -645,6 +645,15 @@ describe('createDebugLogger', () => {
 // =========================================================================
 
 describe('isExcludedPath', () => {
+  it.each([
+    'FA_Pack/Tokens/Giants/Hill_Giant_01.webp',
+    'FA_Pack/Tokens/Creatures/Awakened_Tree_01.webp',
+    'FA_Pack/Tokens/Creatures/Corpse_Flower_01.webp',
+    'FA_Pack/Tokens/Beasts/Cave_Bear_01.webp',
+  ])('keeps the creature token %s', (path) => {
+    expect(isExcludedPath(path)).toBe(false);
+  });
+
   beforeEach(() => {
     clearExcludedPathCache();
   });
